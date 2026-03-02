@@ -28,11 +28,18 @@ export function LiveTransactionsTable({ entityId, onTransactionClick, filterMeth
       
       setTransactions(prev => {
         if (!isPoll) return newTxns;
-        // Prepend new txns and keep list size manageable
         const combined = [...newTxns, ...prev];
-        // Remove duplicates by ID just in case
-        const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-        return unique.slice(0, 20); // Keep last 20
+        const deduped: LiveTransaction[] = [];
+        const seenIds = new Set<string>();
+        const seenOrderIds = new Set<string>();
+        for (const item of combined) {
+          if (seenIds.has(item.id)) continue;
+          if (item.orderId && seenOrderIds.has(item.orderId)) continue;
+          seenIds.add(item.id);
+          if (item.orderId) seenOrderIds.add(item.orderId);
+          deduped.push(item);
+        }
+        return deduped.slice(0, 20);
       });
     } catch (e) {
       console.error(e);
@@ -51,8 +58,8 @@ export function LiveTransactionsTable({ entityId, onTransactionClick, filterMeth
     const handlePaymentCreated = (data: any) => {
       if (!data) return;
       const newTxn: LiveTransaction = {
-        id: data.orderId || `txn-${Date.now()}`,
-        txnId: `TXN-${Date.now()}`,
+        id: data.id || `txn-${Date.now()}`,
+        txnId: data.txnId || `TXN-${Date.now()}`,
         amount: data.amount || 0,
         currency: data.currency || 'INR',
         methodDisplay: data.methodDisplay || data.methodType || 'Unknown',
@@ -64,17 +71,32 @@ export function LiveTransactionsTable({ entityId, onTransactionClick, filterMeth
         customerName: data.customerName,
       };
       setTransactions((prev) => {
-        const unique = [newTxn, ...prev.filter((t) => t.id !== newTxn.id)];
-        return unique.slice(0, 20);
+        const isDuplicate = prev.some(
+          (t) => t.id === newTxn.id || (t.orderId && t.orderId === newTxn.orderId)
+        );
+        if (isDuplicate) return prev;
+        return [newTxn, ...prev].slice(0, 20);
       });
       toast.success(`New payment: ₹${newTxn.amount.toLocaleString('en-IN')} via ${newTxn.methodDisplay}`);
     };
 
+    const handleOrderCancelled = (data: any) => {
+      if (!data || !data.order_id) return;
+      setTransactions((prev) =>
+        prev.map((t) => {
+          if (t.orderId !== data.order_id) return t;
+          return { ...t, status: 'failed' };
+        })
+      );
+    };
+
     websocketService.on('payment:created', handlePaymentCreated);
+    websocketService.on('order:cancelled', handleOrderCancelled);
 
     return () => {
       clearInterval(interval);
       websocketService.off('payment:created', handlePaymentCreated);
+      websocketService.off('order:cancelled', handleOrderCancelled);
     };
   }, [entityId]);
 

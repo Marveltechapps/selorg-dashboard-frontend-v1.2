@@ -1,6 +1,15 @@
 import { io, Socket } from 'socket.io-client';
-import { API_CONFIG } from '../config/api';
 import { getAuthToken, getAuthUser } from '../contexts/AuthContext';
+
+/**
+ * Resolve the WebSocket server URL.
+ * Priority: VITE_WS_URL env var > Vite proxy (same origin, /socket.io path).
+ */
+function resolveWsUrl(): string {
+  const envUrl = (import.meta.env.VITE_WS_URL ?? '').trim();
+  if (envUrl) return envUrl;
+  return window.location.origin;
+}
 
 class WebSocketService {
   private socket: Socket | null = null;
@@ -24,8 +33,7 @@ class WebSocketService {
       return;
     }
 
-    const baseUrl = API_CONFIG.baseURL.replace('/api/v1', '');
-    const socketUrl = baseUrl.startsWith('http') ? baseUrl : window.location.origin;
+    const socketUrl = resolveWsUrl();
 
     this.socket = io(socketUrl, {
       auth: { token },

@@ -112,3 +112,21 @@ export async function cancelOrder(orderId: string, reason?: string) {
   }
   return result;
 }
+
+/**
+ * Get cancelled orders. Backend expects GET /api/v1/darkstore/orders?status=cancelled.
+ */
+export async function getCancelledOrders(storeId: string, page = 1, limit = 50) {
+  const url = buildUrl(`/darkstore/orders?storeId=${encodeURIComponent(storeId)}&status=cancelled&page=${page}&limit=${limit}`);
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: authHeaders() });
+  } catch {
+    throw new Error('Backend server is unreachable. Please ensure it is running.');
+  }
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || `API Error: ${response.statusText}`);
+  }
+  return response.json();
+}

@@ -102,9 +102,64 @@ export function FinanceOverview() {
       });
     };
 
+    const handleOrderCreated = (data: any) => {
+      if (!data || !data.order_id) return;
+      toast.info(`New order #${data.order_id} — ${data.customer_name || 'Customer'} — ₹${(data.total_bill || 0).toLocaleString('en-IN')}`);
+    };
+
+    const handleOrderUpdated = (data: any) => {
+      if (!data || !data.order_id) return;
+      const statusLabel: Record<string, string> = {
+        new: 'Queued', processing: 'Picking', ready: 'Packing', rto: 'RTO',
+      };
+      const label = statusLabel[data.status] || data.status || 'Updated';
+      toast.info(`Order #${data.order_id} → ${label}`);
+    };
+
+    const handleOrderCancelled = (data: any) => {
+      if (!data || !data.order_id) return;
+      const amount = data.total_bill || 0;
+      const wasPaid = data.payment_status === 'paid';
+
+      if (wasPaid && amount > 0) {
+        setSummary((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            totalReceivedToday: Math.max(0, prev.totalReceivedToday - amount),
+          };
+        });
+
+        setSplit((prev) => {
+          if (!prev.length) return prev;
+          const methodMap: Record<string, string> = {
+            card: 'cards', upi: 'digital_wallets', wallet: 'digital_wallets', cash: 'cod',
+          };
+          const key = methodMap[data.payment_method] || 'cod';
+          return prev.map((item) => {
+            if (item.method !== key) return item;
+            return {
+              ...item,
+              amount: Math.max(0, item.amount - amount),
+              txnCount: Math.max(0, item.txnCount - 1),
+            };
+          });
+        });
+      }
+
+      toast.warning(`Order #${data.order_id} cancelled${data.reason ? ': ' + data.reason : ''} — ₹${amount.toLocaleString('en-IN')}`);
+    };
+
     websocketService.on('payment:created', handlePaymentCreated);
+    websocketService.on('order:created', handleOrderCreated);
+    websocketService.on('order:updated', handleOrderUpdated);
+    websocketService.on('order:cancelled', handleOrderCancelled);
+
     return () => {
       websocketService.off('payment:created', handlePaymentCreated);
+      websocketService.off('order:created', handleOrderCreated);
+      websocketService.off('order:updated', handleOrderUpdated);
+      websocketService.off('order:cancelled', handleOrderCancelled);
     };
   }, []);
 

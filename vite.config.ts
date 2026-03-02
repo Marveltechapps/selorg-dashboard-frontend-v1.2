@@ -6,6 +6,7 @@
   const apiBaseUrl = process.env.VITE_API_BASE_URL?.trim() || '';
   const defaultBackendPort = process.env.VITE_PROXY_PORT || '5001';
   const proxyTarget = apiBaseUrl ? new URL(apiBaseUrl).origin : `http://localhost:${defaultBackendPort}`;
+  const wsServerUrl = process.env.VITE_WS_URL?.trim() || 'http://localhost:5050';
 
   export default defineConfig({
     plugins: [react()],
@@ -69,7 +70,7 @@
           secure: false,
         },
         '/socket.io': {
-          target: proxyTarget,
+          target: wsServerUrl,
           changeOrigin: true,
           secure: false,
           ws: true,

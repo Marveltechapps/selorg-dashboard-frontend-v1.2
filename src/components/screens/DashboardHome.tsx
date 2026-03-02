@@ -105,6 +105,9 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
         order_type: data.order_type || 'Normal',
         assignee: null,
         created_at: new Date().toISOString(),
+        payment_status: data.payment_status || 'pending',
+        payment_method: data.payment_method || 'cash',
+        total_bill: data.total_bill || 0,
       };
 
       setLiveOrders(prev => [newOrder, ...prev].slice(0, 5));
@@ -141,14 +144,31 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       }));
     };
 
+    const onPaymentCreated = (data: any) => {
+      if (!data || !data.orderId) return;
+      const isFailed = data.status === 'failed';
+      setLiveOrders(prev => prev.map(o => {
+        if (o.order_id !== data.orderId) return o;
+        return {
+          ...o,
+          payment_status: isFailed ? 'failed' : 'paid',
+        };
+      }));
+      if (!isFailed) {
+        toast.success(`Payment received: ₹${(data.amount || 0).toLocaleString('en-IN')} via ${data.methodDisplay || data.methodType || 'Unknown'}`);
+      }
+    };
+
     websocketService.on('order:created', onCreated);
     websocketService.on('order:updated', onUpdated);
     websocketService.on('order:cancelled', onCancelled);
+    websocketService.on('payment:created', onPaymentCreated);
 
     return () => {
       websocketService.off('order:created', onCreated);
       websocketService.off('order:updated', onUpdated);
       websocketService.off('order:cancelled', onCancelled);
+      websocketService.off('payment:created', onPaymentCreated);
     };
   }, [storeId]);
 
@@ -934,6 +954,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
                  <tr>
                    <th className="px-6 py-3 font-medium">Order ID</th>
                    <th className="px-6 py-3 font-medium">Items</th>
+                   <th className="px-6 py-3 font-medium">Payment</th>
                    <th className="px-6 py-3 font-medium">SLA Timer</th>
                    <th className="px-6 py-3 font-medium">Assignee</th>
                  </tr>
@@ -941,11 +962,11 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
                <tbody className="divide-y divide-[#F0F0F0]">
                  {isLoading ? (
                    <tr>
-                     <td colSpan={4} className="px-6 py-8 text-center text-[#9E9E9E]">Loading orders...</td>
+                     <td colSpan={5} className="px-6 py-8 text-center text-[#9E9E9E]">Loading orders...</td>
                    </tr>
                  ) : liveOrders.length === 0 ? (
                    <tr>
-                     <td colSpan={4} className="px-6 py-8 text-center text-[#9E9E9E]">No orders found</td>
+                     <td colSpan={5} className="px-6 py-8 text-center text-[#9E9E9E]">No orders found</td>
                    </tr>
                  ) : (
                    liveOrders.map((order: any) => {
@@ -966,6 +987,17 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
                              <Package size={16} />
                              <span>{order.item_count} items</span>
                            </div>
+                         </td>
+                         <td className="px-6 py-4">
+                           <span className={cn(
+                             "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
+                             order.payment_status === 'paid' ? 'bg-[#DCFCE7] text-[#16A34A]' :
+                             order.payment_status === 'cod_pending' ? 'bg-[#FEF9C3] text-[#A16207]' :
+                             order.payment_status === 'failed' ? 'bg-[#FEE2E2] text-[#DC2626]' :
+                             'bg-[#F5F5F5] text-[#616161]'
+                           )}>
+                             {order.payment_status === 'cod_pending' ? 'COD' : order.payment_status || 'pending'}
+                           </span>
                          </td>
                          <td className="px-6 py-4">
                            <div className="flex items-center gap-2">

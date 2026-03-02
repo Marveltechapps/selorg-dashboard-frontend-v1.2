@@ -12,6 +12,8 @@ import { AdminManagement } from './components/AdminManagement';
 import { LoginScreen } from './components/LoginScreen';
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NotificationHandler } from './components/NotificationHandler';
+import { useDynamicFavicon } from './hooks/useDynamicFavicon';
 
 const VALID_DASHBOARDS = ['darkstore', 'production', 'merch', 'rider', 'finance', 'vendor', 'warehouse', 'admin'] as const;
 
@@ -51,12 +53,15 @@ function RedirectLegacyDashboard() {
 
 function DashboardRoute({ 
   component: Component, 
-  allowedRoles 
+  allowedRoles,
+  dashboardId,
 }: { 
   component: React.ComponentType<{ onLogout: () => void }>;
   allowedRoles: string[];
+  dashboardId: string;
 }) {
   const { user, logout } = useAuth();
+  useDynamicFavicon(dashboardId);
   
   if (user && !allowedRoles.includes(user.role)) {
     const role = user.role?.toLowerCase();
@@ -87,6 +92,7 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <NotificationHandler />
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
           
@@ -96,7 +102,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <DarkstoreManagement {...props} />} 
-                  allowedRoles={['darkstore']} 
+                  allowedRoles={['darkstore']}
+                  dashboardId="darkstore"
                 />
               </ProtectedRoute>
             } 
@@ -109,7 +116,8 @@ function App() {
                 <ProductionFactoryProvider>
                   <DashboardRoute 
                     component={(props) => <ProductionManagement {...props} />} 
-                    allowedRoles={['production']} 
+                    allowedRoles={['production']}
+                    dashboardId="production"
                   />
                 </ProductionFactoryProvider>
               </ProtectedRoute>
@@ -122,7 +130,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <MerchManagement {...props} />} 
-                  allowedRoles={['merch']} 
+                  allowedRoles={['merch']}
+                  dashboardId="merch"
                 />
               </ProtectedRoute>
             } 
@@ -134,7 +143,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <RiderManagement {...props} />} 
-                  allowedRoles={['rider']} 
+                  allowedRoles={['rider']}
+                  dashboardId="rider"
                 />
               </ProtectedRoute>
             } 
@@ -146,7 +156,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <FinanceManagement {...props} />} 
-                  allowedRoles={['finance']} 
+                  allowedRoles={['finance']}
+                  dashboardId="finance"
                 />
               </ProtectedRoute>
             } 
@@ -158,7 +169,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <VendorManagement {...props} />} 
-                  allowedRoles={['vendor']} 
+                  allowedRoles={['vendor']}
+                  dashboardId="vendor"
                 />
               </ProtectedRoute>
             } 
@@ -170,7 +182,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <WarehouseManagement {...props} />} 
-                  allowedRoles={['warehouse']} 
+                  allowedRoles={['warehouse']}
+                  dashboardId="warehouse"
                 />
               </ProtectedRoute>
             } 
@@ -190,7 +203,8 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <AdminManagement {...props} />} 
-                  allowedRoles={['admin', 'super_admin']} 
+                  allowedRoles={['admin', 'super_admin']}
+                  dashboardId="admin"
                 />
               </ProtectedRoute>
             } 

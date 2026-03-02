@@ -88,6 +88,15 @@ export function LiveOrders() {
           id: `#${data.order_id}`,
           order_id: data.order_id,
           customer: data.customer_name || 'Customer',
+          customerPhone: data.customer_phone || '',
+          deliveryAddress: data.delivery_address || '',
+          itemsList: (data.items || []).map((it: any) => ({
+            productName: it.productName || 'Item',
+            quantity: it.quantity || 1,
+            price: it.price || 0,
+            image: it.image || '',
+            variantSize: it.variantSize || '',
+          })),
           items: data.item_count || 1,
           zone: data.zone || '',
           sla: data.sla_timer || '15:00',
@@ -99,6 +108,9 @@ export function LiveOrders() {
           assigneeInitials: 'UA',
           order_type: data.order_type || 'Normal',
           created_at: new Date().toISOString(),
+          payment_status: data.payment_status || 'pending',
+          payment_method: data.payment_method || 'cash',
+          total_bill: data.total_bill || 0,
         };
 
         setOrders(prev => [newOrder, ...prev]);
@@ -143,14 +155,34 @@ export function LiveOrders() {
       }
     };
 
+    const paymentHandler = (data: any) => {
+      try {
+        if (!data || !data.orderId) return;
+        const isFailed = data.status === 'failed';
+        setOrders(prev => prev.map(o => {
+          if (o.order_id !== data.orderId) return o;
+          return {
+            ...o,
+            payment_status: isFailed ? 'failed' : 'paid',
+            payment_method: data.methodType || o.payment_method,
+            total_bill: data.amount || o.total_bill,
+          };
+        }));
+      } catch (err) {
+        console.error('Failed to process payment event', err);
+      }
+    };
+
     websocketService.on('order:created', createdHandler);
     websocketService.on('order:updated', updatedHandler);
     websocketService.on('order:cancelled', cancelledHandler);
+    websocketService.on('payment:created', paymentHandler);
 
     return () => {
       websocketService.off('order:created', createdHandler);
       websocketService.off('order:updated', updatedHandler);
       websocketService.off('order:cancelled', cancelledHandler);
+      websocketService.off('payment:created', paymentHandler);
     };
   }, [storeId]);
 
@@ -225,9 +257,16 @@ export function LiveOrders() {
           id: `#${order.order_id}`,
           order_id: order.order_id,
           customer: order.customer_name || order.customer?.name || 'Customer',
-          customerPhone: order.customer_phone || order.customer?.phone || '',
-          deliveryAddress: order.delivery_address || order.deliveryAddress || '',
-          itemsList: order.items || [],
+          customerPhone: order.customer_phone || '',
+          deliveryAddress: order.delivery_address || order.deliveryAddress || 'Not available',
+          deliveryNotes: order.delivery_notes || order.deliveryNotes || '',
+          itemsList: (Array.isArray(order.items) ? order.items : []).map((it: any) => ({
+            productName: it.productName || it.name || 'Item',
+            quantity: it.quantity || 1,
+            price: it.price || 0,
+            image: it.image || '',
+            variantSize: it.variantSize || '',
+          })),
           items: order.item_count,
           zone: order.zone || '',
           sla: order.sla_timer,
@@ -246,6 +285,9 @@ export function LiveOrders() {
           cancellationReason: order.cancellationReason || '',
           deliveryNotes: order.deliveryNotes || '',
           itemStatus: order.itemStatus || {},
+          payment_status: order.payment_status || order.paymentStatus || 'pending',
+          payment_method: order.payment_method || order.paymentMethod || 'cash',
+          total_bill: order.total_bill || order.totalBill || 0,
         }));
         setOrders(transformedOrders);
       } else {
@@ -592,6 +634,7 @@ export function LiveOrders() {
                 <th className="px-6 py-4 font-medium">Customer</th>
                 <th className="px-6 py-4 font-medium">SLA Timer</th>
                 <th className="px-6 py-4 font-medium">Assignee</th>
+                <th className="px-6 py-4 font-medium">Payment</th>
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
@@ -599,7 +642,7 @@ export function LiveOrders() {
             <tbody className="divide-y divide-[#F0F0F0]">
               {paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-500">
+                  <td colSpan={9} className="py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Search size={24} className="opacity-20" />
                       <p>No orders found matching your filters.</p>
@@ -643,7 +686,9 @@ export function LiveOrders() {
                          </div>
                          <div className="flex flex-col">
                             <span className="font-medium text-[#212121]">{order.customer}</span>
-                            <span className="text-xs text-[#9E9E9E]">Premium Member</span>
+                            {order.customerPhone && (
+                              <span className="text-xs text-[#9E9E9E] font-mono">{order.customerPhone}</span>
+                            )}
                          </div>
                       </div>
                     </td>
@@ -672,6 +717,24 @@ export function LiveOrders() {
                           + Assign
                         </button>
                       )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-0.5">
+                        <span className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide w-fit",
+                          order.payment_status === 'paid' ? 'bg-[#DCFCE7] text-[#16A34A]' :
+                          order.payment_status === 'cod_pending' ? 'bg-[#FEF9C3] text-[#A16207]' :
+                          order.payment_status === 'failed' ? 'bg-[#FEE2E2] text-[#DC2626]' :
+                          'bg-[#F5F5F5] text-[#616161]'
+                        )}>
+                          {order.payment_status === 'cod_pending' ? 'COD' : order.payment_status || 'pending'}
+                        </span>
+                        {order.total_bill > 0 && (
+                          <span className="text-xs text-[#757575] font-medium">
+                            ₹{Number(order.total_bill).toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
@@ -774,8 +837,17 @@ export function LiveOrders() {
                     {selectedOrder.status}
                   </span>
                 </SheetTitle>
-                <SheetDescription>
-                  Full details and timeline for this order.
+                <SheetDescription className="flex items-center gap-2 mt-1">
+                  <User size={14} className="text-gray-400" />
+                  <span className="font-semibold text-gray-700">{selectedOrder.customer}</span>
+                  <span className="text-gray-300">·</span>
+                  <span>{selectedOrder.items} item{selectedOrder.items !== 1 ? 's' : ''}</span>
+                  {selectedOrder.total_bill > 0 && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span className="font-semibold text-gray-700">₹{Number(selectedOrder.total_bill).toLocaleString('en-IN')}</span>
+                    </>
+                  )}
                 </SheetDescription>
               </SheetHeader>
 
@@ -791,17 +863,56 @@ export function LiveOrders() {
                       <p className="font-medium text-gray-900">{selectedOrder.customer}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Member Status</p>
-                      <p className="font-medium text-[#4F46E5]">Premium</p>
-                    </div>
-                    <div>
                       <p className="text-gray-500">Contact</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.customerPhone || 'Not available'}</p>
+                      <div className="flex items-center gap-1.5">
+                        <Phone size={13} className="text-gray-400" />
+                        <p className="font-medium text-gray-900 font-mono">{selectedOrder.customerPhone || 'Not available'}</p>
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-gray-500">Delivery Address</p>
+                      <div className="flex items-start gap-1.5 mt-0.5">
+                        <MapPin size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                        <p className="font-medium text-gray-900">{selectedOrder.deliveryAddress || 'Not available'}</p>
+                      </div>
+                    </div>
+                    {selectedOrder.deliveryNotes && (
+                      <div className="col-span-2">
+                        <p className="text-gray-500">Delivery Notes</p>
+                        <p className="font-medium text-gray-900 italic">{selectedOrder.deliveryNotes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment Information */}
+                <div className="bg-gray-50 p-4 rounded-xl space-y-3">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <ShoppingBag size={18} /> Payment Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500">Payment Status</p>
+                      <span className={cn(
+                        "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mt-1",
+                        selectedOrder.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
+                        selectedOrder.payment_status === 'cod_pending' ? 'bg-yellow-100 text-yellow-700' :
+                        selectedOrder.payment_status === 'failed' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-600'
+                      )}>
+                        {selectedOrder.payment_status === 'cod_pending' ? 'COD - Pending' : selectedOrder.payment_status || 'Pending'}
+                      </span>
                     </div>
                     <div>
-                      <p className="text-gray-500">Address</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.deliveryAddress || 'Not available'}</p>
+                      <p className="text-gray-500">Payment Method</p>
+                      <p className="font-medium text-gray-900 capitalize mt-1">{selectedOrder.payment_method || 'Cash'}</p>
                     </div>
+                    {selectedOrder.total_bill > 0 && (
+                      <div>
+                        <p className="text-gray-500">Total Amount</p>
+                        <p className="font-bold text-gray-900 mt-1">₹{Number(selectedOrder.total_bill).toLocaleString('en-IN')}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -857,12 +968,17 @@ export function LiveOrders() {
                             <tr key={idx}>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
-                                  {item.image && <img src={item.image} alt="" className="w-8 h-8 rounded object-cover" />}
-                                  <span>{item.productName || item.name || 'Item'}</span>
+                                  {item.image && <img src={item.image} alt="" className="w-8 h-8 rounded object-cover border border-gray-100" />}
+                                  <div>
+                                    <span className="font-medium text-gray-900">{item.productName || item.name || 'Item'}</span>
+                                    {item.variantSize && (
+                                      <p className="text-xs text-gray-400">{item.variantSize}</p>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-right">{item.quantity || 1}</td>
-                              <td className="px-4 py-3 text-right">₹{(item.price || 0).toFixed(2)}</td>
+                              <td className="px-4 py-3 text-right font-medium">{item.quantity || 1}</td>
+                              <td className="px-4 py-3 text-right font-medium">₹{(item.price || 0).toFixed(2)}</td>
                               <td className="px-4 py-3 text-right">
                                 {item.itemStatus ? (
                                   <span className={cn(
@@ -878,7 +994,7 @@ export function LiveOrders() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={4} className="px-4 py-3 text-gray-500 italic text-center">
+                            <td colSpan={4} className="px-4 py-6 text-gray-500 italic text-center">
                               {selectedOrder.items} item(s) — detailed list not available
                             </td>
                           </tr>

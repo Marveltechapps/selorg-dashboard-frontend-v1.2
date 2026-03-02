@@ -16,6 +16,7 @@ import { Utilities } from './screens/Utilities';
 import { InboundOps } from './screens/InboundOps';
 import { OutboundOps } from './screens/OutboundOps';
 import { StoreEscalations } from './screens/StoreEscalations';
+import { CancelledOrders } from './screens/CancelledOrders';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
@@ -31,6 +32,7 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
             {activeTab === 'overview' && <DashboardHome setActiveTab={setActiveTab} />}
             {activeTab === 'liveorders' && <LiveOrders />}
+            {activeTab === 'cancelledorders' && <CancelledOrders />}
             {activeTab === 'pickpack' && (
               <div className="space-y-12">
                 <PickTasks />

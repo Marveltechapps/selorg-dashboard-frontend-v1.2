@@ -16,6 +16,7 @@ import {
   Store,
   LogOut,
   AlertTriangle,
+  Ban,
 } from 'lucide-react';
 import { cn } from "../lib/utils";
 import { useAuth } from '../contexts/AuthContext';
@@ -31,6 +32,7 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
   const navItems = [
     { id: 'overview', label: 'Store Overview', icon: LayoutDashboard },
     { id: 'liveorders', label: 'Live Orders', icon: List },
+    { id: 'cancelledorders', label: 'Cancelled Orders', icon: Ban },
     { id: 'pickpack', label: 'Pick & Pack Ops', icon: PackageSearch },
     { id: 'inventory', label: 'Inventory Mgmt', icon: Warehouse },
     { id: 'inbound', label: 'Inbound Ops', icon: ArrowDownToLine },
