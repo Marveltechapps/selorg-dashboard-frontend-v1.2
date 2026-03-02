@@ -1,0 +1,9 @@
+
+   Frontend-only logic for InboundOperations UI.
+   Drop this file into the frontend repo and import/init from the InboundOperations component.
+   - DO NOT change any JSX/HTML/CSS.
+   - This file contains: state management, mock data + persistence, event handlers,
+     async simulation, in-app notifications, and real-time sync (BroadcastChannel/storage).
+*/
+
+/* =====================}

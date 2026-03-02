@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test outputs
+tests/
+test-results/
+playwright-report/
+coverage/
+
+# Server files
+.server.pid
+*.pid
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+
+# Cursor / IDE
+.cursor/
+
+# Vite
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# Playwright
+playwright/.cache/
+blob-report/
+trace/
+debug/
+
+# Package manager caches
+.npm/
+.yarn/
+.pnpm-store/
+
+# Misc non-production
+*.map
+*.min.map
