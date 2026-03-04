@@ -27,7 +27,7 @@ export interface ConfirmationDialogProps {
   confirmText?: string;
   cancelText?: string;
   variant?: 'default' | 'destructive' | 'warning';
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel?: () => void;
   isLoading?: boolean;
 }
@@ -51,9 +51,16 @@ export function ConfirmationDialog({
     onOpenChange(false);
   };
 
-  const handleConfirm = () => {
-    onConfirm();
-    onOpenChange(false);
+  const handleConfirm = async () => {
+    try {
+      const result = onConfirm();
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        await (result as Promise<void>);
+      }
+      onOpenChange(false);
+    } catch {
+      // Don't close on error - parent handles toast/error display
+    }
   };
 
   const variantConfig = {
@@ -242,7 +249,8 @@ export function StatusChangeConfirmation({
 
 interface CancelOrderConfirmationProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
+  onCancel?: () => void;
   orderId: string;
   onConfirm: () => void;
   isLoading?: boolean;
@@ -250,11 +258,13 @@ interface CancelOrderConfirmationProps {
 
 export function CancelOrderConfirmation({
   open,
-  onOpenChange,
+  onOpenChange: onOpenChangeProp,
+  onCancel,
   orderId,
   onConfirm,
   isLoading
 }: CancelOrderConfirmationProps) {
+  const onOpenChange = onOpenChangeProp ?? ((open: boolean) => { if (!open) onCancel?.(); });
   return (
     <ConfirmationDialog
       open={open}

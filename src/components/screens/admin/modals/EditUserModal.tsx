@@ -201,19 +201,25 @@ export function EditUserModal({ open, onClose, onUserUpdated, user }: EditUserMo
                 <div className="space-y-2">
                   <Label htmlFor="edit-role">Role</Label>
                   <Select
-                    value={formData.roleId || ''}
+                    value={formData.roleId || undefined}
                     onValueChange={(value) => setFormData({ ...formData, roleId: value })}
                     disabled={roles.length === 0}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={roles.length > 0 ? 'Select Role' : 'No roles'} />
+                      <SelectValue placeholder={roles.length > 0 ? 'Select Role' : 'Create a role in Roles tab first'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {roles.map((role) => (
-                        <SelectItem key={role.id} value={role.id}>
-                          {role.name}
-                        </SelectItem>
-                      ))}
+                      {roles.length === 0 ? (
+                        <SelectItem value="__none__" disabled>Create a role in the Roles tab first</SelectItem>
+                      ) : (
+                        roles
+                          .filter((r) => r.id || (r as any)._id)
+                          .map((role) => (
+                            <SelectItem key={role.id || (role as any)._id} value={String(role.id || (role as any)._id)}>
+                              {role.name} - {role.description || ''}
+                            </SelectItem>
+                          ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

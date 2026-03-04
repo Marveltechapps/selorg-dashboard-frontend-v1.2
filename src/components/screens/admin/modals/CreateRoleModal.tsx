@@ -167,13 +167,30 @@ export function CreateRoleModal({
       return;
     }
 
+    if (permissions.length === 0) {
+      toast.error('No permissions available. Run: node src/seedPermissions.js');
+      return;
+    }
+
+    // Role API expects permission names (strings), not IDs
+    const permissionNames = formData.permissions
+      .map((id) => permissions.find((p) => (p.id || (p as any)._id) === id)?.name)
+      .filter((n): n is string => !!n);
+
+    if (permissionNames.length === 0) {
+      toast.error('Could not resolve selected permissions. Please try again.');
+      return;
+    }
+
+    const payload = { ...formData, permissions: permissionNames };
+
     setLoading(true);
     try {
       if (editingRoleId) {
-        await updateRole(editingRoleId, formData);
+        await updateRole(editingRoleId, payload);
         toast.success('Role updated successfully');
       } else {
-        await createRole(formData);
+        await createRole(payload);
         toast.success('Role created successfully');
       }
       onRoleCreated?.();
@@ -358,11 +375,22 @@ export function CreateRoleModal({
                 <div className="w-full bg-[#E5E7EB] h-2 rounded-full mt-2">
                   <div 
                     className="bg-blue-500 h-2 rounded-full transition-all"
-                    style={{ width: `${(formData.permissions.length / permissions.length) * 100}%` }}
+                    style={{ width: `${permissions.length ? (formData.permissions.length / permissions.length) * 100 : 0}%` }}
                   ></div>
                 </div>
               </div>
 
+              {permissions.length === 0 ? (
+                <div className="h-80 border border-amber-200 bg-amber-50 rounded-lg p-6 flex flex-col items-center justify-center text-center">
+                  <p className="text-amber-800 font-medium">No permissions available</p>
+                  <p className="text-sm text-amber-700 mt-2">
+                    Run the permissions seed script from the backend directory:
+                  </p>
+                  <code className="mt-3 px-4 py-2 bg-amber-100 rounded text-sm">
+                    node src/seedPermissions.js
+                  </code>
+                </div>
+              ) : (
               <ScrollArea className="h-80 border border-[#E5E7EB] rounded-lg p-4">
                 <div className="space-y-4">
                   {filteredModules.map(([module, modulePermissions]) => {
@@ -416,6 +444,7 @@ export function CreateRoleModal({
                   })}
                 </div>
               </ScrollArea>
+              )}
             </div>
 
             {/* Section 3: Scope Configuration */}

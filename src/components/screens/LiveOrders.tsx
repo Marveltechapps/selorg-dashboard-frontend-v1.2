@@ -48,6 +48,7 @@ export function LiveOrders() {
 
   // Confirmation Dialogs
   const [cancelDialog, setCancelDialog] = useState({ open: false, orderId: '' });
+  const [isCancelling, setIsCancelling] = useState(false);
   const [statusDialog, setStatusDialog] = useState({ open: false, orderId: '', currentStatus: '', newStatus: '' });
 
   // Pagination State
@@ -408,15 +409,19 @@ export function LiveOrders() {
 
   const confirmCancelOrder = async () => {
     const rawId = cancelDialog.orderId.replace(/^#/, '');
+    const orderIdToRemove = cancelDialog.orderId;
     try {
+      setIsCancelling(true);
       await cancelOrder(rawId);
-      setOrders(prev => prev.filter(o => o.id !== cancelDialog.orderId));
-      if (selectedOrder?.id === cancelDialog.orderId) setIsDetailsOpen(false);
-      toast.success(`Order ${cancelDialog.orderId} has been cancelled`);
+      setOrders(prev => prev.filter(o => o.id !== orderIdToRemove && o.order_id !== rawId));
+      if (selectedOrder?.id === orderIdToRemove || selectedOrder?.order_id === rawId) setIsDetailsOpen(false);
+      toast.success(`Order ${orderIdToRemove} has been cancelled`);
+      setCancelDialog({ open: false, orderId: '' });
     } catch (err: any) {
       toast.error(err.message || 'Failed to cancel order');
+      throw err;
     } finally {
-      setCancelDialog({ open: false, orderId: '' });
+      setIsCancelling(false);
     }
   };
 
@@ -1219,7 +1224,9 @@ export function LiveOrders() {
         open={cancelDialog.open}
         orderId={cancelDialog.orderId}
         onConfirm={confirmCancelOrder}
+        onOpenChange={(open) => { if (!open) setCancelDialog({ open: false, orderId: '' }); }}
         onCancel={() => setCancelDialog({ open: false, orderId: '' })}
+        isLoading={isCancelling}
       />
 
       <StatusChangeConfirmation

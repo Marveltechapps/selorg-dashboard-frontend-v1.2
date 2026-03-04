@@ -10,7 +10,8 @@ import { getAuthToken } from '../../contexts/AuthContext';
 const BASE = (API_CONFIG.baseURL ?? '').replace(/\/$/, '') || '/api/v1';
 
 function authHeaders(): Record<string, string> {
-  const token = getAuthToken();
+  const raw = getAuthToken();
+  const token = typeof raw === 'string' ? raw.trim() : null;
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

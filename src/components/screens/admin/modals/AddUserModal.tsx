@@ -36,6 +36,7 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
   const [formData, setFormData] = useState<CreateUserPayload>({
     email: '',
     name: '',
+    password: '',
     department: '',
     roleId: '',
     assignedStores: [],
@@ -108,7 +109,12 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
       console.log('Creating user with payload:', formData);
       const result = await createUser(formData);
       console.log('User created successfully:', result);
-      toast.success('User created successfully. Default password has been set - user should reset it on first login.');
+      const usedCustomPassword = !!formData.password?.trim();
+      toast.success(
+        usedCustomPassword
+          ? 'User created successfully. Share the password securely with the user.'
+          : 'User created successfully. Default password has been set - user should reset it on first login.'
+      );
       onUserAdded?.();
       handleClose();
     } catch (error: any) {
@@ -156,6 +162,7 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
   const defaultForm: CreateUserPayload = {
     email: '',
     name: '',
+    password: '',
     department: '',
     roleId: '',
     assignedStores: [],
@@ -268,25 +275,24 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
             <div className="space-y-2">
               <Label htmlFor="role">Assign Role *</Label>
               <Select 
-                value={formData.roleId || ""} 
-                onValueChange={(value) => {
-                  console.log('Role selected:', value);
-                  setFormData(prev => ({ ...prev, roleId: value }));
-                }}
+                value={formData.roleId || undefined} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, roleId: value }))}
                 disabled={roles.length === 0 || loading}
               >
                 <SelectTrigger id="role" className="w-full">
-                  <SelectValue placeholder={roles.length > 0 ? "Select Role" : "Loading roles..."} />
+                  <SelectValue placeholder={roles.length > 0 ? "Select Role" : "No roles — create one in Roles tab first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.length > 0 ? (
-                    roles.map((role) => (
-                      <SelectItem key={role.id} value={role.id}>
-                        {role.name} - {role.description}
-                      </SelectItem>
-                    ))
+                  {roles.length === 0 ? (
+                    <SelectItem value="__none__" disabled>Create a role in the Roles tab first</SelectItem>
                   ) : (
-                    <SelectItem value="__no_roles__" disabled>No roles available</SelectItem>
+                    roles
+                      .filter((r) => r.id || (r as any)._id)
+                      .map((role) => (
+                        <SelectItem key={role.id || (role as any)._id} value={String(role.id || (role as any)._id)}>
+                          {role.name} - {role.description || role.name}
+                        </SelectItem>
+                      ))
                   )}
                 </SelectContent>
               </Select>
@@ -406,6 +412,19 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
           {/* Section 4: Security Settings */}
           <div className="space-y-4 border-t border-[#E5E7EB] pt-4">
             <h3 className="text-lg font-bold text-[#1F2937]">Security Settings</h3>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Initial Password (optional)</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Leave blank to auto-generate"
+                value={formData.password || ''}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                autoComplete="new-password"
+              />
+              <p className="text-xs text-[#6B7280]">If set, use this password to share with the user. Otherwise a random password is generated (not shown after creation).</p>
+            </div>
             
             <div className="flex items-center justify-between p-4 bg-[#F9FAFB] rounded-lg">
               <div>

@@ -196,7 +196,11 @@ export const fetchAllStores = async (): Promise<StoreOption[]> => {
 
 export const fetchRoles = async (): Promise<Role[]> => {
   const response = await apiRequest<{ success: boolean; data: Role[] }>('/admin/roles');
-  return response?.data && Array.isArray(response.data) ? response.data : [];
+  const raw = response?.data && Array.isArray(response.data) ? response.data : [];
+  return raw.map((r: any) => ({
+    ...r,
+    id: r.id ?? r._id?.toString?.() ?? '',
+  }));
 };
 
 export const fetchRoleById = async (id: string): Promise<Role | null> => {
@@ -234,7 +238,12 @@ export const deleteRole = async (id: string): Promise<void> => {
 
 export const fetchPermissions = async (): Promise<Permission[]> => {
   const response = await apiRequest<{ success: boolean; data: Permission[] }>('/admin/permissions');
-  return response?.data && Array.isArray(response.data) ? response.data : [];
+  const raw = response?.data && Array.isArray(response.data) ? response.data : [];
+  return raw.map((p: any) => ({
+    ...p,
+    id: p.id ?? p._id?.toString?.() ?? '',
+    description: p.description ?? '',
+  }));
 };
 
 export const fetchAccessLogs = async (filters?: {

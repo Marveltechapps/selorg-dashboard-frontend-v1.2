@@ -50,7 +50,7 @@ export function CancelledOrders() {
   const [totalOrders, setTotalOrders] = useState(0);
   const itemsPerPage = 10;
 
-  const { activeStoreId } = useAuth();
+  const { activeStoreId, token, isLoading: authLoading, logout } = useAuth();
   const storeId = activeStoreId || '';
 
   const loadOrders = useCallback(async (page = 1) => {
@@ -67,6 +67,12 @@ export function CancelledOrders() {
       }
     } catch (error: any) {
       console.error('Failed to load cancelled orders:', error);
+      const msg = error?.message || '';
+      if (msg.includes('AUTH_TOKEN_INVALID') || msg.includes('Invalid or malformed token') || msg.includes('Token has expired')) {
+        toast.error('Session expired. Please log in again.');
+        logout();
+        return;
+      }
       toast.error('Failed to load cancelled orders');
       setOrders([]);
     } finally {
@@ -75,8 +81,10 @@ export function CancelledOrders() {
   }, [storeId]);
 
   useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+    if (!authLoading && token) {
+      loadOrders();
+    }
+  }, [loadOrders, authLoading, token]);
 
   useEffect(() => {
     websocketService.connect();
@@ -86,7 +94,7 @@ export function CancelledOrders() {
         if (!data || !data.order_id) return;
         if (storeId && data.store_id && data.store_id !== storeId) return;
 
-        loadOrders(currentPage);
+        loadOrders(1);
         toast.info(`Order ${data.order_id} has been cancelled`);
       } catch (err) {
         console.error('Failed to process cancelled order event', err);
@@ -97,7 +105,7 @@ export function CancelledOrders() {
     return () => {
       websocketService.off('order:cancelled', cancelledHandler);
     };
-  }, [storeId, currentPage, loadOrders]);
+  }, [storeId, loadOrders]);
 
   const filteredOrders = orders.filter(order => {
     if (!searchQuery) return true;
