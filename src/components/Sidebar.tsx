@@ -17,6 +17,9 @@ import {
   LogOut,
   AlertTriangle,
   Ban,
+  UserCheck,
+  Package,
+  Bug,
 } from 'lucide-react';
 import { cn } from "../lib/utils";
 import { useAuth } from '../contexts/AuthContext';
@@ -33,7 +36,11 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
     { id: 'overview', label: 'Store Overview', icon: LayoutDashboard },
     { id: 'liveorders', label: 'Live Orders', icon: List },
     { id: 'cancelledorders', label: 'Cancelled Orders', icon: Ban },
-    { id: 'pickpack', label: 'Pick & Pack Ops', icon: PackageSearch },
+    { id: 'pickpack', label: 'Pick Tasks & Pack', icon: PackageSearch },
+    { id: 'pickpackops', label: 'Pick & Pack Ops', icon: Package },
+    { id: 'livepickerboard', label: 'Live Picker Board', icon: UserCheck },
+    { id: 'pickerperformance', label: 'Picker Performance', icon: FileBarChart },
+    { id: 'issues', label: 'Issue Management', icon: Bug },
     { id: 'inventory', label: 'Inventory Mgmt', icon: Warehouse },
     { id: 'inbound', label: 'Inbound Ops', icon: ArrowDownToLine },
     { id: 'outbound', label: 'Outbound Ops', icon: Send },

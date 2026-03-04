@@ -23,10 +23,12 @@ import { CustomerAppHome } from './screens/admin/CustomerAppHome';
 import { AppCMS } from './screens/admin/AppCMS';
 import { OnboardingManagement } from './screens/admin/OnboardingManagement';
 import { ApplicationsManagement } from './screens/admin/ApplicationsManagement';
+import { CmsPagesScreen } from './screens/admin/CmsPagesScreen';
 import { SystemTools } from './screens/admin/SystemTools';
 import { CustomerManagement } from './screens/admin/CustomerManagement';
 import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
+import { PickerApprovals } from './screens/admin/PickerApprovals';
 import { 
   Tag, 
   Store, 
@@ -68,12 +70,14 @@ const TAB_LABELS: Record<string, string> = {
   'integrations': 'Integrations',
   'compliance': 'Compliance',
   'audit': 'Audit Logs',
+  'picker-approvals': 'Picker Approvals',
   'system-tools': 'System Tools',
   'applications': 'Applications',
   'customer-app-home': 'Customer App Home',
   'onboarding': 'Onboarding Screens',
   'app-settings': 'App Settings',
   'app-cms': 'App CMS',
+  'cms-pages': 'CMS Pages',
 };
 
 function LayoutBreadcrumb({ items }: { items: BreadcrumbSegment[] }) {
@@ -239,6 +243,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'system-config' && <SystemConfiguration />}
             {activeTab === 'finance' && <FinanceRules />}
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
+            {activeTab === 'picker-approvals' && <PickerApprovals />}
             {activeTab === 'support' && <SupportCenter />}
             {activeTab === 'fraud' && <FraudRiskHub />}
             {activeTab === 'analytics' && <AnalyticsDashboard />}
@@ -253,6 +258,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'onboarding' && <OnboardingManagement />}
             {activeTab === 'app-settings' && <CustomerAppSettings />}
             {activeTab === 'app-cms' && <AppCMS onEditContent={() => setActiveTab('customer-app-home')} />}
+            {activeTab === 'cms-pages' && <CmsPagesScreen />}
         </main>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { FinanceOverview } from './screens/finance/FinanceOverview';
 import { CustomerPayments } from './screens/finance/CustomerPayments';
 import { VendorPayments } from './screens/finance/VendorPayments';
 import { RefundsReturns } from './screens/finance/RefundsReturns';
+import { PickerPayouts } from './screens/finance/PickerPayouts';
 import { RiderCashReconciliation } from './screens/finance/RiderCashReconciliation';
 import { ReconciliationAudits } from './screens/finance/ReconciliationAudits';
 import { LedgerAccounting } from './screens/finance/LedgerAccounting';
@@ -52,6 +53,7 @@ export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'vendor-payments' && <VendorPayments />}
             {activeTab === 'rider-cash' && <RiderCashReconciliation />}
             {activeTab === 'refunds' && <RefundsReturns />}
+            {activeTab === 'picker-payouts' && <PickerPayouts />}
             {activeTab === 'reconciliation' && <ReconciliationAudits />}
             {activeTab === 'ledger' && <LedgerAccounting />}
             {activeTab === 'billing' && <BillingInvoicing />}

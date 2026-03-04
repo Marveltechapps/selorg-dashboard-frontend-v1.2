@@ -17,6 +17,10 @@ import { InboundOps } from './screens/InboundOps';
 import { OutboundOps } from './screens/OutboundOps';
 import { StoreEscalations } from './screens/StoreEscalations';
 import { CancelledOrders } from './screens/CancelledOrders';
+import { IssueManagement } from './screens/darkstore/IssueManagement';
+import { PickPackOpsScreen } from './screens/PickPackOpsScreen';
+import { LivePickerBoardScreen } from './screens/LivePickerBoardScreen';
+import { PickerPerformance } from './screens/darkstore/PickerPerformance';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
@@ -41,6 +45,9 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
                 </div>
               </div>
             )}
+            {activeTab === 'pickpackops' && <PickPackOpsScreen />}
+            {activeTab === 'livepickerboard' && <LivePickerBoardScreen />}
+            {activeTab === 'pickerperformance' && <PickerPerformance />}
             {activeTab === 'inventory' && <InventoryOps />}
             {activeTab === 'staff' && <StaffShifts />}
             {activeTab === 'health' && <StoreHealth />}
@@ -51,6 +58,7 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'inbound' && <InboundOps />}
             {activeTab === 'outbound' && <OutboundOps />}
             {activeTab === 'escalations' && <StoreEscalations />}
+            {activeTab === 'issues' && <IssueManagement />}
             {activeTab === 'utilities' && <Utilities />}
             
             {/* Fallbacks for unimplemented screens */}

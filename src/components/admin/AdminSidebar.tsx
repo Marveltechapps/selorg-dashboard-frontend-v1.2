@@ -16,6 +16,7 @@ import {
   Map, 
   Link, 
   FileCheck, 
+  FileText,
   History, 
   Cpu, 
   Home,
@@ -25,6 +26,7 @@ import {
   BookOpen,
   Sliders,
   Scale,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 
@@ -40,6 +42,9 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
   const navItems = [
     { category: "Control Room", items: [
       { id: 'citywide', label: 'Citywide Control', icon: Globe },
+    ]},
+    { category: "Workforce", items: [
+      { id: 'picker-approvals', label: 'Picker Approvals', icon: UserPlus },
     ]},
     { category: "Platform Settings", items: [
       { id: 'master-data', label: 'Master Data', icon: Database },
@@ -69,6 +74,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       { id: 'onboarding', label: 'Onboarding Screens', icon: BookOpen },
       { id: 'app-settings', label: 'App Settings', icon: Sliders },
       { id: 'app-cms', label: 'App CMS', icon: Smartphone },
+      { id: 'cms-pages', label: 'CMS Pages', icon: FileText },
     ]}
   ];
 

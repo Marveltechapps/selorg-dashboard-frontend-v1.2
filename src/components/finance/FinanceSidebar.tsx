@@ -16,7 +16,8 @@ import {
   Wrench,
   ChevronDown,
   LogOut,
-  Landmark
+  Landmark,
+  Users
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 
@@ -33,6 +34,7 @@ export function FinanceSidebar({ activeTab, setActiveTab, onLogout }: FinanceSid
     { id: 'vendor-payments', label: 'Vendor & Suppliers', icon: Wallet },
     { id: 'rider-cash', label: 'Rider Cash', icon: Truck },
     { id: 'refunds', label: 'Refunds & Returns', icon: RotateCcw },
+    { id: 'picker-payouts', label: 'Picker Payouts', icon: Users },
     { id: 'reconciliation', label: 'Reconciliation', icon: Scale },
     { id: 'ledger', label: 'Accounting Ledger', icon: BookOpen },
     { id: 'billing', label: 'Billing & Invoicing', icon: FileText },

@@ -9,13 +9,16 @@ import { OutboundOps } from './screens/warehouse/OutboundOps';
 import { Transfers } from './screens/warehouse/Transfers';
 import { QCCompliance } from './screens/warehouse/QCCompliance';
 import { WorkforceShifts } from './screens/warehouse/WorkforceShifts';
+import { ShiftMaster } from './screens/warehouse/ShiftMaster';
+import { ShiftRoster } from './screens/warehouse/ShiftRoster';
 import { EquipmentAssets } from './screens/warehouse/EquipmentAssets';
+import { WarehouseDevices } from './screens/warehouse/WarehouseDevices';
 import { Exceptions } from './screens/warehouse/Exceptions';
 import { ReportsAnalytics } from './screens/warehouse/ReportsAnalytics';
 import { WarehouseUtilities } from './screens/warehouse/WarehouseUtilities';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
-const TAB_IDS = ['overview', 'inbound', 'inventory', 'outbound', 'transfers', 'qc', 'workforce', 'equipment', 'exceptions', 'analytics', 'utilities'] as const;
+const TAB_IDS = ['overview', 'inbound', 'inventory', 'outbound', 'transfers', 'qc', 'workforce', 'shift-master', 'shift-roster', 'equipment', 'devices', 'exceptions', 'analytics', 'utilities'] as const;
 
 export function WarehouseManagement({ onLogout }: { onLogout: () => void }) {
   const { screen } = useParams<{ screen?: string }>();
@@ -38,7 +41,10 @@ export function WarehouseManagement({ onLogout }: { onLogout: () => void }) {
             {effectiveTab === 'transfers' && <Transfers />}
             {effectiveTab === 'qc' && <QCCompliance />}
             {effectiveTab === 'workforce' && <WorkforceShifts />}
+            {effectiveTab === 'shift-master' && <ShiftMaster />}
+            {effectiveTab === 'shift-roster' && <ShiftRoster />}
             {effectiveTab === 'equipment' && <EquipmentAssets />}
+            {effectiveTab === 'devices' && <WarehouseDevices />}
             {effectiveTab === 'exceptions' && <Exceptions />}
             {effectiveTab === 'analytics' && <ReportsAnalytics />}
             {effectiveTab === 'utilities' && <WarehouseUtilities />}

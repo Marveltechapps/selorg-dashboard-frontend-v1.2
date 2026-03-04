@@ -115,6 +115,10 @@ export const API_ENDPOINTS = {
       payouts: '/finance/rider-cash/payouts',
       codReconciliation: '/finance/rider-cash/cod-reconciliation',
     },
+    pickerWithdrawals: {
+      list: '/finance/picker-withdrawals',
+      byId: (id: string) => `/finance/picker-withdrawals/${id}`,
+    },
     summary: '/finance/summary',
     paymentMethodSplit: '/finance/payment-method-split',
     liveTransactions: '/finance/live-transactions',
@@ -146,6 +150,11 @@ export const API_ENDPOINTS = {
       reassignBins: '/warehouse/utilities/reassign-bins',
     },
   },
+  darkstoreIssues: {
+    list: '/darkstore/issues',
+    byId: (id: string) => `/darkstore/issues/${id}`,
+    opsUsers: '/darkstore/issues/ops-users',
+  },
   admin: {
     auth: {
       login: '/admin/auth/login',
@@ -175,6 +184,12 @@ export const API_ENDPOINTS = {
       passwordInfo: (id: string) => `/admin/customers/${id}/password-info`,
       resetPassword: (id: string) => `/admin/customers/${id}/reset-password`,
       setPassword: (id: string) => `/admin/customers/${id}/set-password`,
+    },
+    pickers: {
+      list: '/admin/pickers',
+      byId: (id: string) => `/admin/pickers/${id}`,
+      updateStatus: (id: string) => `/admin/pickers/${id}`,
+      actionLogs: (id: string) => `/admin/pickers/${id}/action-logs`,
     },
     fraud: {
       alerts: '/admin/fraud/alerts',
@@ -554,7 +569,19 @@ export const API_ENDPOINTS = {
     sampleReport: (id: string) => `/warehouse/qc/samples/${id}/report`,
     updateSample: (id: string) => `/warehouse/qc/samples/${id}/update`,
   },
+  // Picker Shift Master & Roster (warehouse dashboard, under /api/v1/picker)
+  pickerShifts: {
+    list: '/picker/shifts',
+    create: '/picker/shifts',
+    update: (id: string) => `/picker/shifts/${id}`,
+    roster: '/picker/shifts/roster',
+    assign: (id: string) => `/picker/shifts/${id}/assign`,
+    pickers: '/picker/shifts/pickers',
+  },
   // Workforce & Shifts (warehouse)
+  attendance: {
+    live: '/warehouse/attendance/live',
+  },
   workforce: {
     staff: '/warehouse/workforce/staff',
     staffDetails: (id: string) => `/warehouse/workforce/staff/${id}`,
@@ -570,6 +597,12 @@ export const API_ENDPOINTS = {
     createLeaveRequest: '/warehouse/workforce/leave-requests',
     updateLeaveStatus: (id: string) => `/warehouse/workforce/leave-requests/${id}/status`,
     logAttendance: '/warehouse/workforce/attendance',
+  },
+  // Picker Workforce Devices (warehouse dashboard - device inventory)
+  pickerDevices: {
+    list: '/warehouse/devices',
+    create: '/warehouse/devices',
+    patch: (id: string) => `/warehouse/devices/${id}`,
   },
   // Equipment & Assets (warehouse)
   equipment: {

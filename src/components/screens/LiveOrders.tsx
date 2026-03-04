@@ -5,7 +5,8 @@ import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from "sonner";
 import { getLiveOrders } from '../../api/dashboard';
-import { callCustomer, markRTO, updateOrder, cancelOrder } from '../../api/dashboard/orders.api';
+import { callCustomer, markRTO, updateOrder, cancelOrder, assignOrder, startPicking, completePicking, getOrderActionLogs } from '../../api/dashboard/orders.api';
+import { getAvailablePickers } from '../../api/darkstore/pickers.api';
 import { websocketService } from '../../utils/websocket';
 import {
   DropdownMenu,
@@ -26,12 +27,59 @@ import { PageHeader } from '../ui/page-header';
 import { EmptyState, LoadingState, SelectionSummaryBar, FilterChip, ResultCount } from '../ui/ux-components';
 import { CancelOrderConfirmation, StatusChangeConfirmation } from '../ui/confirmation-dialog';
 import { Button } from '../ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { ActionLogsTimeline } from '../ui/action-logs-timeline';
 import { exportToCSV } from '../../utils/csvExport';
 
 let _pendingOrderSearch: string | null = null;
 
 export function setPendingOrderSearch(q: string) {
   _pendingOrderSearch = q;
+}
+
+function AssignPickerContent({
+  orderId,
+  onAssign,
+  onClose,
+}: {
+  orderId: string;
+  onAssign: (pickerId: string, pickerName: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [pickers, setPickers] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getAvailablePickers({ storeId: '' });
+        if (!cancelled && res?.data) setPickers(res.data);
+      } catch {
+        if (!cancelled) setPickers([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  if (loading) return <div className="p-6 text-sm text-gray-500">Loading pickers...</div>;
+  if (pickers.length === 0) return <div className="p-6 text-sm text-gray-500">No available pickers.</div>;
+  return (
+    <div className="p-6 space-y-2 max-h-[60vh] overflow-y-auto">
+      {pickers.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => onAssign(p.id, p.name)}
+          className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-[#1677FF] transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded-full bg-[#E6F7FF] text-[#1677FF] flex items-center justify-center text-sm font-bold">
+            {p.name.charAt(0)}
+          </div>
+          <span className="font-medium text-gray-900">{p.name}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function LiveOrders() {
@@ -50,6 +98,7 @@ export function LiveOrders() {
   const [cancelDialog, setCancelDialog] = useState({ open: false, orderId: '' });
   const [isCancelling, setIsCancelling] = useState(false);
   const [statusDialog, setStatusDialog] = useState({ open: false, orderId: '', currentStatus: '', newStatus: '' });
+  const [assignDialog, setAssignDialog] = useState({ open: false, orderId: '', order: null as any });
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -57,6 +106,8 @@ export function LiveOrders() {
 
   // Bulk Selection State
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [orderActionLogs, setOrderActionLogs] = useState<any[]>([]);
+  const [orderActionLogsLoading, setOrderActionLogsLoading] = useState(false);
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
 
@@ -133,12 +184,20 @@ export function LiveOrders() {
           safe: 'normal', warning: 'warning', critical: 'critical',
         };
 
+        const statusMapExt: Record<string, string> = {
+          ...statusMap,
+          ASSIGNED: 'Assigned', PICKING: 'Picking', PICKED: 'Packing', PACKED: 'Packing',
+          READY_FOR_DISPATCH: 'Ready for Dispatch',
+        };
         setOrders(prev => prev.map(o => {
           if (o.order_id !== data.order_id) return o;
           return {
             ...o,
-            ...(data.status && statusMap[data.status] ? { status: statusMap[data.status] } : {}),
+            ...(data.status && statusMapExt[data.status] ? { status: statusMapExt[data.status] } : {}),
             ...(data.sla_status && urgencyMap[data.sla_status] ? { urgency: urgencyMap[data.sla_status] } : {}),
+            ...(data.bagId != null ? { bagId: data.bagId } : {}),
+            ...(data.rackLocation != null ? { rackLocation: data.rackLocation } : {}),
+            ...(data.readyForDispatch != null ? { readyForDispatch: data.readyForDispatch } : {}),
           };
         }));
       } catch (err) {
@@ -272,19 +331,29 @@ export function LiveOrders() {
           zone: order.zone || '',
           sla: order.sla_timer,
           sla_deadline: order.sla_deadline,
-          status: order.status === 'new' ? 'Queued' : order.status === 'processing' ? 'Picking' : order.status === 'ready' ? 'Packing' : 'Queued',
+          status: order.status === 'new' ? 'Queued' : order.status === 'processing' || order.status === 'ASSIGNED' ? 'Assigned' : order.status === 'PICKING' ? 'Picking' : order.status === 'ready' || order.status === 'PICKED' || order.status === 'PACKED' ? 'Packing' : order.status === 'READY_FOR_DISPATCH' ? 'Ready for Dispatch' : 'Queued',
+          bagId: order.bagId || '',
+          rackLocation: order.rackLocation || '',
+          readyForDispatch: !!(order.bagId && order.rackLocation),
           urgency: order.sla_status === 'critical' ? 'critical' : order.sla_status === 'warning' ? 'warning' : 'normal',
-          assignee: order.assignee?.name || '-',
-          assigneeId: order.assignee?.id || '',
+          assignee: order.assignee?.name || order.pickerAssignment?.pickerName || '-',
+          assigneeId: order.assignee?.id || order.pickerAssignment?.pickerId || '',
           assigneeInitials: order.assignee?.initials || 'UA',
           order_type: order.order_type,
           created_at: order.created_at,
           timeline: order.timeline || [],
-          missingItems: order.missingItems || [],
+          pickingData: order.pickingData || {},
+          pickerAssignment: order.pickerAssignment || {},
+          missingItems: (order.pickingData?.missingItems || order.missingItems || []).map((mi: any) => ({
+            productName: mi.productName || mi.name || 'Item',
+            expectedQty: mi.orderedQty ?? mi.quantity ?? mi.expectedQty ?? '—',
+            quantity: mi.scannedQty ?? mi.quantity ?? '—',
+            status: (mi.orderedQty ?? 0) > (mi.scannedQty ?? 0) ? 'not_found' : (mi.status || 'not_found'),
+            pickerName: order.pickerAssignment?.pickerName || mi.pickerName || mi.markedBy || '—',
+          })),
           supportTicketId: order.supportTicketId || '',
           refundStatus: order.refundStatus || '',
           cancellationReason: order.cancellationReason || '',
-          deliveryNotes: order.deliveryNotes || '',
           itemStatus: order.itemStatus || {},
           payment_status: order.payment_status || order.paymentStatus || 'pending',
           payment_method: order.payment_method || order.paymentMethod || 'cash',
@@ -718,7 +787,10 @@ export function LiveOrders() {
                           <span>{order.assignee}</span>
                         </div>
                       ) : (
-                        <button className="text-[#1677FF] text-xs font-bold hover:underline">
+                        <button
+                          className="text-[#1677FF] text-xs font-bold hover:underline"
+                          onClick={() => setAssignDialog({ open: true, orderId: order.order_id, order })}
+                        >
                           + Assign
                         </button>
                       )}
@@ -835,12 +907,19 @@ export function LiveOrders() {
                   {selectedOrder.id}
                   <span className={cn(
                     "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide",
+                    selectedOrder.status === 'Ready for Dispatch' ? 'bg-emerald-100 text-emerald-800' :
                     selectedOrder.status === 'Packing' ? 'bg-[#F3E8FF] text-[#9333EA]' :
                     selectedOrder.status === 'Picking' ? 'bg-[#E6F7FF] text-[#1677FF]' :
+                    selectedOrder.status === 'Assigned' ? 'bg-amber-50 text-amber-700' :
                     'bg-[#F5F5F5] text-[#616161]'
                   )}>
                     {selectedOrder.status}
                   </span>
+                  {selectedOrder.readyForDispatch && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      Ready for Dispatch
+                    </span>
+                  )}
                 </SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-1">
                   <User size={14} className="text-gray-400" />
@@ -856,6 +935,28 @@ export function LiveOrders() {
                 </SheetDescription>
               </SheetHeader>
 
+              <Tabs defaultValue="details" className="flex flex-col flex-1 overflow-hidden">
+                <div className="px-6 pt-2 border-b border-gray-100">
+                  <TabsList className="bg-gray-100">
+                    <TabsTrigger value="details">Details</TabsTrigger>
+                    <TabsTrigger
+                      value="audit"
+                      onClick={() => {
+                        const oid = selectedOrder?.order_id || selectedOrder?.id?.replace('#', '');
+                        if (oid) {
+                          setOrderActionLogsLoading(true);
+                          getOrderActionLogs(oid)
+                            .then((data) => setOrderActionLogs(Array.isArray(data) ? data : []))
+                            .catch(() => setOrderActionLogs([]))
+                            .finally(() => setOrderActionLogsLoading(false));
+                        }
+                      }}
+                    >
+                      Audit
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+                <TabsContent value="details" className="flex-1 overflow-y-auto mt-0">
               <div className="space-y-6 p-6">
                 {/* Customer Info */}
                 <div className="bg-gray-50 p-4 rounded-xl space-y-3">
@@ -949,6 +1050,44 @@ export function LiveOrders() {
                        <p className="text-xs text-gray-500 mb-1">Total Items</p>
                        <p className="font-medium text-gray-900">{selectedOrder.items} items</p>
                     </div>
+                    {selectedOrder.bagId && (
+                      <div className="border border-gray-200 p-3 rounded-lg">
+                        <p className="text-xs text-gray-500 mb-1">Bag ID</p>
+                        <p className="font-medium text-gray-900 font-mono">{selectedOrder.bagId}</p>
+                      </div>
+                    )}
+                    {selectedOrder.rackLocation && (
+                      <div className="border border-gray-200 p-3 rounded-lg">
+                        <p className="text-xs text-gray-500 mb-1">Rack Location</p>
+                        <p className="font-medium text-gray-900 font-mono">{selectedOrder.rackLocation}</p>
+                      </div>
+                    )}
+                    {selectedOrder.pickingData?.startTime && (
+                      <>
+                        <div className="border border-gray-200 p-3 rounded-lg">
+                          <p className="text-xs text-gray-500 mb-1">Pick Start</p>
+                          <p className="font-medium text-gray-900 text-sm">{new Date(selectedOrder.pickingData.startTime).toLocaleString()}</p>
+                        </div>
+                        {selectedOrder.pickingData?.endTime && (
+                          <div className="border border-gray-200 p-3 rounded-lg">
+                            <p className="text-xs text-gray-500 mb-1">Pick End</p>
+                            <p className="font-medium text-gray-900 text-sm">{new Date(selectedOrder.pickingData.endTime).toLocaleString()}</p>
+                          </div>
+                        )}
+                        {selectedOrder.pickingData?.pickDuration != null && (
+                          <div className="border border-gray-200 p-3 rounded-lg">
+                            <p className="text-xs text-gray-500 mb-1">Pick Duration</p>
+                            <p className="font-medium text-gray-900">{selectedOrder.pickingData.pickDuration}s</p>
+                          </div>
+                        )}
+                        {selectedOrder.pickingData?.accuracy != null && (
+                          <div className="border border-gray-200 p-3 rounded-lg">
+                            <p className="text-xs text-gray-500 mb-1">Accuracy</p>
+                            <p className="font-medium text-gray-900">{Math.round(selectedOrder.pickingData.accuracy * 100)}%</p>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1045,7 +1184,7 @@ export function LiveOrders() {
                   </div>
                 )}
 
-                {/* Order Timeline (P1-6) */}
+                {/* Order Timeline */}
                 {selectedOrder.timeline && selectedOrder.timeline.length > 0 && (
                   <div className="space-y-3">
                     <h3 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -1053,45 +1192,45 @@ export function LiveOrders() {
                     </h3>
                     <div className="relative pl-6">
                       <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200" />
-                      {(() => {
-                        const stages = ['placed', 'picking', 'packed', 'dispatched', 'delivered'];
-                        const timelineMap: Record<string, any> = {};
-                        selectedOrder.timeline.forEach((t: any) => { timelineMap[t.status || t.stage] = t; });
-                        const currentIdx = stages.findIndex(s => !timelineMap[s]);
-                        return stages.map((stage, idx) => {
-                          const entry = timelineMap[stage];
-                          const isCompleted = entry && entry.timestamp;
-                          const isCurrent = idx === currentIdx - 1 || (currentIdx === -1 && idx === stages.length - 1);
-                          const isFuture = !isCompleted && !isCurrent;
-                          return (
-                            <div key={stage} className="relative flex items-start gap-3 pb-4">
-                              <div className={cn(
-                                "w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 border-2 z-10 bg-white",
-                                isCompleted ? "border-green-500 bg-green-500" :
-                                isCurrent ? "border-blue-500 bg-blue-50" :
-                                "border-gray-300"
-                              )}>
-                                {isCompleted ? (
-                                  <CheckCircle2 size={14} className="text-white" />
-                                ) : isCurrent ? (
-                                  <CircleDot size={14} className="text-blue-500" />
-                                ) : (
-                                  <div className="w-2 h-2 rounded-full bg-gray-300" />
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className={cn(
-                                  "text-sm font-medium capitalize",
-                                  isCompleted ? "text-green-700" : isCurrent ? "text-blue-700" : "text-gray-400"
-                                )}>{stage}</p>
-                                {entry?.timestamp && (
-                                  <p className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleString()}</p>
-                                )}
-                              </div>
+                      {selectedOrder.timeline.map((t: any, idx: number) => {
+                        const status = t.status || t.stage || 'unknown';
+                        const isSuccess = ['PICKED', 'PACKED', 'READY_FOR_DISPATCH', 'completed', 'delivered'].includes(status);
+                        const isActive = ['ASSIGNED', 'PICKING', 'processing', 'ready'].includes(status);
+                        const isWarning = ['new', 'Queued'].includes(status);
+                        const isError = ['CANCELLED', 'cancelled', 'rto'].includes(status);
+                        const badgeColor = isSuccess ? 'border-green-500 bg-green-500' :
+                          isActive ? 'border-blue-500 bg-blue-50' :
+                          isError ? 'border-red-500 bg-red-50' :
+                          isWarning ? 'border-amber-500 bg-amber-50' : 'border-gray-300 bg-gray-50';
+                        const textColor = isSuccess ? 'text-green-700' : isActive ? 'text-blue-700' : isError ? 'text-red-700' : isWarning ? 'text-amber-700' : 'text-gray-600';
+                        return (
+                          <div key={idx} className="relative flex items-start gap-3 pb-4">
+                            <div className={cn(
+                              "w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 border-2 z-10 bg-white",
+                              badgeColor
+                            )}>
+                              {isSuccess ? (
+                                <CheckCircle2 size={14} className="text-white" />
+                              ) : isActive ? (
+                                <CircleDot size={14} className="text-blue-500" />
+                              ) : (
+                                <div className={cn("w-2 h-2 rounded-full", isError ? "bg-red-500" : "bg-gray-300")} />
+                              )}
                             </div>
-                          );
-                        });
-                      })()}
+                            <div className="flex-1 min-w-0">
+                              <p className={cn("text-sm font-medium capitalize", textColor)}>
+                                {status.replace(/_/g, ' ')}
+                              </p>
+                              {t.timestamp && (
+                                <p className="text-xs text-gray-500">{new Date(t.timestamp).toLocaleString()}</p>
+                              )}
+                              {t.updatedBy && (
+                                <p className="text-xs text-gray-400">by {t.updatedBy}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1214,8 +1353,53 @@ export function LiveOrders() {
                   </DropdownMenu>
                 </div>
               </div>
+                </TabsContent>
+                <TabsContent value="audit" className="flex-1 overflow-y-auto mt-0 p-6">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                    <Clock size={18} /> Action Logs
+                  </h3>
+                  <ActionLogsTimeline
+                    logs={orderActionLogs}
+                    loading={orderActionLogsLoading}
+                    emptyMessage="No action logs for this order"
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Assign Picker Sheet */}
+      <Sheet open={assignDialog.open} onOpenChange={(open) => !open && setAssignDialog({ open: false, orderId: '', order: null })}>
+        <SheetContent className="w-[400px] sm:w-[420px]">
+          <SheetHeader>
+            <SheetTitle>Assign Picker</SheetTitle>
+            <SheetDescription>
+              Select a picker to assign to order {assignDialog.orderId ? `#${assignDialog.orderId}` : ''}
+            </SheetDescription>
+          </SheetHeader>
+          <AssignPickerContent
+            orderId={assignDialog.orderId}
+            onAssign={async (pickerId: string, pickerName: string) => {
+              try {
+                await assignOrder(assignDialog.orderId, { pickerId, pickerName });
+                setOrders(prev => prev.map(o =>
+                  o.order_id === assignDialog.orderId
+                    ? { ...o, assignee: pickerName, assigneeId: pickerId, assigneeInitials: pickerName.split(/\s+/).map(s => s[0]).join('').substring(0, 3).toUpperCase() || 'UA' }
+                    : o
+                ));
+                if (selectedOrder?.order_id === assignDialog.orderId) {
+                  setSelectedOrder((prev: any) => prev ? { ...prev, assignee: pickerName } : prev);
+                }
+                toast.success(`Order assigned to ${pickerName}`);
+                setAssignDialog({ open: false, orderId: '', order: null });
+              } catch (err: any) {
+                toast.error(err.message || 'Failed to assign order');
+              }
+            }}
+            onClose={() => setAssignDialog({ open: false, orderId: '', order: null })}
+          />
         </SheetContent>
       </Sheet>
 

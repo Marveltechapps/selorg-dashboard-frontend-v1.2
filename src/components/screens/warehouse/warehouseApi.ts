@@ -734,6 +734,124 @@ export async function toggleComplianceCheck(id: string, completed: boolean): Pro
   if (!response.ok) throw new Error('Failed to toggle compliance check');
 }
 
+// --- Picker Shift Master & Roster ---
+
+export interface PickerShift {
+  id: string;
+  name: string;
+  site: string;
+  siteId?: string;
+  startTime?: string;
+  endTime?: string;
+  timeRange: string;
+  capacity: number;
+  breakDuration: number;
+  status: string;
+  assignedCount?: number;
+}
+
+export interface RosterEntry {
+  date: string;
+  shiftId: string;
+  shiftName: string;
+  site: string;
+  timeRange: string;
+  capacity: number;
+  assignedPickers: { pickerId: string; name: string }[];
+  emptySlots: number;
+}
+
+export async function fetchPickerShifts(params?: { site?: string; status?: string }): Promise<PickerShift[]> {
+  const q = new URLSearchParams();
+  if (params?.site) q.set('site', params.site);
+  if (params?.status) q.set('status', params.status);
+  const query = q.toString() ? `?${q.toString()}` : '';
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.list}${query}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch picker shifts');
+  const result = await response.json();
+  const arr = result.data ?? result ?? [];
+  return Array.isArray(arr) ? arr : [];
+}
+
+export async function createPickerShift(data: Partial<PickerShift>): Promise<PickerShift> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.create}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      name: data.name,
+      site: data.site,
+      siteId: data.siteId,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      capacity: data.capacity ?? 1,
+      breakDuration: data.breakDuration ?? 0,
+    }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to create shift');
+  }
+  const result = await response.json();
+  return result.data ?? result;
+}
+
+export async function updatePickerShift(id: string, data: Partial<PickerShift>): Promise<PickerShift> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.update(id)}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      name: data.name,
+      site: data.site,
+      siteId: data.siteId,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      capacity: data.capacity,
+      breakDuration: data.breakDuration,
+    }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to update shift');
+  }
+  const result = await response.json();
+  return result.data ?? result;
+}
+
+export async function fetchPickerRoster(startDate: string, endDate: string): Promise<RosterEntry[]> {
+  const q = new URLSearchParams({ startDate, endDate });
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.roster}?${q}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch roster');
+  const result = await response.json();
+  const roster = result.data?.roster ?? result?.roster ?? [];
+  return Array.isArray(roster) ? roster : [];
+}
+
+export interface PickerOption {
+  id: string;
+  name: string;
+  phone?: string;
+}
+
+export async function fetchPickerUsers(): Promise<PickerOption[]> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.pickers}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch pickers');
+  const result = await response.json();
+  const arr = result.data ?? result ?? [];
+  return Array.isArray(arr) ? arr : [];
+}
+
+export async function assignPickerToShift(shiftId: string, pickerId: string, date: string): Promise<void> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.assign(shiftId)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ pickerId, date }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to assign picker');
+  }
+}
+
 // --- Workforce & Shifts ---
 
 export interface Staff {
@@ -828,6 +946,32 @@ export async function addStaff(data: Partial<Staff>): Promise<Staff> {
 export async function fetchSchedules(): Promise<ShiftSchedule[]> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.workforce.schedule}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch schedules');
+  const result = await response.json();
+  const arr = result.data ?? result ?? [];
+  return Array.isArray(arr) ? arr : [];
+}
+
+export interface LiveAttendance {
+  id: string;
+  userId: string;
+  pickerName: string;
+  shift: string;
+  punchIn: string | null;
+  punchOut: string | null;
+  duration: number;
+  lateByMinutes: number;
+  overtimeMinutes: number;
+  totalWorkedMinutes: number;
+  status: 'ON_DUTY' | 'COMPLETED' | 'ON_BREAK' | 'ABSENT' | 'present';
+}
+
+export async function fetchLiveAttendance(params?: { date?: string; site?: string }): Promise<LiveAttendance[]> {
+  const qs = new URLSearchParams();
+  if (params?.date) qs.set('date', params.date);
+  if (params?.site) qs.set('site', params.site);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.attendance.live}${suffix}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch live attendance');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
   return Array.isArray(arr) ? arr : [];
@@ -1132,5 +1276,91 @@ export async function processBinReassignment(config: any): Promise<void> {
     const errData = await response.json().catch(() => ({}));
     throw new Error(errData.message || 'Failed to process reassignment');
   }
+}
+
+// --- Picker Workforce Devices ---
+
+export interface PickerDevice {
+  id: string;
+  deviceId: string;
+  serial: string;
+  status: 'AVAILABLE' | 'ASSIGNED' | 'REPAIR' | 'LOST';
+  assignedPicker: { id: string; name: string } | null;
+  assignedAt: string | null;
+  lastReturnedAt: string | null;
+}
+
+export interface PickerDevicesFilters {
+  status?: string;
+  search?: string;
+}
+
+export async function fetchPickerDevices(filters?: PickerDevicesFilters): Promise<PickerDevice[]> {
+  const q = new URLSearchParams();
+  if (filters?.status) q.set('status', filters.status);
+  if (filters?.search) q.set('search', filters.search);
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerDevices.list}${suffix}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch devices');
+  const result = await response.json();
+  const arr = result.data ?? result ?? [];
+  return Array.isArray(arr) ? arr : [];
+}
+
+export async function createPickerDevice(data: { deviceId: string; serial?: string }): Promise<PickerDevice> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerDevices.create}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to create device');
+  }
+  const result = await response.json();
+  return result.data ?? result;
+}
+
+export async function assignDevice(deviceId: string, pickerId: string): Promise<PickerDevice> {
+  // deviceId here is the document id (MongoDB _id) for the PATCH URL
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerDevices.patch(deviceId)}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ action: 'assign', pickerId }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to assign device');
+  }
+  const result = await response.json();
+  return result.data ?? result;
+}
+
+export async function returnDevice(deviceId: string): Promise<PickerDevice> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerDevices.patch(deviceId)}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ action: 'return' }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to return device');
+  }
+  const result = await response.json();
+  return result.data ?? result;
+}
+
+export async function markDeviceDamaged(deviceId: string, condition?: string): Promise<PickerDevice> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerDevices.patch(deviceId)}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ action: 'mark_damaged', condition }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to mark device damaged');
+  }
+  const result = await response.json();
+  return result.data ?? result;
 }
 

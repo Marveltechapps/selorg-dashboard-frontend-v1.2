@@ -104,6 +104,67 @@ export async function updateOrder(orderId: string, data: { status?: string; urge
 }
 
 /**
+ * Assign picker to order. Backend expects PATCH /api/v1/darkstore/orders/:orderId/assign.
+ */
+export async function assignOrder(orderId: string, data: { pickerId: string; pickerName: string }) {
+  const result = await patch(`/darkstore/orders/${orderId}/assign`, data);
+  if (result && result.success === false) {
+    throw new Error(result.error || 'Failed to assign order');
+  }
+  return result;
+}
+
+/**
+ * Start picking. Backend expects PATCH /api/v1/darkstore/orders/:orderId/start-picking.
+ */
+export async function startPicking(orderId: string, requestVersion?: number) {
+  const result = await patch(`/darkstore/orders/${orderId}/start-picking`, { requestVersion });
+  if (result && result.success === false) {
+    throw new Error(result.error || 'Failed to start picking');
+  }
+  return result;
+}
+
+/**
+ * Complete picking. Backend expects PATCH /api/v1/darkstore/orders/:orderId/complete-picking.
+ */
+export async function completePicking(
+  orderId: string,
+  data?: { requestVersion?: number; pickDuration?: number; accuracy?: number; missingItems?: Array<{ productName: string; orderedQty: number; scannedQty: number; reason?: string }> }
+) {
+  const result = await patch(`/darkstore/orders/${orderId}/complete-picking`, data ?? {});
+  if (result && result.success === false) {
+    throw new Error(result.error || 'Failed to complete picking');
+  }
+  return result;
+}
+
+/**
+ * Update bag/rack for order. Backend expects PATCH /api/v1/darkstore/orders/:orderId/bag-rack.
+ */
+export async function updateBagRack(orderId: string, data: { bagId?: string; rackLocation?: string }) {
+  const body: Record<string, string> = {};
+  if (data.bagId != null) body.bagId = String(data.bagId);
+  if (data.rackLocation != null) body.rackLocation = String(data.rackLocation);
+  if (Object.keys(body).length === 0) throw new Error('At least one of bagId or rackLocation is required');
+  const result = await patch(`/darkstore/orders/${orderId}/bag-rack`, body);
+  if (result && result.success === false) throw new Error(result.error || 'Failed to update bag/rack');
+  return result;
+}
+
+/**
+ * Get order action logs. Backend expects GET /api/v1/darkstore/orders/:orderId/action-logs.
+ */
+export async function getOrderActionLogs(orderId: string, limit = 50) {
+  const url = buildUrl(`/darkstore/orders/${orderId}/action-logs?limit=${limit}`);
+  const response = await fetch(url, { headers: authHeaders() });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const json = await response.json();
+  if (json.success === false) throw new Error(json.error || 'Failed to fetch action logs');
+  return json.data || [];
+}
+
+/**
  * Cancel order. Backend expects POST /api/v1/darkstore/orders/:orderId/cancel.
  */
 export async function cancelOrder(orderId: string, reason?: string) {

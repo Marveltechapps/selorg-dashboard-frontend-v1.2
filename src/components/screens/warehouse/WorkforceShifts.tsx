@@ -13,6 +13,7 @@ import {
   addTraining as apiAddTraining,
   logStaffAttendance,
   fetchAttendance,
+  fetchLiveAttendance,
   fetchPerformance,
   fetchLeaveRequests,
   createLeaveRequest as apiCreateLeaveRequest,
@@ -20,13 +21,14 @@ import {
   Staff,
   ShiftSchedule,
   Attendance,
+  LiveAttendance,
   Performance,
   LeaveRequest,
   Training
 } from './warehouseApi';
 
 export function WorkforceShifts() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'attendance' | 'performance' | 'leave-requests' | 'training'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'attendance' | 'live-attendance' | 'performance' | 'leave-requests' | 'training'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   
@@ -49,6 +51,9 @@ export function WorkforceShifts() {
   const [performance, setPerformance] = useState<Performance[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [trainings, setTrainings] = useState<Training[]>([]);
+  const [liveAttendance, setLiveAttendance] = useState<LiveAttendance[]>([]);
+  const [liveDate, setLiveDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [liveSite, setLiveSite] = useState('');
   const [newSchedule, setNewSchedule] = useState({ date: '', shift: 'morning' as const, requiredStaff: '' });
   const [newAttendance, setNewAttendance] = useState({ staffId: '', date: '', checkIn: '', checkOut: '' });
   const [newStaff, setNewStaff] = useState({ name: '', email: '', phone: '', role: '', shift: 'morning' as const, hourlyRate: '' });
@@ -57,9 +62,9 @@ export function WorkforceShifts() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(loadData, activeTab === 'live-attendance' ? 15000 : 10000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, liveDate, liveSite]);
 
   const loadData = async () => {
     setLoading(true);
@@ -82,8 +87,10 @@ export function WorkforceShifts() {
       } else if (activeTab === 'leave-requests') {
         const data = await fetchLeaveRequests();
         setLeaveRequests(data);
+      } else if (activeTab === 'live-attendance') {
+        const data = await fetchLiveAttendance({ date: liveDate, site: liveSite || undefined });
+        setLiveAttendance(data);
       }
-      // Leave and Performance might need their own endpoints or filtering from staff
     } catch (error) {
       toast.error('Failed to load workforce data');
     } finally {
@@ -322,6 +329,14 @@ export function WorkforceShifts() {
     t.type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const filteredLiveAttendance = liveAttendance.filter(a =>
+    a.pickerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (a.shift || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const liveOnDuty = liveAttendance.filter(a => a.status === 'ON_DUTY' || a.status === 'ON_BREAK').length;
+  const liveCompleted = liveAttendance.filter(a => a.status === 'COMPLETED').length;
+  const liveLateCount = liveAttendance.filter(a => (a.lateByMinutes ?? 0) > 0).length;
+
   const activeStaff = staff.filter(s => s.status === 'active').length;
   const avgProductivity = staff.length > 0
     ? Math.round(staff.reduce((sum, s) => sum + (s.productivity ?? 0), 0) / staff.length)
@@ -466,6 +481,14 @@ export function WorkforceShifts() {
           }`}
         >
           Attendance
+        </button>
+        <button
+          onClick={() => { setActiveTab('live-attendance'); setSearchTerm(''); }}
+          className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
+            activeTab === 'live-attendance' ? 'border-[#0891b2] text-[#0891b2]' : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
+          }`}
+        >
+          Live Attendance
         </button>
         <button
           onClick={() => { setActiveTab('performance'); setSearchTerm(''); }}
@@ -741,6 +764,138 @@ export function WorkforceShifts() {
             </table>
           </div>
           )}
+        </div>
+      )}
+
+      {/* Live Attendance Tab */}
+      {activeTab === 'live-attendance' && (
+        <div className="space-y-6">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-cyan-50 text-cyan-600 rounded-lg"><UserCheck size={18} /></div>
+                <span className="text-sm font-bold text-[#64748B]">On Duty</span>
+              </div>
+              <p className="text-2xl font-bold text-[#1E293B]">{liveOnDuty}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-green-50 text-green-600 rounded-lg"><CheckCircle2 size={18} /></div>
+                <span className="text-sm font-bold text-[#64748B]">Completed</span>
+              </div>
+              <p className="text-2xl font-bold text-[#1E293B]">{liveCompleted}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><Clock size={18} /></div>
+                <span className="text-sm font-bold text-[#64748B]">Late</span>
+              </div>
+              <p className="text-2xl font-bold text-[#1E293B]">{liveLateCount}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><Users size={18} /></div>
+                <span className="text-sm font-bold text-[#64748B]">Total</span>
+              </div>
+              <p className="text-2xl font-bold text-[#1E293B]">{liveAttendance.length}</p>
+            </div>
+          </div>
+          {/* Filter Bar */}
+          <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-[#64748B]">Date</label>
+              <input
+                type="date"
+                value={liveDate}
+                onChange={(e) => setLiveDate(e.target.value)}
+                className="px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-[#64748B]">Site</label>
+              <input
+                type="text"
+                placeholder="Filter by site"
+                value={liveSite}
+                onChange={(e) => setLiveSite(e.target.value)}
+                className="px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-sm min-w-[140px]"
+              />
+            </div>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+              <input
+                type="text"
+                placeholder="Search by picker or shift..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
+              />
+            </div>
+          </div>
+          {/* Table */}
+          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
+            {loading ? (
+              <div className="p-12 flex justify-center"><LoadingState /></div>
+            ) : filteredLiveAttendance.length === 0 ? (
+              <div className="p-12"><EmptyState title="No live attendance" message="No picker punch records for the selected date." /></div>
+            ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-[#F8FAFC] text-[#64748B] font-medium border-b border-[#E2E8F0] h-10">
+                  <tr>
+                    <th className="px-6 py-3">Picker Name</th>
+                    <th className="px-6 py-3">Shift</th>
+                    <th className="px-6 py-3">Punch In</th>
+                    <th className="px-6 py-3">Duration</th>
+                    <th className="px-6 py-3">Late</th>
+                    <th className="px-6 py-3">Overtime</th>
+                    <th className="px-6 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0]">
+                  {filteredLiveAttendance.map((row) => (
+                    <tr key={row.id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-6 py-4 font-medium text-[#1E293B]">{row.pickerName}</td>
+                      <td className="px-6 py-4 text-[#64748B]">{row.shift}</td>
+                      <td className="px-6 py-4 text-[#64748B]">
+                        {row.punchIn ? new Date(row.punchIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
+                      </td>
+                      <td className="px-6 py-4 text-[#64748B]">{row.duration} min</td>
+                      <td className="px-6 py-4">
+                        {(row.lateByMinutes ?? 0) > 0 ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">+{row.lateByMinutes}m</span>
+                        ) : (
+                          <span className="text-[#9CA3AF]">--</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {(row.overtimeMinutes ?? 0) > 0 ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">+{row.overtimeMinutes}m</span>
+                        ) : (
+                          <span className="text-[#9CA3AF]">--</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          row.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                          row.status === 'ON_DUTY' || row.status === 'ON_BREAK' ? 'bg-amber-100 text-amber-800' :
+                          row.status === 'ABSENT' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {row.status === 'COMPLETED' ? 'Completed' :
+                           row.status === 'ON_DUTY' ? 'On Duty' :
+                           row.status === 'ON_BREAK' ? 'On Break' :
+                           row.status === 'ABSENT' ? 'Absent' : 'Not Punched'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            )}
+          </div>
         </div>
       )}
 
