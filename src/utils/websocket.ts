@@ -20,57 +20,66 @@ class WebSocketService {
   private connectionFailed = false;
 
   connect() {
-    if (this.socket?.connected) {
-      return;
-    }
-
-    if (this.connectionFailed) {
-      return;
-    }
+    if (this.socket?.connected) return;
+    if (this.connectionFailed) return;
 
     const token = getAuthToken();
-    if (!token) {
-      return;
-    }
+    if (!token) return;
 
     const socketUrl = resolveWsUrl();
 
     this.socket = io(socketUrl, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+
+      // 🔥 FORCE PURE WEBSOCKET (removes long polling delays)
+      transports: ['websocket'],
+
       reconnection: true,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 30000,
       reconnectionAttempts: this.maxReconnectAttempts,
+      reconnectionDelay: 2000,
+
       timeout: 10000,
     });
 
     this.socket.on('connect', () => {
       console.log('WebSocket connected');
+
       this.reconnectAttempts = 0;
       this.hasLoggedMaxAttempts = false;
       this.connectionFailed = false;
 
       const user = getAuthUser();
-      if (user?.role) this.subscribe(`role:${user.role}`);
-      if (user?.id) this.subscribe(`user:${user.id}`);
-    });
 
-    this.socket.on('disconnect', (reason) => {
-      if (reason === 'io server disconnect') {
-        console.warn('WebSocket: server disconnected');
+      if (user?.role) {
+        this.subscribe(`role:${user.role}`);
+      }
+
+      if (user?.id) {
+        this.subscribe(`user:${user.id}`);
       }
     });
 
-    this.socket.on('connect_error', () => {
+    this.socket.on('disconnect', (reason) => {
+      console.warn('WebSocket disconnected:', reason);
+    });
+
+    this.socket.on('connect_error', (err) => {
+      console.warn('WebSocket connection error:', err.message);
+
       this.reconnectAttempts++;
-      if (this.reconnectAttempts >= this.maxReconnectAttempts && !this.hasLoggedMaxAttempts) {
+
+      if (
+        this.reconnectAttempts >= this.maxReconnectAttempts &&
+        !this.hasLoggedMaxAttempts
+      ) {
         this.hasLoggedMaxAttempts = true;
         this.connectionFailed = true;
+
         console.warn(
-          'WebSocket: backend unreachable after %d attempts. Real-time updates disabled. Start the backend server and refresh to reconnect.',
+          'WebSocket: backend unreachable after %d attempts. Real-time updates disabled.',
           this.maxReconnectAttempts
         );
+
         this.cleanupSocket();
       }
     });
@@ -79,23 +88,27 @@ class WebSocketService {
   }
 
   private cleanupSocket() {
-    if (this.socket) {
-      this.socket.removeAllListeners();
-      this.socket.disconnect();
-      this.socket = null;
-    }
+    if (!this.socket) return;
+
+    this.socket.removeAllListeners();
+    this.socket.disconnect();
+    this.socket = null;
   }
 
   private reattachListeners() {
     if (!this.socket) return;
+
     this.listeners.forEach((callbacks, event) => {
-      callbacks.forEach((cb) => this.socket!.on(event, cb));
+      callbacks.forEach((cb) => {
+        this.socket!.on(event, cb);
+      });
     });
   }
 
   disconnect() {
     this.cleanupSocket();
     this.listeners.clear();
+
     this.connectionFailed = false;
     this.hasLoggedMaxAttempts = false;
     this.reconnectAttempts = 0;
@@ -105,6 +118,7 @@ class WebSocketService {
     this.connectionFailed = false;
     this.hasLoggedMaxAttempts = false;
     this.reconnectAttempts = 0;
+
     this.cleanupSocket();
   }
 
@@ -124,6 +138,7 @@ class WebSocketService {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
+
     this.listeners.get(event)!.add(callback);
 
     if (this.socket) {
@@ -134,11 +149,13 @@ class WebSocketService {
   off(event: string, callback?: (data: any) => void) {
     if (callback) {
       this.listeners.get(event)?.delete(callback);
+
       if (this.socket) {
         this.socket.off(event, callback);
       }
     } else {
       this.listeners.get(event)?.clear();
+
       if (this.socket) {
         this.socket.off(event);
       }
