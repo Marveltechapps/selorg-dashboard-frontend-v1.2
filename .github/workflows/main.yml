@@ -19,91 +19,101 @@ jobs:
           port: ${{ secrets.EC2_PORT }}
           script: |
             set -e
-      
+
             echo "=============================="
             echo "🚀 FRONTEND DEPLOYMENT STARTED"
             echo "=============================="
-      
-            FRONTEND_DIR="/home/ubuntu/selorg/selorg-dashboard-frontend-v1.2"   # ✅ updated
+
+            FRONTEND_DIR="/home/ubuntu/selorg/selorg-dashboard-frontend-v1.2"
             DOCKERFILE="/home/ubuntu/selorg/Dockerfiles/Dockerfile-frontend"
             ENV_FILE="/home/ubuntu/selorg/envs/frontend.env"
-      
+
             IMAGE_NAME="selorg-frontend"
             CONTAINER_NAME="selorg-frontend"
-      
+
             cd $FRONTEND_DIR
-      
+
             echo "🧹 Clean repo & pull latest code"
             git fetch origin
             git checkout main
             git reset --hard origin/main
             git clean -fd
-      
+
             echo "📦 Load Vite environment variables"
             set -a
             source $ENV_FILE
             set +a
-      
+
             COMMIT=$(git rev-parse --short HEAD)
+
             NEW_IMAGE="${IMAGE_NAME}:${COMMIT}"
             LATEST_IMAGE="${IMAGE_NAME}:latest"
             BACKUP_IMAGE="${IMAGE_NAME}:backup"
-      
+
             echo "📌 Commit: $COMMIT"
-      
+
             echo "📦 Backup previous image"
             sudo docker image inspect $LATEST_IMAGE >/dev/null 2>&1 && sudo docker tag $LATEST_IMAGE $BACKUP_IMAGE || true
-      
+
             echo "🐳 Build frontend image"
+
             sudo docker build \
+              --pull \
+              --no-cache \
               -t $NEW_IMAGE \
               -f $DOCKERFILE \
               --build-arg VITE_API_BASE_URL="$VITE_API_BASE_URL" \
+              --build-arg VITE_WS_URL="$VITE_WS_URL" \
               .
-      
+
             sudo docker tag $NEW_IMAGE $LATEST_IMAGE
-      
+
             echo "🛑 Remove old container"
             sudo docker stop $CONTAINER_NAME || true
             sudo docker rm $CONTAINER_NAME || true
-      
+
             echo "🚀 Start new frontend container"
+
             sudo docker run -d \
               --name $CONTAINER_NAME \
               --restart always \
               --network selorg-net \
               -p 127.0.0.1:8080:80 \
               $LATEST_IMAGE
-      
-            echo "⏳ Waiting for nginx container boot..."
+
+            echo "⏳ Waiting for container boot..."
             sleep 5
-      
+
             echo "🔍 Health check"
+
             if curl -f http://127.0.0.1:8080 >/dev/null 2>&1; then
               echo "✅ Frontend deployed successfully!"
             else
               echo "❌ Deployment failed — rolling back"
-      
+
               sudo docker logs $CONTAINER_NAME --tail 80 || true
               sudo docker rm -f $CONTAINER_NAME || true
-      
+
               if sudo docker image inspect $BACKUP_IMAGE >/dev/null 2>&1; then
                 sudo docker tag $BACKUP_IMAGE $LATEST_IMAGE
+
                 sudo docker run -d \
                   --name $CONTAINER_NAME \
                   --restart always \
                   --network selorg-net \
                   -p 127.0.0.1:8080:80 \
                   $LATEST_IMAGE
+
                 echo "✅ Rollback successful"
               else
                 echo "⚠️ No backup image available"
                 exit 1
               fi
             fi
-      
+
+            echo "🧹 Cleaning unused images"
             sudo docker image prune -af
-      
+
             echo "=============================="
             echo "🎉 FRONTEND DEPLOYMENT FINISHED"
             echo "=============================="
