@@ -27,7 +27,7 @@ export function MissingItemTracker() {
     try {
       const res = await getMissingItems({
         storeId: activeStoreId || undefined,
-        orderId: orderId ?? orderFilter || undefined,
+        orderId: orderId ?? (orderFilter || undefined),
       });
       setData(res.data || []);
     } catch (e) {

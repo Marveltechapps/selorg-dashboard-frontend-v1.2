@@ -27,6 +27,7 @@ import {
   Sliders,
   Scale,
   UserPlus,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 
@@ -46,6 +47,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
     { category: "Workforce", items: [
       { id: 'picker-approvals', label: 'Picker Approvals', icon: UserPlus },
       { id: 'picker-activity-logs', label: 'Picker Activity Logs', icon: History },
+      { id: 'ops-alerts', label: 'Operations Alerts', icon: AlertTriangle },
     ]},
     { category: "Platform Settings", items: [
       { id: 'master-data', label: 'Master Data', icon: Database },

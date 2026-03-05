@@ -30,6 +30,7 @@ import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
 import { PickerApprovals } from './screens/admin/PickerApprovals';
 import { PickerActivityLogs } from './screens/admin/PickerActivityLogs';
+import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { 
   Tag, 
   Store, 
@@ -73,6 +74,7 @@ const TAB_LABELS: Record<string, string> = {
   'audit': 'Audit Logs',
   'picker-approvals': 'Picker Approvals',
   'picker-activity-logs': 'Picker Activity Logs',
+  'ops-alerts': 'Operations Alerts',
   'system-tools': 'System Tools',
   'applications': 'Applications',
   'customer-app-home': 'Customer App Home',
@@ -247,6 +249,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
             {activeTab === 'picker-approvals' && <PickerApprovals />}
             {activeTab === 'picker-activity-logs' && <PickerActivityLogs />}
+            {activeTab === 'ops-alerts' && <OperationsAlerts />}
             {activeTab === 'support' && <SupportCenter />}
             {activeTab === 'fraud' && <FraudRiskHub />}
             {activeTab === 'analytics' && <AnalyticsDashboard />}
