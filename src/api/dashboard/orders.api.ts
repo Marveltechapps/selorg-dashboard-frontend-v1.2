@@ -105,8 +105,12 @@ export async function updateOrder(orderId: string, data: { status?: string; urge
 
 /**
  * Assign picker to order. Backend expects PATCH /api/v1/darkstore/orders/:orderId/assign.
+ * Pass { autoAssign: true } to use Order Assignment Engine.
  */
-export async function assignOrder(orderId: string, data: { pickerId: string; pickerName: string }) {
+export async function assignOrder(
+  orderId: string,
+  data: { pickerId?: string; pickerName?: string; autoAssign?: boolean }
+) {
   const result = await patch(`/darkstore/orders/${orderId}/assign`, data);
   if (result && result.success === false) {
     throw new Error(result.error || 'Failed to assign order');

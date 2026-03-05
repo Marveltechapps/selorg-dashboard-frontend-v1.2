@@ -21,6 +21,10 @@ import { IssueManagement } from './screens/darkstore/IssueManagement';
 import { PickPackOpsScreen } from './screens/PickPackOpsScreen';
 import { LivePickerBoardScreen } from './screens/LivePickerBoardScreen';
 import { PickerPerformance } from './screens/darkstore/PickerPerformance';
+import { SLAMonitor } from './screens/darkstore/SLAMonitor';
+import { MissingItemTracker } from './screens/darkstore/MissingItemTracker';
+import { LivePickingMonitor } from './screens/darkstore/LivePickingMonitor';
+import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
@@ -46,12 +50,16 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
             {activeTab === 'pickpackops' && <PickPackOpsScreen />}
+            {activeTab === 'livepickingmonitor' && <LivePickingMonitor />}
+            {activeTab === 'slamonitor' && <SLAMonitor />}
+            {activeTab === 'missingitems' && <MissingItemTracker />}
             {activeTab === 'livepickerboard' && <LivePickerBoardScreen />}
             {activeTab === 'pickerperformance' && <PickerPerformance />}
             {activeTab === 'inventory' && <InventoryOps />}
             {activeTab === 'staff' && <StaffShifts />}
             {activeTab === 'health' && <StoreHealth />}
             {activeTab === 'alerts' && <AlertsDashboard />}
+            {activeTab === 'ops-alerts' && <OperationsAlerts />}
             {activeTab === 'reports' && <ReportsDashboard onNavigateToAudit={() => setActiveTab('qc')} />}
             {activeTab === 'hsd' && <HSDManagement />}
             {activeTab === 'qc' && <QualityControl />}

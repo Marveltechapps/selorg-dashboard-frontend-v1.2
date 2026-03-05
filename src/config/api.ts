@@ -190,6 +190,7 @@ export const API_ENDPOINTS = {
       byId: (id: string) => `/admin/pickers/${id}`,
       updateStatus: (id: string) => `/admin/pickers/${id}`,
       actionLogs: (id: string) => `/admin/pickers/${id}/action-logs`,
+      allActionLogs: '/admin/picker-action-logs',
     },
     fraud: {
       alerts: '/admin/fraud/alerts',

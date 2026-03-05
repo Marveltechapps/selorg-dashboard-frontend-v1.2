@@ -32,10 +32,13 @@ export async function getAvailablePickers(params?: {
   return apiRequest(url);
 }
 
+export type DerivedWorkerStatus = 'AVAILABLE' | 'PICKING' | 'ON_BREAK' | 'OFFLINE' | 'DEVICE_IDLE';
+
 export interface LivePicker {
   id: string;
   name: string;
   online: boolean;
+  derivedStatus?: DerivedWorkerStatus;
   batteryLevel: number | null;
   activeOrderId: string | null;
   lastActivity: string | null;

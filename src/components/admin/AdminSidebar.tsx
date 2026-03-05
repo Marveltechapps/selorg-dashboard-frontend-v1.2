@@ -45,6 +45,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
     ]},
     { category: "Workforce", items: [
       { id: 'picker-approvals', label: 'Picker Approvals', icon: UserPlus },
+      { id: 'picker-activity-logs', label: 'Picker Activity Logs', icon: History },
     ]},
     { category: "Platform Settings", items: [
       { id: 'master-data', label: 'Master Data', icon: Database },

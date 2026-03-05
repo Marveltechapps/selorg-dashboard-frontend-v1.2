@@ -29,16 +29,20 @@ function BatteryBadge({ level }: { level: number | null }) {
   );
 }
 
-function OnlineBadge({ online }: { online: boolean }) {
+function WorkerStatusBadge({ online, derivedStatus }: { online: boolean; derivedStatus?: string }) {
+  const status = derivedStatus || (online ? 'AVAILABLE' : 'OFFLINE');
+  const config: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+    AVAILABLE: { label: 'Available', bg: 'bg-[#DCFCE7]', text: 'text-[#16A34A]', dot: 'bg-[#16A34A]' },
+    PICKING: { label: 'Picking', bg: 'bg-[#DBEAFE]', text: 'text-[#2563EB]', dot: 'bg-[#2563EB]' },
+    ON_BREAK: { label: 'On Break', bg: 'bg-[#FEF3C7]', text: 'text-[#D97706]', dot: 'bg-[#D97706]' },
+    OFFLINE: { label: 'Offline', bg: 'bg-[#FEE2E2]', text: 'text-[#EF4444]', dot: 'bg-[#EF4444]' },
+    DEVICE_IDLE: { label: 'Idle', bg: 'bg-[#F3F4F6]', text: 'text-[#6B7280]', dot: 'bg-[#6B7280]' },
+  };
+  const c = config[status] || config.OFFLINE;
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold',
-        online ? 'bg-[#DCFCE7] text-[#16A34A] border border-[#86EFAC]' : 'bg-[#FEE2E2] text-[#EF4444] border border-[#FECACA]'
-      )}
-    >
-      <span className={cn('w-1.5 h-1.5 rounded-full', online ? 'bg-[#16A34A]' : 'bg-[#EF4444]')} />
-      {online ? 'Online' : 'Offline'}
+    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border', c.bg, c.text, 'border-current/20')}>
+      <span className={cn('w-1.5 h-1.5 rounded-full', c.dot)} />
+      {c.label}
     </span>
   );
 }
@@ -121,7 +125,7 @@ export function LivePickerBoardScreen() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <OnlineBadge online={p.online} />
+                      <WorkerStatusBadge online={p.online} derivedStatus={p.derivedStatus} />
                     </td>
                     <td className="py-3 px-4">
                       <BatteryBadge level={p.batteryLevel} />

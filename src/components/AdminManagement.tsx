@@ -29,6 +29,7 @@ import { CustomerManagement } from './screens/admin/CustomerManagement';
 import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
 import { PickerApprovals } from './screens/admin/PickerApprovals';
+import { PickerActivityLogs } from './screens/admin/PickerActivityLogs';
 import { 
   Tag, 
   Store, 
@@ -71,6 +72,7 @@ const TAB_LABELS: Record<string, string> = {
   'compliance': 'Compliance',
   'audit': 'Audit Logs',
   'picker-approvals': 'Picker Approvals',
+  'picker-activity-logs': 'Picker Activity Logs',
   'system-tools': 'System Tools',
   'applications': 'Applications',
   'customer-app-home': 'Customer App Home',
@@ -244,6 +246,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'finance' && <FinanceRules />}
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
             {activeTab === 'picker-approvals' && <PickerApprovals />}
+            {activeTab === 'picker-activity-logs' && <PickerActivityLogs />}
             {activeTab === 'support' && <SupportCenter />}
             {activeTab === 'fraud' && <FraudRiskHub />}
             {activeTab === 'analytics' && <AnalyticsDashboard />}

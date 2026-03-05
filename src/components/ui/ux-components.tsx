@@ -64,15 +64,18 @@ export function EmptyState({
 
 interface LoadingStateProps {
   text?: string;
+  message?: string; // alias for text
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }
 
 export function LoadingState({ 
-  text = "Loading...", 
+  text,
+  message,
   size = 'md',
   className 
 }: LoadingStateProps) {
+  const displayText = text ?? message ?? "Loading...";
   const sizes = {
     sm: 'w-4 h-4',
     md: 'w-6 h-6',
@@ -95,7 +98,7 @@ export function LoadingState({
         "animate-spin text-slate-400 mr-3",
         sizes[size]
       )} />
-      <span className="text-slate-600">{text}</span>
+      <span className="text-slate-600">{displayText}</span>
     </div>
   );
 }

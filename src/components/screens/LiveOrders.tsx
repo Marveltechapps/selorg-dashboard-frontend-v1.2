@@ -40,14 +40,17 @@ export function setPendingOrderSearch(q: string) {
 function AssignPickerContent({
   orderId,
   onAssign,
+  onAutoAssign,
   onClose,
 }: {
   orderId: string;
   onAssign: (pickerId: string, pickerName: string) => Promise<void>;
+  onAutoAssign: () => Promise<void>;
   onClose: () => void;
 }) {
   const [pickers, setPickers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -63,21 +66,39 @@ function AssignPickerContent({
     return () => { cancelled = true; };
   }, []);
   if (loading) return <div className="p-6 text-sm text-gray-500">Loading pickers...</div>;
-  if (pickers.length === 0) return <div className="p-6 text-sm text-gray-500">No available pickers.</div>;
   return (
-    <div className="p-6 space-y-2 max-h-[60vh] overflow-y-auto">
-      {pickers.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => onAssign(p.id, p.name)}
-          className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-[#1677FF] transition-colors text-left"
-        >
-          <div className="w-8 h-8 rounded-full bg-[#E6F7FF] text-[#1677FF] flex items-center justify-center text-sm font-bold">
-            {p.name.charAt(0)}
-          </div>
-          <span className="font-medium text-gray-900">{p.name}</span>
-        </button>
-      ))}
+    <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+      <button
+        onClick={async () => {
+          setAutoAssigning(true);
+          try {
+            await onAutoAssign();
+            onClose();
+          } finally {
+            setAutoAssigning(false);
+          }
+        }}
+        disabled={autoAssigning}
+        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-[#1677FF] bg-[#E6F7FF] hover:bg-[#BAE7FF] text-[#1677FF] font-medium transition-colors disabled:opacity-50"
+      >
+        {autoAssigning ? 'Assigning...' : 'Auto Assign'}
+      </button>
+      {pickers.length === 0 ? (
+        <div className="text-sm text-gray-500 py-2">No pickers loaded. Use Auto Assign or refresh.</div>
+      ) : (
+        pickers.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => onAssign(p.id, p.name)}
+            className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-[#1677FF] transition-colors text-left"
+          >
+            <div className="w-8 h-8 rounded-full bg-[#E6F7FF] text-[#1677FF] flex items-center justify-center text-sm font-bold">
+              {p.name.charAt(0)}
+            </div>
+            <span className="font-medium text-gray-900">{p.name}</span>
+          </button>
+        ))
+      )}
     </div>
   );
 }
@@ -1381,7 +1402,7 @@ export function LiveOrders() {
           </SheetHeader>
           <AssignPickerContent
             orderId={assignDialog.orderId}
-            onAssign={async (pickerId: string, pickerName: string) => {
+            onAssign={async (pickerId, pickerName) => {
               try {
                 await assignOrder(assignDialog.orderId, { pickerId, pickerName });
                 setOrders(prev => prev.map(o =>
@@ -1392,10 +1413,23 @@ export function LiveOrders() {
                 if (selectedOrder?.order_id === assignDialog.orderId) {
                   setSelectedOrder((prev: any) => prev ? { ...prev, assignee: pickerName } : prev);
                 }
-                toast.success(`Order assigned to ${pickerName}`);
                 setAssignDialog({ open: false, orderId: '', order: null });
+                toast.success(`Order assigned to ${pickerName}`);
               } catch (err: any) {
                 toast.error(err.message || 'Failed to assign order');
+              }
+            }}
+            onAutoAssign={async () => {
+              try {
+                await assignOrder(assignDialog.orderId, { autoAssign: true });
+                await loadOrders();
+                if (selectedOrder?.order_id === assignDialog.orderId) {
+                  setSelectedOrder((prev: any) => prev ? { ...prev, assignee: 'Auto-assigned' } : prev);
+                }
+                setAssignDialog({ open: false, orderId: '', order: null });
+                toast.success('Order auto-assigned');
+              } catch (err: any) {
+                toast.error(err.message || 'Failed to auto-assign order');
               }
             }}
             onClose={() => setAssignDialog({ open: false, orderId: '', order: null })}
