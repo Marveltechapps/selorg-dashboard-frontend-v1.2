@@ -28,6 +28,7 @@ import {
   Scale,
   UserPlus,
   AlertTriangle,
+  Video,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 
@@ -47,6 +48,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
     { category: "Workforce", items: [
       { id: 'picker-approvals', label: 'Picker Approvals', icon: UserPlus },
       { id: 'picker-activity-logs', label: 'Picker Activity Logs', icon: History },
+      { id: 'training-content', label: 'Training Content', icon: Video },
       { id: 'ops-alerts', label: 'Operations Alerts', icon: AlertTriangle },
     ]},
     { category: "Platform Settings", items: [

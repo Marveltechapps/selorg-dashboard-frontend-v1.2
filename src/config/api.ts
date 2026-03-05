@@ -192,6 +192,13 @@ export const API_ENDPOINTS = {
       actionLogs: (id: string) => `/admin/pickers/${id}/action-logs`,
       allActionLogs: '/admin/picker-action-logs',
     },
+    trainingVideos: {
+      list: '/admin/training-videos',
+      byId: (id: string) => `/admin/training-videos/${id}`,
+      create: '/admin/training-videos',
+      update: (id: string) => `/admin/training-videos/${id}`,
+      delete: (id: string) => `/admin/training-videos/${id}`,
+    },
     fraud: {
       alerts: '/admin/fraud/alerts',
       alertById: (id: string) => `/admin/fraud/alerts/${id}`,

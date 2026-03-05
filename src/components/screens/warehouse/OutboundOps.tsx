@@ -138,7 +138,7 @@ export function OutboundOps() {
         ['Multi-Order Picking Report', `Date: ${today}`],
         [''],
         ['Pick ID', 'Orders', 'SKU', 'Product', 'Location', 'Total Qty', 'Picked Qty', 'Status'],
-        ...multiOrderPicks.map(m => [m.pickId, m.orders.join('; '), m.sku, m.productName, m.location, m.totalQty, m.pickedQty, m.status]),
+        ...multiOrderPicks.map(m => [m.pickId, (m.orders ?? []).join('; '), m.sku, m.productName, m.location, m.totalQty, m.pickedQty, m.status]),
       ];
     } else if (activeTab === 'route-optimization') {
       csvData = [
@@ -221,34 +221,34 @@ export function OutboundOps() {
   };
 
   const filteredAutoPicklists = autoPicklists.filter(o => 
-    o.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    o.customer.toLowerCase().includes(searchTerm.toLowerCase())
+    (o.orderId ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (o.customer ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredManualPicklists = manualPicklists.filter(o => 
-    o.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    o.customer.toLowerCase().includes(searchTerm.toLowerCase())
+    (o.orderId ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (o.customer ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredBatchOrders = batchOrders.filter(b =>
-    b.batchId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.picker.toLowerCase().includes(searchTerm.toLowerCase())
+    (b.batchId ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (b.picker ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredMultiOrders = multiOrderPicks.filter(m =>
-    m.pickId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    m.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    m.productName.toLowerCase().includes(searchTerm.toLowerCase())
+    (m.pickId ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (m.sku ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (m.productName ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredRoutes = routes.filter(r =>
-    r.routeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.picker.toLowerCase().includes(searchTerm.toLowerCase())
+    (r.routeId ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.picker ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredPickers = pickers.filter(p =>
-    p.pickerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.pickerName.toLowerCase().includes(searchTerm.toLowerCase())
+    (p.pickerId ?? p.id ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.pickerName ?? p.name ?? '').toString().toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading && picklists.length === 0) {
