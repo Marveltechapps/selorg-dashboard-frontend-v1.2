@@ -228,7 +228,13 @@ type SettingsTab =
 
 /* ─── Component ────────────────────────────────────────────────────── */
 
-export function CustomerAppSettings() {
+interface CustomerAppSettingsProps {
+  /** When provided, Legal tab redirects to Legal & Policies screen */
+  onNavigateToLegal?: () => void;
+}
+
+export function CustomerAppSettings(props?: CustomerAppSettingsProps) {
+  const { onNavigateToLegal } = props ?? {};
   const [activeTab, setActiveTab] = useState<SettingsTab>('branding');
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -391,8 +397,8 @@ export function CustomerAppSettings() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'legal') loadLegal();
-  }, [activeTab, loadLegal]);
+    if (activeTab === 'legal' && !onNavigateToLegal) loadLegal();
+  }, [activeTab, loadLegal, onNavigateToLegal]);
 
   const saveLegal = async () => {
     if (!editingLegal) return;
@@ -1247,67 +1253,82 @@ export function CustomerAppSettings() {
             </Card>
           )}
 
-          {/* Legal */}
+          {/* Legal - redirects to Legal & Policies when onNavigateToLegal provided */}
           {activeTab === 'legal' && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
+            onNavigateToLegal ? (
+              <Card>
+                <CardHeader>
                   <CardTitle>Legal Documents</CardTitle>
-                  <CardDescription>Manage Terms of Service and Privacy Policy</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={loadLegal}>
-                    <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+                  <CardDescription>Terms of Service and Privacy Policy are managed in the dedicated Legal & Policies screen.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={onNavigateToLegal}>
+                    <Scale className="w-4 h-4 mr-2" />
+                    Go to Legal & Policies
                   </Button>
-                  <Button size="sm" onClick={() => { setEditingLegal({ type: 'terms', contentFormat: 'plain', isCurrent: true }); setLegalDialog(true); }}>
-                    <Plus className="w-4 h-4 mr-1" /> New Document
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {legalLoading ? (
-                  <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
-                ) : legalDocs.length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground">No legal documents yet.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Version</TableHead>
-                        <TableHead>Format</TableHead>
-                        <TableHead>Current</TableHead>
-                        <TableHead>Last Updated</TableHead>
-                        <TableHead className="w-20"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {legalDocs.map(d => (
-                        <TableRow key={d._id}>
-                          <TableCell><Badge variant="outline">{d.type}</Badge></TableCell>
-                          <TableCell className="font-medium">{d.title}</TableCell>
-                          <TableCell>{d.version}</TableCell>
-                          <TableCell>{d.contentFormat}</TableCell>
-                          <TableCell>{d.isCurrent ? <Badge>Current</Badge> : <Badge variant="secondary">Archived</Badge>}</TableCell>
-                          <TableCell>{d.lastUpdated ? new Date(d.lastUpdated).toLocaleDateString() : '—'}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => { setEditingLegal(d); setLegalDialog(true); }}>
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => deleteLegal(d._id)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Legal Documents</CardTitle>
+                    <CardDescription>Manage Terms of Service and Privacy Policy</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={loadLegal}>
+                      <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+                    </Button>
+                    <Button size="sm" onClick={() => { setEditingLegal({ type: 'terms', contentFormat: 'plain', isCurrent: true }); setLegalDialog(true); }}>
+                      <Plus className="w-4 h-4 mr-1" /> New Document
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {legalLoading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
+                  ) : legalDocs.length === 0 ? (
+                    <p className="text-center py-8 text-muted-foreground">No legal documents yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Version</TableHead>
+                          <TableHead>Format</TableHead>
+                          <TableHead>Current</TableHead>
+                          <TableHead>Last Updated</TableHead>
+                          <TableHead className="w-20"></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {legalDocs.map(d => (
+                          <TableRow key={d._id}>
+                            <TableCell><Badge variant="outline">{d.type}</Badge></TableCell>
+                            <TableCell className="font-medium">{d.title}</TableCell>
+                            <TableCell>{d.version}</TableCell>
+                            <TableCell>{d.contentFormat}</TableCell>
+                            <TableCell>{d.isCurrent ? <Badge>Current</Badge> : <Badge variant="secondary">Archived</Badge>}</TableCell>
+                            <TableCell>{d.lastUpdated ? new Date(d.lastUpdated).toLocaleDateString() : '—'}</TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => { setEditingLegal(d); setLegalDialog(true); }}>
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => deleteLegal(d._id)}>
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            )
           )}
 
           {/* Cancellation */}

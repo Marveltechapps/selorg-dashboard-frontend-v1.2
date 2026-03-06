@@ -42,6 +42,7 @@ export interface PickerApprovalDetails extends Omit<PickerApprovalListItem, 'tra
     aadhar?: { front: string | null; back: string | null };
     pan?: { front: string | null; back: string | null };
   };
+  hhdUserId?: string | null;
   bankDetails?: Array<{
     accountHolder: string;
     accountNumber: string | null;
@@ -107,6 +108,22 @@ export const fetchPickerActionLogs = async (
   const url = `${API_ENDPOINTS.admin.pickers.actionLogs(pickerId)}${qs ? `?${qs}` : ''}`;
   const res = await apiRequest<{ success: boolean; data: any[] }>(url);
   return Array.isArray(res.data) ? res.data : [];
+};
+
+export const linkPickerHhd = async (pickerId: string, hhdUserId: string): Promise<PickerApprovalDetails> => {
+  const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
+    API_ENDPOINTS.admin.pickers.linkHhd(pickerId),
+    { method: 'POST', body: JSON.stringify({ hhdUserId }) }
+  );
+  return res.data;
+};
+
+export const unlinkPickerHhd = async (pickerId: string): Promise<PickerApprovalDetails> => {
+  const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
+    API_ENDPOINTS.admin.pickers.linkHhd(pickerId),
+    { method: 'DELETE' }
+  );
+  return res.data;
 };
 
 export const updatePickerStatus = async (

@@ -43,6 +43,9 @@ export interface Banner {
   isActive?: boolean;
   order?: number;
   categoryId?: string;
+  /** Schedule: banner only visible between these dates */
+  startDate?: string | null;
+  endDate?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

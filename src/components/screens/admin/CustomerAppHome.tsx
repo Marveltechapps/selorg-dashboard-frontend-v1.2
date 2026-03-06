@@ -539,6 +539,7 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                 <TableHead>Title</TableHead>
                 <TableHead>Image URL</TableHead>
                 <TableHead>Order</TableHead>
+                <TableHead>Schedule</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -549,6 +550,11 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                   <TableCell>{b.title || '-'}</TableCell>
                   <TableCell className="max-w-[200px] truncate">{b.imageUrl}</TableCell>
                   <TableCell>{b.order ?? 0}</TableCell>
+                  <TableCell className="text-xs text-[#71717a]">
+                    {b.startDate || b.endDate
+                      ? `${b.startDate ? new Date(b.startDate).toLocaleDateString() : '—'} to ${b.endDate ? new Date(b.endDate).toLocaleDateString() : '—'}`
+                      : 'Always'}
+                  </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" onClick={() => openEdit('banners', b as unknown as Record<string, unknown>)}><Pencil className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="sm" onClick={() => handleDelete('banners', b._id, b.title || b._id)}><Trash2 className="h-4 w-4 text-red-600" /></Button>
@@ -926,6 +932,28 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                   <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – navigate to</label>
                   <Input placeholder="product:ID | category:ID | https://... | ScreenName:param=val" value={(formData.link as string) ?? ''} onChange={(e) => setFormData({ ...formData, link: e.target.value })} />
                   <p className="text-xs text-[#71717a] mt-1">product:ID → Product detail, category:ID → Category, https://... → External. Empty = Banner detail.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-[#18181b] mb-1 block">Start Date (optional)</label>
+                    <Input
+                      type="date"
+                      value={(formData.startDate as string) ? new Date(formData.startDate as string).toISOString().split('T')[0] : ''}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                      placeholder="YYYY-MM-DD"
+                    />
+                    <p className="text-xs text-[#71717a] mt-0.5">Banner visible from this date</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#18181b] mb-1 block">End Date (optional)</label>
+                    <Input
+                      type="date"
+                      value={(formData.endDate as string) ? new Date(formData.endDate as string).toISOString().split('T')[0] : ''}
+                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                      placeholder="YYYY-MM-DD"
+                    />
+                    <p className="text-xs text-[#71717a] mt-0.5">Banner visible until this date</p>
+                  </div>
                 </div>
                 <Input type="number" placeholder="Order" value={(formData.order as number) ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })} />
               </>

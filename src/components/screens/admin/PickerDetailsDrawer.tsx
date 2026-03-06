@@ -6,11 +6,14 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActionLogsTimeline } from '@/components/ui/action-logs-timeline';
-import { User, FileText, CreditCard, CheckCircle2, XCircle, Ban, Clock } from 'lucide-react';
+import { User, FileText, CreditCard, CheckCircle2, XCircle, Ban, Clock, Smartphone, Link2, Unlink } from 'lucide-react';
 import {
   PickerApprovalDetails,
+  fetchPickerDetails,
   updatePickerStatus,
   fetchPickerActionLogs,
+  linkPickerHhd,
+  unlinkPickerHhd,
   PickerStatus,
 } from './pickerApprovalsApi';
 import { toast } from 'sonner';
@@ -28,10 +31,13 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onRefresh: () => void;
+  onPickerUpdated?: (picker: PickerApprovalDetails) => void;
 }
 
-export function PickerDetailsDrawer({ picker, open, onClose, onRefresh }: Props) {
+export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPickerUpdated }: Props) {
   const [actionLoading, setActionLoading] = useState(false);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [hhdUserIdInput, setHhdUserIdInput] = useState('');
   const [rejectReasonOpen, setRejectReasonOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [actionLogs, setActionLogs] = useState<any[]>([]);
@@ -64,6 +70,39 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh }: Props)
 
   const handleRequestReupload = () => {
     handleStatusUpdate('REJECTED', 'Please re-upload documents');
+  };
+
+  const handleLinkHhd = async () => {
+    if (!picker || !hhdUserIdInput.trim()) return;
+    setLinkLoading(true);
+    try {
+      await linkPickerHhd(picker.pickerId, hhdUserIdInput.trim());
+      toast.success('Picker linked to HHD user');
+      onRefresh();
+      const detailed = await fetchPickerDetails(picker.pickerId);
+      onPickerUpdated?.(detailed);
+      setHhdUserIdInput('');
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to link HHD');
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleUnlinkHhd = async () => {
+    if (!picker) return;
+    setLinkLoading(true);
+    try {
+      await unlinkPickerHhd(picker.pickerId);
+      toast.success('Picker unlinked from HHD');
+      onRefresh();
+      const detailed = await fetchPickerDetails(picker.pickerId);
+      onPickerUpdated?.(detailed);
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to unlink HHD');
+    } finally {
+      setLinkLoading(false);
+    }
   };
 
   if (!picker && !open) return null;
@@ -238,6 +277,49 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh }: Props)
                 </div>
               </div>
             )}
+
+            {/* HHD Device Linking */}
+            <div className="space-y-4">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Smartphone size={18} /> HHD Device
+              </h4>
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-3 text-sm">
+                {picker.hhdUserId ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-gray-600">
+                      <Link2 size={14} className="inline mr-1" />
+                      Linked: <code className="text-xs bg-gray-200 px-1 rounded">{picker.hhdUserId}</code>
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUnlinkHhd}
+                      disabled={linkLoading}
+                      className="text-red-600 border-red-200 hover:bg-red-50"
+                    >
+                      <Unlink size={14} className="mr-1" /> Unlink
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="HHD User ID (ObjectId)"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-md"
+                      value={hhdUserIdInput}
+                      onChange={(e) => setHhdUserIdInput(e.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleLinkHhd}
+                      disabled={linkLoading || !hhdUserIdInput.trim()}
+                    >
+                      {linkLoading ? '...' : 'Link'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Selected Shifts */}
             {picker.selectedShifts && picker.selectedShifts.length > 0 && (

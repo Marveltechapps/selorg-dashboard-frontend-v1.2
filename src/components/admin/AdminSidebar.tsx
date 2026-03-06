@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, 
+  LayoutGrid,
   Database, 
   Users, 
   UserCheck,
@@ -29,6 +30,7 @@ import {
   UserPlus,
   AlertTriangle,
   Video,
+  HelpCircle,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 
@@ -72,6 +74,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       { id: 'compliance', label: 'Compliance', icon: FileCheck },
     ]},
     { category: "System & App", items: [
+      { id: 'content-hub', label: 'Content Hub', icon: LayoutGrid },
       { id: 'audit', label: 'Audit Logs', icon: History },
       { id: 'system-tools', label: 'System Tools', icon: Cpu },
       { id: 'applications', label: 'Applications', icon: Smartphone },
@@ -80,6 +83,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       { id: 'app-settings', label: 'App Settings', icon: Sliders },
       { id: 'app-cms', label: 'App CMS', icon: Smartphone },
       { id: 'cms-pages', label: 'CMS Pages', icon: FileText },
+      { id: 'faq-management', label: 'FAQ Management', icon: HelpCircle },
     ]}
   ];
 

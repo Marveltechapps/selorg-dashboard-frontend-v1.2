@@ -2,13 +2,24 @@ import { io, Socket } from 'socket.io-client';
 import { getAuthToken, getAuthUser } from '../contexts/AuthContext';
 
 /**
- * Resolve the WebSocket server URL.
- * Priority: VITE_WS_URL env var > Vite proxy (same origin, /socket.io path).
+ * Resolve the WebSocket server URL and path.
+ * Priority: VITE_WS_URL env var > derive from VITE_API_BASE_URL > same origin.
+ * When connecting to backend, use path /hhd-socket.io (backend Socket.IO path).
  */
-function resolveWsUrl(): string {
+function resolveWsConfig(): { url: string; path: string } {
   const envUrl = (import.meta.env.VITE_WS_URL ?? '').trim();
-  if (envUrl) return envUrl;
-  return window.location.origin;
+  if (envUrl) return { url: envUrl, path: '/hhd-socket.io' };
+
+  const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').trim();
+  if (apiBase) {
+    try {
+      const u = new URL(apiBase);
+      return { url: u.origin, path: '/hhd-socket.io' };
+    } catch {
+      /* fallback */
+    }
+  }
+  return { url: window.location.origin, path: '/socket.io' };
 }
 
 class WebSocketService {
@@ -26,9 +37,10 @@ class WebSocketService {
     const token = getAuthToken();
     if (!token) return;
 
-    const socketUrl = resolveWsUrl();
+    const { url: socketUrl, path } = resolveWsConfig();
 
     this.socket = io(socketUrl, {
+      path,
       auth: { token },
 
       // 🔥 FORCE PURE WEBSOCKET (removes long polling delays)

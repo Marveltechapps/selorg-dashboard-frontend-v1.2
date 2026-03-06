@@ -8,6 +8,9 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  ExternalLink,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import {
   type TrainingVideo,
@@ -70,6 +74,9 @@ export function TrainingContentManagement() {
   const [form, setForm] = useState<TrainingVideoFormData>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<TrainingVideo | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [reordering, setReordering] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,12 +169,72 @@ export function TrainingContentManagement() {
       await deleteTrainingVideo(deleteTarget._id);
       toast.success('Training video deleted');
       setDeleteTarget(null);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget._id);
+        return next;
+      });
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete');
     } finally {
       setDeleting(false);
     }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === videos.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(videos.map((v) => v._id)));
+  };
+
+  const handleBulkActivate = async (active: boolean) => {
+    if (selectedIds.size === 0) return;
+    setBulkUpdating(true);
+    try {
+      for (const id of selectedIds) {
+        const v = videos.find((x) => x._id === id);
+        if (v) await updateTrainingVideo(id, { ...v, isActive: active });
+      }
+      toast.success(`${selectedIds.size} video(s) ${active ? 'activated' : 'deactivated'}`);
+      setSelectedIds(new Set());
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk update failed');
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const handleMove = async (v: TrainingVideo, direction: 'up' | 'down') => {
+    const idx = videos.findIndex((x) => x._id === v._id);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= videos.length) return;
+    const other = videos[swapIdx];
+    setReordering(v._id);
+    try {
+      await updateTrainingVideo(v._id, { ...v, order: other.order });
+      await updateTrainingVideo(other._id, { ...other, order: v.order });
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to reorder');
+    } finally {
+      setReordering(null);
+    }
+  };
+
+  const handlePreview = (v: TrainingVideo) => {
+    if (v.videoUrl) window.open(v.videoUrl, '_blank', 'noopener,noreferrer');
+    else toast.error('No video URL');
   };
 
   return (
@@ -179,11 +246,33 @@ export function TrainingContentManagement() {
             Manage Picker app training videos (What is Picking?, HSD usage, Safety, etc.)
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
           </Button>
+          {selectedIds.size > 0 && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleBulkActivate(true)}
+                disabled={bulkUpdating}
+              >
+                {bulkUpdating ? <Loader2 size={14} className="animate-spin mr-1" /> : <Eye size={14} className="mr-1" />}
+                Activate ({selectedIds.size})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleBulkActivate(false)}
+                disabled={bulkUpdating}
+              >
+                {bulkUpdating ? <Loader2 size={14} className="animate-spin mr-1" /> : <EyeOff size={14} className="mr-1" />}
+                Deactivate ({selectedIds.size})
+              </Button>
+            </>
+          )}
           <Button onClick={openCreate}>
             <Plus size={16} />
             Add Video
@@ -210,6 +299,12 @@ export function TrainingContentManagement() {
           <Table>
             <TableHeader>
               <TableRow className="bg-[#f4f4f5]">
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={videos.length > 0 && selectedIds.size === videos.length}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
                 <TableHead>Order</TableHead>
                 <TableHead>Video ID</TableHead>
                 <TableHead>Title</TableHead>
@@ -222,7 +317,37 @@ export function TrainingContentManagement() {
             <TableBody>
               {videos.map((v) => (
                 <TableRow key={v._id} className="hover:bg-[#fafafa]">
-                  <TableCell className="font-mono text-sm">{v.order}</TableCell>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(v._id)}
+                      onCheckedChange={() => toggleSelect(v._id)}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-sm">
+                    <div className="flex items-center gap-1">
+                      <span>{v.order}</span>
+                      <div className="flex flex-col">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => handleMove(v, 'up')}
+                          disabled={videos.indexOf(v) === 0 || reordering === v._id}
+                        >
+                          <ChevronUp size={12} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => handleMove(v, 'down')}
+                          disabled={videos.indexOf(v) === videos.length - 1 || reordering === v._id}
+                        >
+                          <ChevronDown size={12} />
+                        </Button>
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell className="font-mono text-sm text-[#52525b]">{v.videoId}</TableCell>
                   <TableCell className="font-medium">{v.title}</TableCell>
                   <TableCell>{v.durationDisplay}</TableCell>
@@ -241,6 +366,15 @@ export function TrainingContentManagement() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => handlePreview(v)}
+                      title="Open in new tab"
+                    >
+                      <ExternalLink size={14} />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

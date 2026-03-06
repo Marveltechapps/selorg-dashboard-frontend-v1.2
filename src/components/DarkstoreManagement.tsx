@@ -23,6 +23,7 @@ import { LivePickerBoardScreen } from './screens/LivePickerBoardScreen';
 import { PickerPerformance } from './screens/darkstore/PickerPerformance';
 import { SLAMonitor } from './screens/darkstore/SLAMonitor';
 import { MissingItemTracker } from './screens/darkstore/MissingItemTracker';
+import { ExceptionQueue } from './screens/darkstore/ExceptionQueue';
 import { LivePickingMonitor } from './screens/darkstore/LivePickingMonitor';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
@@ -53,6 +54,7 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'livepickingmonitor' && <LivePickingMonitor />}
             {activeTab === 'slamonitor' && <SLAMonitor />}
             {activeTab === 'missingitems' && <MissingItemTracker />}
+            {activeTab === 'exceptionqueue' && <ExceptionQueue />}
             {activeTab === 'livepickerboard' && <LivePickerBoardScreen />}
             {activeTab === 'pickerperformance' && <PickerPerformance />}
             {activeTab === 'inventory' && <InventoryOps />}

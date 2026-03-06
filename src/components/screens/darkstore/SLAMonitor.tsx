@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { websocketService } from '@/utils/websocket';
 import { useAuth } from '@/contexts/AuthContext';
 import { getSlaMonitor, type SlaMonitorRow } from '@/api/darkstore/operations.api';
 import { RefreshCw, Clock, AlertTriangle, AlertCircle, CheckCircle } from 'lucide-react';
@@ -67,6 +68,16 @@ export function SLAMonitor() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const handler = () => load();
+    websocketService.on('order:updated', handler);
+    websocketService.on('order:created', handler);
+    return () => {
+      websocketService.off('order:updated', handler);
+      websocketService.off('order:created', handler);
+    };
   }, [load]);
 
   const formatDeadline = (d: string) => {

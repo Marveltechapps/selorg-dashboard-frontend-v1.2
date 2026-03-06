@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TabletSmartphone, Plus, Search, MoreHorizontal, UserPlus, RotateCcw, AlertTriangle } from 'lucide-react';
+import { TabletSmartphone, Plus, Search, MoreHorizontal, UserPlus, RotateCcw, AlertTriangle, FileText } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
 import { Button } from '../../ui/button';
@@ -50,6 +50,7 @@ export function WarehouseDevices() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showDamagedModal, setShowDamagedModal] = useState(false);
+  const [showReturnDetailsModal, setShowReturnDetailsModal] = useState(false);
 
   const [selectedDevice, setSelectedDevice] = useState<PickerDevice | null>(null);
   const [pickers, setPickers] = useState<PickerOption[]>([]);
@@ -140,6 +141,11 @@ export function WarehouseDevices() {
     setSelectedDevice(device);
     setDamagedCondition('');
     setShowDamagedModal(true);
+  };
+
+  const openReturnDetailsModal = (device: PickerDevice) => {
+    setSelectedDevice(device);
+    setShowReturnDetailsModal(true);
   };
 
   const handleMarkDamaged = async () => {
@@ -260,6 +266,12 @@ export function WarehouseDevices() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
+                          {(device.lastReturnedAt && (device.condition || device.conditionNotes || device.conditionPhotoUrl)) && (
+                            <DropdownMenuItem onClick={() => openReturnDetailsModal(device)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              View return details
+                            </DropdownMenuItem>
+                          )}
                           {device.status === 'AVAILABLE' && (
                             <DropdownMenuItem onClick={() => openAssignModal(device)}>
                               <UserPlus className="h-4 w-4 mr-2" />
@@ -349,6 +361,51 @@ export function WarehouseDevices() {
             <div className="p-6 border-t border-border flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setShowAssignModal(false)}>Cancel</Button>
               <Button onClick={handleAssign} disabled={!assignPickerId}>Assign</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return Details Modal */}
+      {showReturnDetailsModal && selectedDevice && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-border flex justify-between items-center">
+              <h3 className="font-semibold text-lg">Return details — {selectedDevice.deviceId}</h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowReturnDetailsModal(false)}><X className="h-5 w-5" /></Button>
+            </div>
+            <div className="p-6 space-y-4">
+              {selectedDevice.lastReturnedAt && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Last returned</label>
+                  <p className="text-sm">{formatDate(selectedDevice.lastReturnedAt)}</p>
+                </div>
+              )}
+              {selectedDevice.condition && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Condition</label>
+                  <p className="text-sm capitalize">{selectedDevice.condition}</p>
+                </div>
+              )}
+              {selectedDevice.conditionNotes && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Condition notes</label>
+                  <p className="text-sm whitespace-pre-wrap">{selectedDevice.conditionNotes}</p>
+                </div>
+              )}
+              {selectedDevice.conditionPhotoUrl && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-2">Condition photo</label>
+                  <img
+                    src={selectedDevice.conditionPhotoUrl}
+                    alt="Device condition at return"
+                    className="rounded-lg border border-border w-full max-h-64 object-contain bg-muted"
+                  />
+                </div>
+              )}
+              {!selectedDevice.condition && !selectedDevice.conditionNotes && !selectedDevice.conditionPhotoUrl && (
+                <p className="text-sm text-muted-foreground italic">No return condition details recorded.</p>
+              )}
             </div>
           </div>
         </div>

@@ -190,6 +190,7 @@ export const API_ENDPOINTS = {
       byId: (id: string) => `/admin/pickers/${id}`,
       updateStatus: (id: string) => `/admin/pickers/${id}`,
       actionLogs: (id: string) => `/admin/pickers/${id}/action-logs`,
+      linkHhd: (id: string) => `/admin/pickers/${id}/link-hhd`,
       allActionLogs: '/admin/picker-action-logs',
     },
     trainingVideos: {
@@ -478,6 +479,14 @@ export const API_ENDPOINTS = {
     setCurrentDocument: (id: string) => `/customer/admin/legal/documents/${id}/set-current`,
     config: '/customer/admin/legal/config',
     updateConfig: '/customer/admin/legal/config',
+  },
+  // FAQ (Admin)
+  customerFaq: {
+    list: '/customer/admin/faq',
+    getById: (id: string) => `/customer/admin/faq/${id}`,
+    create: '/customer/admin/faq',
+    update: (id: string) => `/customer/admin/faq/${id}`,
+    delete: (id: string) => `/customer/admin/faq/${id}`,
   },
   // Cancellation Policies (Admin)
   customerCancellationPolicies: {

@@ -43,6 +43,7 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
     { id: 'livepickingmonitor', label: 'Live Picking Monitor', icon: PackageSearch },
     { id: 'slamonitor', label: 'SLA Monitor', icon: Clock },
     { id: 'missingitems', label: 'Missing Item Tracker', icon: PackageX },
+    { id: 'exceptionqueue', label: 'Exception Queue', icon: AlertTriangle },
     { id: 'livepickerboard', label: 'Live Picker Board', icon: UserCheck },
     { id: 'pickerperformance', label: 'Picker Performance', icon: FileBarChart },
     { id: 'issues', label: 'Issue Management', icon: Bug },

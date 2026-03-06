@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { websocketService } from '@/utils/websocket';
 import { RefreshCw, Loader2, Zap, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getPickersLive, type LivePicker } from '../../api/darkstore/pickers.api';
@@ -67,8 +68,17 @@ export function LivePickerBoardScreen() {
 
   useEffect(() => {
     fetchPickers();
-    const interval = setInterval(fetchPickers, 20000); // auto-refresh every 20s
-    return () => clearInterval(interval);
+  }, [fetchPickers]);
+
+  useEffect(() => {
+    websocketService.connect();
+    const handler = () => fetchPickers();
+    websocketService.on('order:updated', handler);
+    websocketService.on('picker:updated', handler);
+    return () => {
+      websocketService.off('order:updated', handler);
+      websocketService.off('picker:updated', handler);
+    };
   }, [fetchPickers]);
 
   return (

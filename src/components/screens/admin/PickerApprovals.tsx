@@ -99,6 +99,7 @@ export function PickerApprovals() {
           setSelectedPicker(null);
         }}
         onRefresh={handleRefresh}
+        onPickerUpdated={setSelectedPicker}
       />
     </div>
   );

@@ -465,6 +465,16 @@ export async function deleteBanner(id: string): Promise<{ success: boolean }> {
   return { success: true };
 }
 
+/** Fetch FAQ items from Customer FAQ API (structured Q&A for customer app) */
+export async function fetchFaq(): Promise<Array<{ question: string; answer: string; order: number; category?: string }>> {
+  try {
+    const res = await apiRequest<{ success: boolean; data: any[] }>('/customer/faq');
+    return res.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchContentPages(): Promise<ContentPage[]> {
   const res = await apiRequest<{ success: boolean; data: any[] }>(API_ENDPOINTS.customerLegal.documents);
   return (res.data ?? []).map((d: any) => ({

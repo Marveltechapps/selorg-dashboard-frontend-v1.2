@@ -31,6 +31,8 @@ import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement
 import { PickerApprovals } from './screens/admin/PickerApprovals';
 import { PickerActivityLogs } from './screens/admin/PickerActivityLogs';
 import { TrainingContentManagement } from './screens/admin/TrainingContentManagement';
+import { ContentHub } from './screens/admin/ContentHub';
+import { FaqManagement } from './screens/admin/FaqManagement';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { 
   Tag, 
@@ -77,6 +79,7 @@ const TAB_LABELS: Record<string, string> = {
   'picker-activity-logs': 'Picker Activity Logs',
   'training-content': 'Training Content',
   'ops-alerts': 'Operations Alerts',
+  'content-hub': 'Content Hub',
   'system-tools': 'System Tools',
   'applications': 'Applications',
   'customer-app-home': 'Customer App Home',
@@ -84,6 +87,7 @@ const TAB_LABELS: Record<string, string> = {
   'app-settings': 'App Settings',
   'app-cms': 'App CMS',
   'cms-pages': 'CMS Pages',
+  'faq-management': 'FAQ Management',
 };
 
 function LayoutBreadcrumb({ items }: { items: BreadcrumbSegment[] }) {
@@ -260,14 +264,16 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'geofence' && <GeofenceManager />}
             {activeTab === 'integrations' && <IntegrationManager />}
             {activeTab === 'compliance' && <ComplianceCenter />}
+            {activeTab === 'content-hub' && <ContentHub setActiveTab={setActiveTab} />}
             {activeTab === 'audit' && <AuditLogs />}
             {activeTab === 'system-tools' && <SystemTools />}
             {activeTab === 'applications' && <ApplicationsManagement />}
             {activeTab === 'customer-app-home' && <CustomerAppHome onPreview={() => setActiveTab('app-cms')} />}
             {activeTab === 'onboarding' && <OnboardingManagement />}
-            {activeTab === 'app-settings' && <CustomerAppSettings />}
+            {activeTab === 'app-settings' && <CustomerAppSettings onNavigateToLegal={() => setActiveTab('legal-policies')} />}
             {activeTab === 'app-cms' && <AppCMS onEditContent={() => setActiveTab('customer-app-home')} />}
             {activeTab === 'cms-pages' && <CmsPagesScreen />}
+            {activeTab === 'faq-management' && <FaqManagement />}
         </main>
       </div>
     </div>

@@ -76,3 +76,37 @@ export async function getOperationalAlerts(params?: { storeId?: string; status?:
   const query = q.toString();
   return apiRequest(`/darkstore/operations/alerts${query ? `?${query}` : ''}`);
 }
+
+export interface ExceptionQueueRow {
+  type: 'missing_item' | 'sla_breach' | 'cancellation' | 'rto';
+  orderId: string;
+  storeId: string;
+  pickerName: string;
+  product: string;
+  reason: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface ExceptionQueueResponse {
+  success: boolean;
+  data: ExceptionQueueRow[];
+  pagination?: { page: number; limit: number; total: number };
+}
+
+export async function getExceptionQueue(params?: {
+  storeId?: string;
+  type?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ExceptionQueueResponse> {
+  const q = new URLSearchParams();
+  if (params?.storeId) q.set('storeId', params.storeId);
+  if (params?.type) q.set('type', params.type);
+  if (params?.status) q.set('status', params.status);
+  if (params?.page) q.set('page', String(params.page));
+  if (params?.limit) q.set('limit', String(params.limit));
+  const query = q.toString();
+  return apiRequest(`/darkstore/operations/exception-queue${query ? `?${query}` : ''}`);
+}

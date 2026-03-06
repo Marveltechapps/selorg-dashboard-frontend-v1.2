@@ -1288,6 +1288,12 @@ export interface PickerDevice {
   assignedPicker: { id: string; name: string } | null;
   assignedAt: string | null;
   lastReturnedAt: string | null;
+  /** Condition at last return (good, fair, damaged) */
+  condition?: string | null;
+  /** Notes from picker at return */
+  conditionNotes?: string | null;
+  /** Photo URL of device condition at return */
+  conditionPhotoUrl?: string | null;
 }
 
 export interface PickerDevicesFilters {
