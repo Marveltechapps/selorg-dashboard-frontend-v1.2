@@ -124,3 +124,13 @@ export async function getAlertHistory(entityType: string, entityId: string, aler
   if (alertType) params.alertType = alertType;
   return get(`${BASE_PATH}/alert-history`, params);
 }
+
+/** Dev-only: emit a test order via WebSocket to verify real-time flow */
+export async function emitTestOrder(storeId = getActiveStoreId() || '') {
+  return post('/darkstore/dev/emit-test-order', { store_id: storeId });
+}
+
+/** Dev-only: emit a test order update via WebSocket */
+export async function emitTestOrderUpdate(orderId?: string, status = 'ASSIGNED', storeId = getActiveStoreId() || '') {
+  return post('/darkstore/dev/emit-test-order-update', { orderId, status, store_id: storeId });
+}

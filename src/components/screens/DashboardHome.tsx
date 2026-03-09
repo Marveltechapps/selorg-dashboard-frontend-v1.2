@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, AlertCircle, Package, User, BarChart3, TrendingUp, AlertTriangle, Users, ClipboardList, Bike, RotateCcw, XCircle, CheckCircle2, Clock, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,8 +15,10 @@ import {
 } from '../../api/dashboard';
 import { callCustomer, markRTO } from '../../api/dashboard/orders.api';
 import { getAlertHistory } from '../../api/dashboard';
-import { setPendingOrderSearch } from './LiveOrders';
+import { setPendingOrderSearch } from '../../utils/pendingOrderSearch';
 import { websocketService } from '../../utils/websocket';
+import { getPaymentDisplay } from '../../utils/orderPaymentDisplay';
+import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
 
 interface DashboardHomeProps {
   setActiveTab?: (tab: string) => void;
@@ -34,6 +36,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
+  const isWsConnected = useWebSocketConnection();
   
   // Dashboard data state
   const [stats, setStats] = useState({
@@ -67,9 +70,9 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   const [historyData, setHistoryData] = useState<Map<string, any[]>>(new Map());
   const [loadingHistory, setLoadingHistory] = useState<Set<string>>(new Set());
 
-  // Load dashboard data (re-fetch when storeId changes)
+  // Load dashboard data on mount and when storeId changes — include REST fallback for Live Order Board
   useEffect(() => {
-    loadDashboardData();
+    loadDashboardData(true, true);
   }, [storeId]);
 
   // Clock effect
@@ -78,17 +81,28 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-refresh every 30 seconds as fallback (WebSocket is primary)
+  // Auto-refresh: when WebSocket connected use 30s backup; when disconnected use 15s and poll live orders as fallback
+  const pollIntervalMs = isWsConnected ? 30000 : 15000;
   useEffect(() => {
     const interval = setInterval(() => {
-      loadDashboardData(false);
-    }, 30000);
+      loadDashboardData(false, !isWsConnected);
+    }, pollIntervalMs);
     return () => clearInterval(interval);
-  }, [storeId]);
+  }, [storeId, pollIntervalMs, isWsConnected]);
 
-  // WebSocket: real-time order events for instant dashboard updates
+  // WebSocket: Live Order Board data comes ONLY from WebSocket (snapshot on connect + incremental events)
   useEffect(() => {
     websocketService.connect();
+
+    const onSnapshot = (data: any) => {
+      if (!data || !Array.isArray(data.orders)) return;
+      if (storeId && data.store_id && data.store_id !== storeId) return;
+      const ordersWithDeadline = data.orders.map((o: any) => ({
+        ...o,
+        sla_deadline: o.sla_deadline || null,
+      }));
+      setLiveOrders(ordersWithDeadline);
+    };
 
     const onCreated = (data: any) => {
       if (!data || !data.order_id) return;
@@ -98,7 +112,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
         order_id: data.order_id,
         customer_name: data.customer_name || 'Customer',
         item_count: data.item_count || 1,
-        sla_timer: '15:00',
+        sla_timer: data.sla_timer || '15:00',
         sla_deadline: data.sla_deadline,
         sla_status: 'safe',
         status: 'new',
@@ -110,13 +124,17 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
         total_bill: data.total_bill || 0,
       };
 
-      setLiveOrders(prev => [newOrder, ...prev].slice(0, 5));
-      setStats(prev => ({
-        ...prev,
-        queue: prev.queue + 1,
-        newOrders: prev.newOrders + 1,
-        breakdown: { ...prev.breakdown, normal: prev.breakdown.normal + 1 },
-      }));
+      setLiveOrders(prev => {
+        const alreadyExists = prev.some(o => o.order_id === data.order_id);
+        if (alreadyExists) return prev;
+        setStats(s => ({
+          ...s,
+          queue: s.queue + 1,
+          newOrders: s.newOrders + 1,
+          breakdown: { ...s.breakdown, normal: s.breakdown.normal + 1 },
+        }));
+        return [newOrder, ...prev].slice(0, 5);
+      });
     };
 
     const onUpdated = (data: any) => {
@@ -147,11 +165,14 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     const onPaymentCreated = (data: any) => {
       if (!data || !data.orderId) return;
       const isFailed = data.status === 'failed';
+      const isSuccess = data.status === 'success' || data.status === 'completed';
+      const isCod = (data.methodType || '').toLowerCase() === 'cash' || (data.methodType || '').toLowerCase() === 'cod';
       setLiveOrders(prev => prev.map(o => {
         if (o.order_id !== data.orderId) return o;
+        const newStatus = isFailed ? 'failed' : (isSuccess && !isCod) ? 'paid' : o.payment_status;
         return {
           ...o,
-          payment_status: isFailed ? 'failed' : 'paid',
+          payment_status: newStatus,
         };
       }));
       if (!isFailed) {
@@ -159,12 +180,14 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       }
     };
 
+    websocketService.on('live_orders:snapshot', onSnapshot);
     websocketService.on('order:created', onCreated);
     websocketService.on('order:updated', onUpdated);
     websocketService.on('order:cancelled', onCancelled);
     websocketService.on('payment:created', onPaymentCreated);
 
     return () => {
+      websocketService.off('live_orders:snapshot', onSnapshot);
       websocketService.off('order:created', onCreated);
       websocketService.off('order:updated', onUpdated);
       websocketService.off('order:cancelled', onCancelled);
@@ -226,18 +249,22 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     return () => clearInterval(timerInterval);
   }, []);
 
-  const loadDashboardData = async (showLoading = true) => {
+  const loadDashboardData = async (showLoading = true, fetchLiveOrders = false) => {
     try {
       if (showLoading) setIsLoading(true);
       
-      // Load all dashboard data in parallel
-      const [summary, staff, stock, rto, orders] = await Promise.all([
+      // Load dashboard data in parallel. Live Order Board: REST on initial load for immediate display; WebSocket for real-time
+      const promises: Promise<any>[] = [
         getDashboardSummary(storeId).catch(() => null),
         getStaffLoad(storeId).catch(() => null),
         getStockAlerts(storeId).catch(() => null),
         getRTOAlerts(storeId).catch(() => null),
-        getLiveOrders(storeId, 'all', 5).catch(() => null),
-      ]);
+      ];
+      if (fetchLiveOrders) {
+        promises.push(getLiveOrders(storeId, 'new', 10).catch(() => ({ orders: [] })));
+      }
+      const results = await Promise.all(promises);
+      const [summary, staff, stock, rto, liveOrdersRes] = results;
 
       // Update summary stats
       if (summary) {
@@ -267,11 +294,11 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       // Update alerts (use API data or genuine empty state)
       setStockAlerts((stock && Array.isArray(stock.alerts)) ? stock.alerts : []);
       setRTOAlerts((rto && Array.isArray(rto.alerts)) ? rto.alerts : []);
-      if (orders) {
-        // Store orders with sla_deadline for real-time timer updates
-        const ordersWithDeadline = (orders.orders || []).map((order: any) => ({
-          ...order,
-          sla_deadline: order.sla_deadline || null, // Ensure deadline is included
+      // Live Order Board: REST provides initial data on first load; WebSocket overwrites/updates in real-time
+      if (fetchLiveOrders && liveOrdersRes && Array.isArray(liveOrdersRes.orders) && liveOrdersRes.orders.length > 0) {
+        const ordersWithDeadline = liveOrdersRes.orders.map((o: any) => ({
+          ...o,
+          sla_deadline: o.sla_deadline || null,
         }));
         setLiveOrders(ordersWithDeadline);
       }
@@ -283,11 +310,22 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     }
   };
 
+  // Sync data when WebSocket connects — catch up on any orders missed while disconnected
+  const loadDashboardRef = React.useRef(loadDashboardData);
+  loadDashboardRef.current = loadDashboardData;
+  const prevWsRef = React.useRef(false);
+  useEffect(() => {
+    if (isWsConnected && !prevWsRef.current) {
+      loadDashboardRef.current(false, true);
+    }
+    prevWsRef.current = isWsConnected;
+  }, [isWsConnected]);
+
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     try {
       await refreshDashboard(storeId);
-      await loadDashboardData(false);
+      await loadDashboardData(false, true);
       toast.success('Dashboard refreshed');
     } catch (error: any) {
       toast.error('Failed to refresh dashboard');
@@ -918,7 +956,15 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-[#E0E0E0] flex flex-col h-full">
            <div className="p-4 border-b border-[#E0E0E0]">
               <div className="flex items-center justify-between mb-4">
-                 <h2 className="text-lg font-bold text-[#212121]">Live Order Board</h2>
+                 <h2 className="text-lg font-bold text-[#212121] flex items-center gap-2">
+                   Live Order Board
+                   {isWsConnected && (
+                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#DCFCE7] text-[#16A34A]" title="Real-time updates via WebSocket">
+                       <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
+                       Live
+                     </span>
+                   )}
+                 </h2>
                  <button 
                    onClick={() => handleNavigate('liveorders')}
                    className="text-sm font-medium text-[#1677FF] hover:underline flex items-center gap-1"
@@ -989,15 +1035,14 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
                            </div>
                          </td>
                          <td className="px-6 py-4">
-                           <span className={cn(
-                             "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
-                             order.payment_status === 'paid' ? 'bg-[#DCFCE7] text-[#16A34A]' :
-                             order.payment_status === 'cod_pending' ? 'bg-[#FEF9C3] text-[#A16207]' :
-                             order.payment_status === 'failed' ? 'bg-[#FEE2E2] text-[#DC2626]' :
-                             'bg-[#F5F5F5] text-[#616161]'
-                           )}>
-                             {order.payment_status === 'cod_pending' ? 'COD' : order.payment_status || 'pending'}
-                           </span>
+                           {(() => {
+                             const pd = getPaymentDisplay(order);
+                             return (
+                               <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide", pd.className)}>
+                                 {pd.label}
+                               </span>
+                             );
+                           })()}
                          </td>
                          <td className="px-6 py-4">
                            <div className="flex items-center gap-2">

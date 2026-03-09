@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, MoreHorizontal, Clock, Package, Bike, User, AlertCircle, ArrowRight, Search, CheckCircle2, XCircle, ChevronDown, AlertTriangle, MapPin, Phone, Truck, ShoppingBag, Ban, CircleDot } from 'lucide-react';
+import { Filter, MoreHorizontal, Clock, Package, Bike, User, AlertCircle, ArrowRight, Search, CheckCircle2, XCircle, ChevronDown, AlertTriangle, MapPin, Phone, Truck, ShoppingBag, Ban, CircleDot, AlertOctagon } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { getLiveOrders } from '../../api/dashboard';
 import { callCustomer, markRTO, updateOrder, cancelOrder, assignOrder, startPicking, completePicking, getOrderActionLogs } from '../../api/dashboard/orders.api';
 import { getAvailablePickers } from '../../api/darkstore/pickers.api';
 import { websocketService } from '../../utils/websocket';
+import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,12 +31,8 @@ import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ActionLogsTimeline } from '../ui/action-logs-timeline';
 import { exportToCSV } from '../../utils/csvExport';
-
-let _pendingOrderSearch: string | null = null;
-
-export function setPendingOrderSearch(q: string) {
-  _pendingOrderSearch = q;
-}
+import { getPendingOrderSearch } from '../../utils/pendingOrderSearch';
+import { getPaymentDisplay } from '../../utils/orderPaymentDisplay';
 
 function AssignPickerContent({
   orderId,
@@ -131,15 +128,15 @@ export function LiveOrders() {
   const [orderActionLogsLoading, setOrderActionLogsLoading] = useState(false);
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
+  const isWsConnected = useWebSocketConnection();
 
   const [orders, setOrders] = useState<any[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
-    const q = searchParams.get('q') || _pendingOrderSearch || '';
+    const q = searchParams.get('q') || getPendingOrderSearch() || '';
     if (q) {
       setSearchQuery(q);
-      _pendingOrderSearch = null;
     }
   }, [searchParams]);
 
@@ -186,8 +183,12 @@ export function LiveOrders() {
           total_bill: data.total_bill || 0,
         };
 
-        setOrders(prev => [newOrder, ...prev]);
-        toast.info(`New order ${data.order_id} received`);
+        setOrders(prev => {
+          const alreadyExists = prev.some(o => o.order_id === data.order_id);
+          if (alreadyExists) return prev;
+          toast.info(`New order ${data.order_id} received`);
+          return [newOrder, ...prev];
+        });
       } catch (err) {
         console.error('Failed to process realtime order event', err);
       }
@@ -212,6 +213,11 @@ export function LiveOrders() {
         };
         setOrders(prev => prev.map(o => {
           if (o.order_id !== data.order_id) return o;
+          const assignee = data.assignee;
+          const pickerAssignment = data.pickerAssignment;
+          const assigneeName = assignee?.name ?? pickerAssignment?.pickerName ?? o.assignee;
+          const assigneeId = assignee?.id ?? pickerAssignment?.pickerId ?? o.assigneeId ?? '';
+          const assigneeInitials = assignee?.initials ?? pickerAssignment?.pickerName?.slice(0, 2).toUpperCase() ?? o.assigneeInitials ?? 'UA';
           return {
             ...o,
             ...(data.status && statusMapExt[data.status] ? { status: statusMapExt[data.status] } : {}),
@@ -219,6 +225,9 @@ export function LiveOrders() {
             ...(data.bagId != null ? { bagId: data.bagId } : {}),
             ...(data.rackLocation != null ? { rackLocation: data.rackLocation } : {}),
             ...(data.readyForDispatch != null ? { readyForDispatch: data.readyForDispatch } : {}),
+            ...(assigneeName != null ? { assignee: assigneeName } : {}),
+            ...(assigneeId ? { assigneeId } : {}),
+            ...(assigneeInitials ? { assigneeInitials } : {}),
           };
         }));
       } catch (err) {
@@ -240,13 +249,17 @@ export function LiveOrders() {
       try {
         if (!data || !data.orderId) return;
         const isFailed = data.status === 'failed';
+        const isSuccess = data.status === 'success' || data.status === 'completed';
+        const isCod = (data.methodType || '').toLowerCase() === 'cash' || (data.methodType || '').toLowerCase() === 'cod';
         setOrders(prev => prev.map(o => {
           if (o.order_id !== data.orderId) return o;
+          // Only set paid when payment actually succeeded; for COD, keep cod_pending
+          const newStatus = isFailed ? 'failed' : (isSuccess && !isCod) ? 'paid' : o.payment_status;
           return {
             ...o,
-            payment_status: isFailed ? 'failed' : 'paid',
+            payment_status: newStatus,
             payment_method: data.methodType || o.payment_method,
-            total_bill: data.amount || o.total_bill,
+            total_bill: data.amount ?? o.total_bill,
           };
         }));
       } catch (err) {
@@ -391,6 +404,24 @@ export function LiveOrders() {
       setIsLoading(false);
     }
   };
+
+  // Polling fallback when WebSocket is disconnected — ensures data updates even without real-time
+  const loadOrdersRef = React.useRef(loadOrders);
+  loadOrdersRef.current = loadOrders;
+  useEffect(() => {
+    if (isWsConnected) return;
+    const interval = setInterval(() => loadOrdersRef.current(), 15000);
+    return () => clearInterval(interval);
+  }, [isWsConnected]);
+
+  // Sync data when WebSocket connects — catch up on any orders/updates missed while disconnected
+  const prevWsRef = React.useRef(false);
+  useEffect(() => {
+    if (isWsConnected && !prevWsRef.current) {
+      loadOrdersRef.current();
+    }
+    prevWsRef.current = isWsConnected;
+  }, [isWsConnected]);
 
   // Filter Logic
   const filteredOrders = orders.filter(order => {
@@ -571,7 +602,17 @@ export function LiveOrders() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Live Order Board"
+        title={
+          <span className="flex items-center gap-2">
+            Live Order Board
+            {isWsConnected && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#DCFCE7] text-[#16A34A]" title="Real-time updates via WebSocket">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
+                Live
+              </span>
+            )}
+          </span>
+        }
         subtitle="Real-time tracking of all active orders across the fulfillment lifecycle."
         actions={
           <div className="flex gap-3">
@@ -788,14 +829,22 @@ export function LiveOrders() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className={cn(
-                        "flex items-center gap-2 font-mono font-bold text-sm px-3 py-1.5 rounded-lg w-fit",
-                        order.urgency === 'critical' ? 'bg-[#FEE2E2] text-[#EF4444]' :
-                        order.urgency === 'warning' ? 'bg-[#FFFBE6] text-[#D48806]' : 'bg-[#DCFCE7] text-[#16A34A]'
-                      )}>
-                        <Clock size={14} />
-                        {order.sla}
-                      </div>
+                      {(() => {
+                        const isBreached = order.sla === '00:00' || order.urgency === 'critical';
+                        return (
+                          <div className={cn(
+                            "flex items-center gap-2 font-mono font-bold text-sm px-3 py-1.5 rounded-lg w-fit",
+                            isBreached ? 'bg-[#FEE2E2] text-[#EF4444] ring-1 ring-[#EF4444]/30' :
+                            order.urgency === 'warning' ? 'bg-[#FFFBE6] text-[#D48806]' : 'bg-[#DCFCE7] text-[#16A34A]'
+                          )}>
+                            {isBreached ? <AlertOctagon size={14} aria-hidden /> : <Clock size={14} />}
+                            {order.sla}
+                            {isBreached && (
+                              <span className="ml-1 text-[10px] font-bold uppercase tracking-wide opacity-90">Breached</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       {order.assignee && order.assignee !== '-' ? (
@@ -818,15 +867,14 @@ export function LiveOrders() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-0.5">
-                        <span className={cn(
-                          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide w-fit",
-                          order.payment_status === 'paid' ? 'bg-[#DCFCE7] text-[#16A34A]' :
-                          order.payment_status === 'cod_pending' ? 'bg-[#FEF9C3] text-[#A16207]' :
-                          order.payment_status === 'failed' ? 'bg-[#FEE2E2] text-[#DC2626]' :
-                          'bg-[#F5F5F5] text-[#616161]'
-                        )}>
-                          {order.payment_status === 'cod_pending' ? 'COD' : order.payment_status || 'pending'}
-                        </span>
+                        {(() => {
+                          const pd = getPaymentDisplay(order);
+                          return (
+                            <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide w-fit", pd.className)}>
+                              {pd.label}
+                            </span>
+                          );
+                        })()}
                         {order.total_bill > 0 && (
                           <span className="text-xs text-[#757575] font-medium">
                             ₹{Number(order.total_bill).toLocaleString('en-IN')}
@@ -865,6 +913,9 @@ export function LiveOrders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handlePrintLabel(order.id)}>
                             Print Label
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setAssignDialog({ open: true, orderId: order.order_id, order })}>
+                            <User className="mr-2 h-4 w-4" /> Assign Picker
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
@@ -1020,15 +1071,14 @@ export function LiveOrders() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-gray-500">Payment Status</p>
-                      <span className={cn(
-                        "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mt-1",
-                        selectedOrder.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
-                        selectedOrder.payment_status === 'cod_pending' ? 'bg-yellow-100 text-yellow-700' :
-                        selectedOrder.payment_status === 'failed' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-600'
-                      )}>
-                        {selectedOrder.payment_status === 'cod_pending' ? 'COD - Pending' : selectedOrder.payment_status || 'Pending'}
-                      </span>
+                      {(() => {
+                        const pd = getPaymentDisplay(selectedOrder);
+                        return (
+                          <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mt-1", pd.className)}>
+                            {pd.label === 'COD' ? 'COD - Pending' : pd.label}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div>
                       <p className="text-gray-500">Payment Method</p>

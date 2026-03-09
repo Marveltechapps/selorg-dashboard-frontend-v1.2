@@ -3,8 +3,9 @@ import { getAuthToken, getAuthUser } from '../contexts/AuthContext';
 
 /**
  * Resolve the WebSocket server URL and path.
- * Priority: VITE_WS_URL env var > derive from VITE_API_BASE_URL > same origin.
- * When connecting to backend, use path /hhd-socket.io (backend Socket.IO path).
+ * Priority: VITE_WS_URL > VITE_API_BASE_URL origin > direct backend (dev) > same origin.
+ * Connects directly to backend in dev to avoid Vite proxy "socket hang up" errors.
+ * Uses path /hhd-socket.io (backend Socket.IO path).
  */
 function resolveWsConfig(): { url: string; path: string } {
   const envUrl = (import.meta.env.VITE_WS_URL ?? '').trim();
@@ -19,8 +20,19 @@ function resolveWsConfig(): { url: string; path: string } {
       /* fallback */
     }
   }
-  return { url: window.location.origin, path: '/socket.io' };
+
+  // Dev: connect directly to backend to bypass Vite proxy (avoids ws proxy "socket hang up")
+  const port = (import.meta.env.VITE_PROXY_PORT ?? '5001').toString();
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    const host = origin.includes('localhost') ? 'localhost' : new URL(origin).hostname;
+    return { url: `http://${host}:${port}`, path: '/hhd-socket.io' };
+  }
+
+  return { url: window.location.origin, path: '/hhd-socket.io' };
 }
+
+const RETRY_INTERVAL_MS = 30000; // Retry every 30s when connection failed
 
 class WebSocketService {
   private socket: Socket | null = null;
@@ -29,6 +41,29 @@ class WebSocketService {
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
   private hasLoggedMaxAttempts = false;
   private connectionFailed = false;
+  private retryTimerId: ReturnType<typeof setInterval> | null = null;
+
+  private scheduleRetry() {
+    if (this.retryTimerId) return;
+    this.retryTimerId = setInterval(() => {
+      if (this.socket?.connected) {
+        this.clearRetryTimer();
+        return;
+      }
+      this.clearRetryTimer();
+      this.connectionFailed = false;
+      this.hasLoggedMaxAttempts = false;
+      this.reconnectAttempts = 0;
+      this.connect();
+    }, RETRY_INTERVAL_MS);
+  }
+
+  private clearRetryTimer() {
+    if (this.retryTimerId) {
+      clearInterval(this.retryTimerId);
+      this.retryTimerId = null;
+    }
+  }
 
   connect() {
     if (this.socket?.connected) return;
@@ -43,8 +78,8 @@ class WebSocketService {
       path,
       auth: { token },
 
-      // 🔥 FORCE PURE WEBSOCKET (removes long polling delays)
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
+      upgrade: true,
 
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
@@ -55,7 +90,7 @@ class WebSocketService {
 
     this.socket.on('connect', () => {
       console.log('WebSocket connected');
-
+      this.clearRetryTimer();
       this.reconnectAttempts = 0;
       this.hasLoggedMaxAttempts = false;
       this.connectionFailed = false;
@@ -88,11 +123,11 @@ class WebSocketService {
         this.connectionFailed = true;
 
         console.warn(
-          'WebSocket: backend unreachable after %d attempts. Real-time updates disabled.',
-          this.maxReconnectAttempts
+          `WebSocket: backend unreachable after ${this.maxReconnectAttempts} attempts. Will retry periodically. Real-time updates paused.`
         );
 
         this.cleanupSocket();
+        this.scheduleRetry();
       }
     });
 
@@ -118,6 +153,7 @@ class WebSocketService {
   }
 
   disconnect() {
+    this.clearRetryTimer();
     this.cleanupSocket();
     this.listeners.clear();
 
@@ -127,6 +163,7 @@ class WebSocketService {
   }
 
   resetConnection() {
+    this.clearRetryTimer();
     this.connectionFailed = false;
     this.hasLoggedMaxAttempts = false;
     this.reconnectAttempts = 0;

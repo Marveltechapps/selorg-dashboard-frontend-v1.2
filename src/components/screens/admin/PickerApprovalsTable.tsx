@@ -1,6 +1,7 @@
 import React from 'react';
-import { Search } from 'lucide-react';
+import { Search, FileText, HelpCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -20,6 +21,12 @@ const DOCS_STATUS_CLASSES: Record<string, string> = {
   not_uploaded: 'bg-red-100 text-red-800',
   partial: 'bg-yellow-100 text-yellow-800',
   complete: 'bg-green-100 text-green-800',
+};
+
+const DOCS_STATUS_TOOLTIPS: Record<string, string> = {
+  not_uploaded: 'Picker has not uploaded required documents (ID proof, address proof). Click row to view details and request upload.',
+  partial: 'Some documents uploaded. Click row to view and verify remaining documents.',
+  complete: 'All required documents uploaded and verified.',
 };
 
 const ONBOARDING_STAGE_LABELS: Record<string, string> = {
@@ -138,7 +145,21 @@ export function PickerApprovalsTable({
                 <th className="px-6 py-3">Name</th>
                 <th className="px-6 py-3">Phone</th>
                 <th className="px-6 py-3">Site</th>
-                <th className="px-6 py-3">Docs</th>
+                <th className="px-6 py-3">
+                  <span className="inline-flex items-center gap-1">
+                    Docs
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle size={12} className="text-[#9E9E9E] cursor-help" aria-label="Documents status help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-[220px]">ID/address proof status. not uploaded = docs missing; partial = some uploaded; complete = verified.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </span>
+                </th>
                 <th className="px-6 py-3">Face</th>
                 <th className="px-6 py-3">Training</th>
                 <th className="px-6 py-3">Onboarding</th>
@@ -161,14 +182,32 @@ export function PickerApprovalsTable({
                   <td className="px-6 py-4 text-[#616161]">{picker.phone || '—'}</td>
                   <td className="px-6 py-4 text-[#616161]">{picker.site || '—'}</td>
                   <td className="px-6 py-4">
-                    <Badge
-                      variant="outline"
-                      className={`capitalize border-0 font-medium text-xs ${
-                        DOCS_STATUS_CLASSES[picker.docsStatus] || 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {picker.docsStatus.replace('_', ' ')}
-                    </Badge>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1.5 cursor-help">
+                            <Badge
+                              variant="outline"
+                              className={`capitalize border-0 font-medium text-xs ${
+                                DOCS_STATUS_CLASSES[picker.docsStatus] || 'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {picker.docsStatus === 'not_uploaded' ? (
+                                <>
+                                  <FileText size={10} className="mr-0.5 opacity-70" />
+                                  Not uploaded — View details
+                                </>
+                              ) : (
+                                picker.docsStatus.replace('_', ' ')
+                              )}
+                            </Badge>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-[240px]">{DOCS_STATUS_TOOLTIPS[picker.docsStatus] ?? `Documents status: ${picker.docsStatus}`}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </td>
                   <td className="px-6 py-4">
                     <Badge

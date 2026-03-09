@@ -32,6 +32,7 @@ import {
   fetchSlaConfig,
   fetchIntegrationHealth,
   updateIncident,
+  seedCitywideData,
 } from './citywideControlApi';
 import { ZoneDetailModal } from './modals/ZoneDetailModal';
 
@@ -399,12 +400,27 @@ export function CitywideControl() {
           <div className="flex-1 bg-[#f4f4f5] p-3 overflow-auto">
             {/* Interactive Zone Grid */}
             {zones.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-[#71717a]">
+              <div className="flex flex-col items-center justify-center h-full text-[#71717a] gap-4">
                 <div className="text-center">
                   <Map size={48} className="mx-auto mb-4 text-[#a1a1aa]" />
                   <p className="font-medium">No zones data available</p>
                   <p className="text-sm mt-2">Zone heat map will appear here once zones are configured</p>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await seedCitywideData();
+                      toast.success('Demo zones and data seeded');
+                      loadAllData();
+                    } catch {
+                      toast.error('Failed to seed data');
+                    }
+                  }}
+                >
+                  Load demo zones &amp; data
+                </Button>
               </div>
             ) : (
             <div className="grid grid-cols-4 gap-3 h-full">

@@ -6,7 +6,7 @@
   const apiBaseUrl = process.env.VITE_API_BASE_URL?.trim() || '';
   const defaultBackendPort = process.env.VITE_PROXY_PORT || '5001';
   const proxyTarget = apiBaseUrl ? new URL(apiBaseUrl).origin : `http://localhost:${defaultBackendPort}`;
-  const wsServerUrl = process.env.VITE_WS_URL?.trim() || 'http://localhost:5050';
+  const wsServerUrl = process.env.VITE_WS_URL?.trim() || `http://localhost:${process.env.VITE_PROXY_PORT || '5001'}`;
 
   export default defineConfig({
     plugins: [react()],
@@ -64,16 +64,72 @@
       host: true,
       open: true,
       proxy: {
+        '/health': {
+          target: proxyTarget,
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy) => {
+            proxy.on('error', (err: NodeJS.ErrnoException, _req, res) => {
+              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
+              if (code === 'ECONNREFUSED' || err?.message?.includes('hang up') || code === 'ECONNRESET') {
+                console.warn(`[Vite Proxy] Backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
+              }
+              if (res && !res.headersSent) {
+                res.writeHead(502, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ status: 'unreachable', error: 'Backend not running' }));
+              }
+            });
+          },
+        },
         '/api': {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          configure: (proxy) => {
+            proxy.on('error', (err: NodeJS.ErrnoException, _req, res) => {
+              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
+              const hangUp = err?.message?.includes('hang up') || code === 'ECONNRESET';
+              if (code === 'ECONNREFUSED') {
+                console.warn(`[Vite Proxy] Backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
+              } else if (hangUp) {
+                console.warn(`[Vite Proxy] Backend closed connection. Retrying...`);
+              }
+              if (res && !res.headersSent) {
+                res.writeHead(502, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Backend unreachable', code: code ?? 'UNKNOWN' }));
+              }
+            });
+          },
         },
         '/socket.io': {
           target: wsServerUrl,
           changeOrigin: true,
           secure: false,
           ws: true,
+          configure: (proxy) => {
+            proxy.on('error', (err: NodeJS.ErrnoException) => {
+              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
+              const hangUp = err?.message?.includes('hang up') || code === 'ECONNRESET';
+              if (code === 'ECONNREFUSED' || hangUp) {
+                console.warn(`[Vite Proxy] WebSocket backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
+              }
+            });
+          },
+        },
+        '/hhd-socket.io': {
+          target: wsServerUrl,
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+          configure: (proxy) => {
+            proxy.on('error', (err: NodeJS.ErrnoException) => {
+              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
+              const hangUp = err?.message?.includes('hang up') || code === 'ECONNRESET';
+              if (code === 'ECONNREFUSED' || hangUp) {
+                console.warn(`[Vite Proxy] WebSocket backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
+              }
+            });
+          },
         },
       },
     },

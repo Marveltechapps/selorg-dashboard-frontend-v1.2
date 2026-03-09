@@ -66,6 +66,7 @@
             "vite": "6.3.5"
       },
       "scripts": {
+            "start": "vite",
             "dev": "vite",
             "build": "vite build",
             "start:static": "npx serve -s build -l 3000",

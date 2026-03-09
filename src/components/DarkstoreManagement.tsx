@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
+import { websocketService } from '../utils/websocket';
+import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from './TopBar';
 import { DashboardHome } from './screens/DashboardHome';
 import { LiveOrders } from './screens/LiveOrders';
@@ -27,12 +29,36 @@ import { ExceptionQueue } from './screens/darkstore/ExceptionQueue';
 import { LivePickingMonitor } from './screens/darkstore/LivePickingMonitor';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { BackendUnreachableBanner } from './BackendUnreachableBanner';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
+  const { token, isAuthenticated } = useAuth();
+
+  // Establish WebSocket connection when authenticated so Overview & Live Order Board get real-time updates.
+  // Do not call resetConnection() on mount — it disconnects any in-progress connection and causes
+  // "WebSocket is closed before the connection is established". Use connect() only; visibility handler
+  // handles retry after backend was down.
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    websocketService.connect();
+  }, [isAuthenticated, token]);
+
+  // Retry WebSocket when tab becomes visible (user may have started backend or recovered network)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !websocketService.isConnected()) {
+        websocketService.resetConnection();
+        websocketService.connect();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
+      <BackendUnreachableBanner />
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
       
       <div className="pl-[220px]">

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Search, Zap, Wrench } from 'lucide-react';
 import { cn } from "../lib/utils";
-import { setPendingOrderSearch } from './screens/LiveOrders';
+import { setPendingOrderSearch } from '../utils/pendingOrderSearch';
 
 interface MetricCardProps {
   label: string;
