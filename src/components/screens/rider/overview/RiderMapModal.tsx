@@ -63,7 +63,7 @@ export function RiderMapModal({ isOpen, onClose, riders }: RiderMapModalProps) {
                      const color = rider.status === 'idle' ? 'bg-green-500' : rider.status === 'busy' ? 'bg-orange-500' : 'bg-gray-400';
                      
                      return (
-                        <TooltipProvider key={rider.id}>
+                        <TooltipProvider key={rider.id || `rider-${i}`}>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <div 

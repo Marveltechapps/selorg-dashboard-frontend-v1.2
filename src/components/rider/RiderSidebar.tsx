@@ -39,36 +39,21 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
 
   return (
     <div className="w-[220px] h-screen bg-[#111827] text-[#E6E6E6] flex flex-col fixed left-0 top-0 z-50 shadow-xl border-r border-[#1F2937]">
-      {/* Region Selector */}
+      {/* Fixed single hub (Chennai) */}
       <div className="p-4 border-b border-[#1F2937]">
         <div className="flex items-center gap-2 mb-2 text-[#9E9E9E] text-[10px] uppercase font-bold tracking-wider">
           <Store size={12} />
           <span>Current Hub</span>
         </div>
-        <details className="relative group">
-          <summary className="list-none [&::-webkit-details-marker]:hidden w-full bg-[#1F2937] hover:bg-[#2A3647] transition-colors p-2.5 rounded-lg flex items-center justify-between cursor-pointer border border-transparent hover:border-[#F97316] outline-none">
-            <div className="flex flex-col items-start">
-              <span className="font-bold text-sm text-white">Downtown Hub</span>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className="w-2 h-2 rounded-full bg-[#F97316] animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
-                <span className="text-[10px] text-[#F97316]">Active</span>
-              </div>
-            </div>
-            <ChevronDown size={14} className="text-[#666666] group-hover:text-white transition-transform group-open:rotate-180" />
-          </summary>
-          
-          <div className="absolute top-full left-0 right-0 mt-2 bg-[#1F2937] border border-[#F97316] rounded-lg shadow-xl overflow-hidden z-50">
-            <div className="p-2.5 hover:bg-[#2A3647] cursor-pointer flex items-center justify-between border-b border-[#F97316]/50 transition-colors">
-               <div className="flex flex-col items-start">
-                 <span className="font-bold text-sm text-[#E6E6E6]">Westside Hub</span>
-                 <div className="flex items-center gap-1.5 mt-1">
-                   <span className="w-2 h-2 rounded-full bg-[#F97316]" />
-                   <span className="text-[10px] text-[#F97316]">Active</span>
-                 </div>
-               </div>
+        <div className="w-full bg-[#1F2937] p-2.5 rounded-lg flex items-center justify-between border border-[#1F2937]">
+          <div className="flex flex-col items-start">
+            <span className="font-bold text-sm text-white">Chennai Hub</span>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="w-2 h-2 rounded-full bg-[#F97316] animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
+              <span className="text-[10px] text-[#F97316]">Active</span>
             </div>
           </div>
-        </details>
+        </div>
       </div>
 
       {/* Navigation */}

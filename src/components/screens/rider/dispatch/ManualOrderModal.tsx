@@ -231,7 +231,7 @@ export function ManualOrderModal({
                 <SelectItem value="">Leave unassigned</SelectItem>
                 {availableRiders.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
-                    {r.name} ({r.zone})
+                    {r.name}{r.phone ? ` (${r.phone})` : ''} ({r.zone})
                   </SelectItem>
                 ))}
                 {availableRiders.length === 0 && (

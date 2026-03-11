@@ -29,7 +29,6 @@ import { ExceptionQueue } from './screens/darkstore/ExceptionQueue';
 import { LivePickingMonitor } from './screens/darkstore/LivePickingMonitor';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
-import { BackendUnreachableBanner } from './BackendUnreachableBanner';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
@@ -58,7 +57,6 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
-      <BackendUnreachableBanner />
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
       
       <div className="pl-[220px]">

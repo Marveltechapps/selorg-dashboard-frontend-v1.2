@@ -58,6 +58,31 @@ export interface DispatchQueueResponse {
   };
 }
 
+export interface ReadyDispatchOrder {
+  order_id: string;
+  status: string;
+  bag_id: string;
+  rack_location: string;
+  items_count: number;
+  order_type: string;
+  customer_name: string;
+  sla_status: string;
+  sla_deadline: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReadyOrdersResponse {
+  success: boolean;
+  ready_orders: ReadyDispatchOrder[];
+  pagination: {
+    current_page: number;
+    total_pages: number;
+    total_items: number;
+    items_per_page: number;
+  };
+}
+
 export interface Rider {
   rider_id: string;
   rider_name: string;
@@ -218,6 +243,29 @@ export async function fetchDispatchQueue(
 
   if (!response.ok) {
     throw new Error(`Failed to fetch dispatch queue: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function fetchReadyForDispatchOrders(
+  storeId: string = getActiveStoreId() || '',
+  page: number = 1,
+  limit: number = 50
+): Promise<ReadyOrdersResponse> {
+  const params = new URLSearchParams({
+    storeId,
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/darkstore/outbound/ready-orders?${params}`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ready-for-dispatch orders: ${response.statusText}`);
   }
 
   return response.json();

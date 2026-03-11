@@ -169,7 +169,7 @@ export function ApplicationsManagement() {
             {applications.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-12 text-[#71717a]">
-                  No applications registered. Run <code className="text-xs bg-[#f4f4f5] px-2 py-1 rounded">npm run seed:applications</code> in the backend.
+                  No applications registered.
                 </TableCell>
               </TableRow>
             ) : (

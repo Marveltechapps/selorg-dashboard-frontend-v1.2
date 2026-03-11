@@ -4,6 +4,7 @@ import {
   MapPin, User, ArrowRight, Package, Search, Filter,
   Share2, ClipboardList, Timer, Navigation, RefreshCw, History, ChevronRight, X, ShieldCheck, BadgeAlert
 } from 'lucide-react';
+import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { PageHeader } from '../ui/page-header';
@@ -12,16 +13,76 @@ import { toast } from "sonner";
 import { Button } from "../ui/button";
 import * as outboundApi from './outboundApi';
 import { ActionHistoryViewer } from '../ui/action-history-viewer';
+import { websocketService } from '../../utils/websocket';
+
+const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+
+const riderMapContainerStyle = {
+  width: '100%',
+  height: '100%',
+};
+
+function RiderMap({ riders }: { riders: outboundApi.Rider[] }) {
+  const { isLoaded } = useJsApiLoader({
+    id: 'outbound-rider-map',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
+  });
+
+  const onlineRiders = riders.filter(
+    (r) => r.status !== 'offline' && r.location && typeof r.location.lat === 'number' && typeof r.location.lng === 'number'
+  );
+
+  const defaultCenter = onlineRiders.length
+    ? { lat: onlineRiders[0].location!.lat, lng: onlineRiders[0].location!.lng }
+    : { lat: 12.9841, lng: 80.2518 }; // Default to Adyar area if no live riders
+
+  if (!isLoaded) {
+    return (
+      <div className="flex items-center justify-center w-full h-full text-xs text-[#757575]">
+        Loading live rider map...
+      </div>
+    );
+  }
+
+  return (
+    <GoogleMap
+      mapContainerStyle={riderMapContainerStyle}
+      center={defaultCenter}
+      zoom={13}
+      options={{
+        disableDefaultUI: true,
+        clickableIcons: false,
+        styles: [
+          {
+            featureType: 'poi',
+            stylers: [{ visibility: 'off' }],
+          },
+        ],
+      }}
+    >
+      {onlineRiders.map((rider) => (
+        <Marker
+          key={rider.rider_id}
+          position={{
+            lat: rider.location!.lat,
+            lng: rider.location!.lng,
+          }}
+          label={{
+            text: rider.rider_name || rider.rider_id,
+            fontSize: '10px',
+            className: 'font-bold',
+          }}
+        />
+      ))}
+    </GoogleMap>
+  );
+}
 
 export function OutboundOps() {
   const [activeTab, setActiveTab] = useState<'dispatch' | 'transfers'>('dispatch');
   const [summary, setSummary] = useState<outboundApi.OutboundSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const { activeStoreId } = useAuth();
-
-  useEffect(() => {
-    loadSummary();
-  }, [activeStoreId]);
 
   const loadSummary = async () => {
     setLoading(true);
@@ -35,6 +96,24 @@ export function OutboundOps() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadSummary();
+  }, [activeStoreId]);
+
+  useEffect(() => {
+    websocketService.connect();
+
+    const handleSummaryUpdated = () => {
+      loadSummary();
+    };
+
+    websocketService.on('outbound:summary_updated', handleSummaryUpdated);
+
+    return () => {
+      websocketService.off('outbound:summary_updated', handleSummaryUpdated);
+    };
+  }, [activeStoreId]);
 
   return (
     <div className="space-y-6">
@@ -101,6 +180,7 @@ function TabButton({ id, label, icon: Icon, active, onClick }: any) {
 
 function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.OutboundSummary | null, reloadSummary: () => void }) {
   const [dispatchQueue, setDispatchQueue] = useState<outboundApi.DispatchItem[]>([]);
+  const [readyOrders, setReadyOrders] = useState<outboundApi.ReadyDispatchOrder[]>([]);
   const [riders, setRiders] = useState<outboundApi.Rider[]>([]);
   const [loading, setLoading] = useState(true);
   const [batchLoading, setBatchLoading] = useState(false);
@@ -109,6 +189,7 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
   const [showMapHistory, setShowMapHistory] = useState(false);
   const [lastActionTime, setLastActionTime] = useState<Date | null>(null);
   const [timerText, setTimerText] = useState('00:00');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
 
@@ -117,6 +198,29 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
     const interval = setInterval(loadRiders, 30000);
     return () => clearInterval(interval);
   }, [storeId]);
+
+  useEffect(() => {
+    websocketService.connect();
+
+    const handleDispatchUpdated = () => {
+      loadDispatchQueue();
+      loadRiders();
+      reloadSummary();
+    };
+
+    const handleRidersUpdated = () => {
+      loadRiders();
+      reloadSummary();
+    };
+
+    websocketService.on('outbound:dispatch_updated', handleDispatchUpdated);
+    websocketService.on('outbound:riders_updated', handleRidersUpdated);
+
+    return () => {
+      websocketService.off('outbound:dispatch_updated', handleDispatchUpdated);
+      websocketService.off('outbound:riders_updated', handleRidersUpdated);
+    };
+  }, [storeId, reloadSummary]);
 
   useEffect(() => {
     if (!lastActionTime) return;
@@ -132,7 +236,7 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
   const loadData = async () => {
     setLoading(true);
     try {
-      await Promise.all([loadDispatchQueue(), loadRiders()]);
+      await Promise.all([loadDispatchQueue(), loadReadyOrders(), loadRiders()]);
     } finally {
       setLoading(false);
     }
@@ -144,6 +248,19 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
       setDispatchQueue(data.dispatch_queue);
     } catch (error) {
       console.error('Failed to load dispatch queue:', error);
+    }
+  };
+
+  const loadReadyOrders = async () => {
+    try {
+      const data = await outboundApi.fetchReadyForDispatchOrders();
+      setReadyOrders(data.ready_orders || []);
+      // Reset selection if current selection is no longer ready
+      if (selectedOrderId && !data.ready_orders?.some(o => o.order_id === selectedOrderId)) {
+        setSelectedOrderId(null);
+      }
+    } catch (error) {
+      console.error('Failed to load ready-for-dispatch orders:', error);
     }
   };
 
@@ -223,58 +340,70 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
 
               <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[400px]">
                  {loading ? (
-                   <LoadingState text="Loading queue..." />
-                 ) : dispatchQueue.length === 0 ? (
-                   <EmptyState title="No active dispatches" description="All orders have been dispatched." icon={Navigation} />
+                   <LoadingState text="Loading ready orders..." />
+                 ) : readyOrders.length === 0 ? (
+                   <EmptyState
+                     title="No orders ready for dispatch"
+                     description="Picking-completed orders with bag and rack will appear here."
+                     icon={Package}
+                   />
                  ) : (
-                   dispatchQueue.map(item => (
-                     <div key={item.dispatch_id} className="p-4 bg-white border border-[#E0E0E0] rounded-lg hover:shadow-sm transition-shadow">
-                       <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-3">
-                             <div className={cn(
-                               "w-10 h-10 rounded-full flex items-center justify-center text-white",
-                               item.status === 'assigned' || item.status === 'in_transit' ? "bg-[#212121]" :
-                               item.status === 'waiting' ? "bg-[#F59E0B]" : "bg-[#EF4444]"
-                             )}>
-                                <Bike size={20} />
+                   readyOrders.map(order => {
+                     const isSelected = selectedOrderId === order.order_id;
+                     return (
+                       <button
+                         key={order.order_id}
+                         type="button"
+                         onClick={() => setSelectedOrderId(isSelected ? null : order.order_id)}
+                         className={cn(
+                           "w-full text-left p-4 bg-white border rounded-lg hover:shadow-sm transition-shadow",
+                           isSelected ? "border-[#1677FF] ring-1 ring-[#1677FF]/40" : "border-[#E0E0E0]"
+                         )}
+                       >
+                         <div className="flex justify-between items-start mb-2">
+                           <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[#1677FF] text-white">
+                               <Package size={20} />
                              </div>
                              <div>
-                                <div className="font-bold text-[#212121]">{item.dispatch_id}</div>
-                                <div className={cn(
-                                  "text-xs font-bold",
-                                  item.status === 'waiting' ? "text-[#D97706] animate-pulse" : "text-[#616161]"
-                                )}>
-                                   {item.rider_name || 'Waiting for assignment...'}
-                                </div>
+                               <div className="font-bold text-[#212121]">{order.order_id}</div>
+                               <div className="text-[11px] text-[#757575] font-bold uppercase">
+                                 {order.order_type || 'Normal'} • {order.items_count} Items
+                               </div>
+                               {order.customer_name && (
+                                 <div className="text-xs text-[#9E9E9E] mt-0.5">
+                                   {order.customer_name}
+                                 </div>
+                               )}
                              </div>
-                          </div>
-                          <div className="text-right">
-                             <span className={cn(
-                               "px-2 py-1 rounded text-[10px] font-bold uppercase",
-                               item.status === 'assigned' || item.status === 'in_transit' ? "bg-[#E6F7FF] text-[#1677FF]" :
-                               item.status === 'waiting' ? "bg-[#FFF7E6] text-[#D46B08]" : "bg-[#FEE2E2] text-[#EF4444]"
-                             )}>
-                                {item.status.replace('_', ' ')}
+                           </div>
+                           <div className="text-right space-y-1">
+                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-100">
+                               Ready to Dispatch
                              </span>
-                             {item.eta && <div className="text-[10px] text-[#757575] mt-1 font-bold">ETA: {item.eta}</div>}
-                          </div>
-                       </div>
-
-                       <div className="flex items-center gap-4 text-xs text-[#616161] bg-[#FAFAFA] p-2 rounded">
-                          <div className="flex items-center gap-1">
-                             <Package size={14} /> {item.orders_count} Orders
-                          </div>
-                          <div className="flex items-center gap-1">
-                             <Share2 size={14} /> {item.dispatch_type}
-                          </div>
-                          {item.status === 'delayed' && (
-                             <div className="flex items-center gap-1 text-[#EF4444] font-bold">
-                                <AlertTriangle size={14} /> Store Delay
+                             <div className="text-[10px] text-[#9E9E9E] font-mono">
+                               {order.created_at && new Date(order.created_at).toLocaleTimeString()}
                              </div>
-                          )}
-                       </div>
-                     </div>
-                   ))
+                           </div>
+                         </div>
+                         <div className="flex items-center justify-between text-xs text-[#616161] bg-[#FAFAFA] p-2 rounded">
+                           <div className="flex items-center gap-2">
+                             <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#E3F2FD] text-[#1565C0] font-mono text-[11px]">
+                               Bag: {order.bag_id || '—'}
+                             </span>
+                             <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#FFF3E0] text-[#E65100] font-mono text-[11px]">
+                               Rack: {order.rack_location || '—'}
+                             </span>
+                           </div>
+                           {isSelected && (
+                             <span className="text-[10px] font-bold text-[#1677FF] flex items-center gap-1">
+                               <CheckCircle2 size={12} /> Selected for manual dispatch
+                             </span>
+                           )}
+                         </div>
+                       </button>
+                     );
+                   })
                  )}
               </div>
             </>
@@ -309,30 +438,8 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
                  <ActionHistoryViewer module="outbound" limit={10} />
                </div>
              ) : (
-               <div className="bg-[#F5F5F5] rounded-lg border border-[#E0E0E0] flex-1 relative flex items-center justify-center overflow-hidden mb-4 min-h-[300px]">
-                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#212121_1px,transparent_1px)] [background-size:16px_16px]" />
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                     <div className="w-6 h-6 bg-[#1677FF] rounded-full border-4 border-white shadow-lg animate-pulse" />
-                  </div>
-                  {riders.filter(r => r.status !== 'offline').slice(0, 8).map((rider, idx) => {
-                    const pos = [
-                      { top: '25%', left: '25%' }, { bottom: '25%', right: '33%' },
-                      { top: '33%', right: '25%' }, { top: '15%', left: '50%' },
-                      { bottom: '15%', left: '40%' }, { top: '60%', left: '20%' },
-                      { bottom: '40%', right: '15%' }, { top: '10%', right: '10%' }
-                    ][idx];
-                    return (
-                      <div
-                        key={rider.rider_id}
-                        className="absolute w-4 h-4 rounded-full border-2 border-white shadow cursor-pointer group"
-                        style={{ ...pos, backgroundColor: rider.status === 'busy' ? '#F59E0B' : rider.status === 'waiting' ? '#10B981' : '#212121' }}
-                      >
-                        <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-black text-white text-[10px] py-1 px-2 rounded whitespace-nowrap z-10">
-                          {rider.rider_name} ({rider.status})
-                        </div>
-                      </div>
-                    );
-                  })}
+               <div className="bg-[#F5F5F5] rounded-lg border border-[#E0E0E0] flex-1 relative overflow-hidden mb-4 min-h-[300px]">
+                  <RiderMap riders={riders} />
                </div>
              )}
              
@@ -364,7 +471,17 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
           </div>
        </div>
 
-       {showManualModal && <ManualAssignModal riders={riders} onClose={() => setShowManualModal(false)} onRefresh={loadData} onActionSuccess={() => setLastActionTime(new Date())} />}
+       {showManualModal && (
+         <ManualAssignModal
+           riders={riders}
+           readyOrders={readyOrders}
+           selectedOrderId={selectedOrderId}
+           onSelectOrder={setSelectedOrderId}
+           onClose={() => setShowManualModal(false)}
+           onRefresh={loadData}
+           onActionSuccess={() => setLastActionTime(new Date())}
+         />
+       )}
     </div>
   );
 }
@@ -382,6 +499,22 @@ function OutboundTransfersTab({ reloadSummary }: { reloadSummary: () => void }) 
     loadTransfers();
     loadSlaSummary();
   }, []);
+
+  useEffect(() => {
+    websocketService.connect();
+
+    const handleTransfersUpdated = () => {
+      loadTransfers();
+      loadSlaSummary();
+      reloadSummary();
+    };
+
+    websocketService.on('outbound:transfers_updated', handleTransfersUpdated);
+
+    return () => {
+      websocketService.off('outbound:transfers_updated', handleTransfersUpdated);
+    };
+  }, [reloadSummary]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -611,18 +744,18 @@ function OutboundTransfersTab({ reloadSummary }: { reloadSummary: () => void }) 
   );
 }
 
-function ManualAssignModal({ riders, onClose, onRefresh, onActionSuccess }: any) {
+function ManualAssignModal({ riders, readyOrders, selectedOrderId, onSelectOrder, onClose, onRefresh, onActionSuccess }: any) {
   const [selectedRider, setSelectedRider] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
 
   const handleAssign = async () => {
-    if (!selectedRider) return;
+    if (!selectedRider || !selectedOrderId) return;
     setSubmitting(true);
     try {
       await outboundApi.manuallyAssignRider(storeId, {
-        order_ids: [],
+        order_ids: [selectedOrderId],
         rider_id: selectedRider
       });
       toast.success('Rider assigned successfully');
@@ -646,6 +779,21 @@ function ManualAssignModal({ riders, onClose, onRefresh, onActionSuccess }: any)
         
         <div className="space-y-4">
            <div>
+              <label className="block text-sm font-bold mb-2">Select Ready Order</label>
+              <select
+                value={selectedOrderId || ''}
+                onChange={(e) => onSelectOrder(e.target.value || null)}
+                className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm"
+              >
+                 <option value="">Choose an order...</option>
+                 {readyOrders.map((o: any) => (
+                   <option key={o.order_id} value={o.order_id}>
+                     {o.order_id} — Rack {o.rack_location || '—'} ({o.items_count} items)
+                   </option>
+                 ))}
+              </select>
+           </div>
+           <div>
               <label className="block text-sm font-bold mb-2">Select Available Rider</label>
               <select 
                 value={selectedRider}
@@ -668,7 +816,7 @@ function ManualAssignModal({ riders, onClose, onRefresh, onActionSuccess }: any)
               <Button onClick={onClose} variant="outline" className="flex-1">Cancel</Button>
               <Button 
                 onClick={handleAssign} 
-                disabled={!selectedRider || submitting}
+                disabled={!selectedRider || !selectedOrderId || submitting}
                 className="flex-1 bg-[#212121] text-white hover:bg-black"
               >
                  {submitting ? 'Assigning...' : 'Confirm Assignment'}

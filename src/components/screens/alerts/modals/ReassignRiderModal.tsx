@@ -41,16 +41,25 @@ export function ReassignRiderModal({ isOpen, onClose, onConfirm, riders: ridersP
     }
   }, [isOpen]);
 
-  const ridersList = ridersProp?.length ? ridersProp.map(r => ({ 
-    id: r.id, 
-    name: r.name, 
-    distance: `${Math.floor(Math.random() * 2) + 0.5}km`, 
-    status: r.status || "online", 
-    load: r.load ?? 0 
-  })) : FALLBACK_RIDERS;
-  const filteredRiders = ridersList.filter(r => 
-    r.name.toLowerCase().includes(search.toLowerCase()) && (r.status !== "offline")
-  );
+  const ridersList = (ridersProp && ridersProp.length
+    ? ridersProp
+    : FALLBACK_RIDERS
+  )
+    // Normalise into a safe shape and filter out any malformed entries
+    .filter((r): r is RiderOption => !!r && typeof r.id === 'string' && typeof r.name === 'string')
+    .map(r => ({
+      id: r.id,
+      name: r.name,
+      distance: r.distance ?? `${Math.floor(Math.random() * 2) + 0.5}km`,
+      status: r.status || 'online',
+      load: r.load ?? 0,
+    }));
+
+  const filteredRiders = ridersList.filter(r => {
+    const name = r.name || '';
+    const status = r.status || 'online';
+    return name.toLowerCase().includes((search || '').toLowerCase()) && status !== 'offline';
+  });
 
   const handleAssign = async () => {
     if (!selectedRider) return;

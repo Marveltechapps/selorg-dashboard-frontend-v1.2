@@ -1,11 +1,12 @@
 import React from 'react';
 import { Bike, Package, Clock, AlertCircle } from 'lucide-react';
-import { DashboardSummary } from './types';
+import { DashboardSummary, Rider } from './types';
 import { Skeleton } from '../../../../components/ui/skeleton';
 
 interface SummaryCardsProps {
   data: DashboardSummary | null;
   loading: boolean;
+  riders?: Rider[];
 }
 
 function MetricCard({ 
@@ -51,18 +52,37 @@ function MetricCard({
   );
 }
 
-export function SummaryCards({ data, loading }: SummaryCardsProps) {
+export function SummaryCards({ data, loading, riders }: SummaryCardsProps) {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
   };
 
+  // Prefer backend summary for active riders when available,
+  // but fall back to live rider presence from the mobile-backed list.
+  const activeFromSummary =
+    typeof data?.activeRiders === 'number' && data.activeRiders > 0
+      ? data.activeRiders
+      : undefined;
+
+  const activeFromRiders =
+    activeFromSummary == null && riders
+      ? riders.filter((r) => r.status !== 'offline').length
+      : undefined;
+
+  const activeRidersDisplay =
+    activeFromSummary != null
+      ? activeFromSummary
+      : activeFromRiders != null
+      ? activeFromRiders
+      : 0;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <MetricCard 
         label="Active Riders" 
-        value={data?.activeRiders.toString() || "0"} 
+        value={activeRidersDisplay.toString()} 
         subValue={`/ ${data?.maxRiders || 0}`}
         trend={`${data?.activeRiderUtilizationPercent || 0}% Utilization`}
         trendUp={true}

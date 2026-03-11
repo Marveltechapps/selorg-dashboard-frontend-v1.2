@@ -9,6 +9,7 @@ import { LiveOrderBoard } from './overview/LiveOrderBoard';
 import { OrderDetailsDrawer } from './overview/OrderDetailsDrawer';
 import { DispatchDrawer } from './overview/DispatchDrawer';
 import { RiderMapModal } from './overview/RiderMapModal';
+import { RiderOverviewMap } from './overview/RiderOverviewMap';
 import { ReassignRiderModal } from '../alerts/modals/ReassignRiderModal';
 import { MapPin } from 'lucide-react';
 
@@ -474,7 +475,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       />
 
       {/* Summary Cards */}
-      <SummaryCards data={summary} loading={loading} />
+      <SummaryCards data={summary} loading={loading} riders={riders} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Live Order Board */}
@@ -493,21 +494,29 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
             />
           </div>
 
-          {/* Rider Distribution / Map Teaser */}
+          {/* Rider Distribution / Live Google Map */}
           <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm flex flex-col h-[400px] lg:h-auto">
               <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
                   <h3 className="font-bold text-[#212121]">Rider Distribution</h3>
                   <button onClick={() => setIsMapOpen(true)} className="text-xs text-[#F97316] hover:underline font-medium">Expand</button>
               </div>
-              <div className="flex-1 bg-gray-100 flex items-center justify-center relative min-h-[300px] group cursor-pointer" onClick={() => setIsMapOpen(true)}>
-                  {/* Mini Map Placeholder */}
-                   <div className="absolute inset-0 opacity-20 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover bg-center"></div>
-                  
-                  <div className="z-10 flex flex-col items-center">
-                    <div className="w-16 h-16 bg-white/80 rounded-full flex items-center justify-center backdrop-blur-sm mb-3 shadow-lg group-hover:scale-110 transition-transform">
-                        <MapPin size={32} className="text-[#F97316]" />
+              <div
+                className="flex-1 relative min-h-[300px] group cursor-pointer"
+                onClick={() => setIsMapOpen(true)}
+              >
+                  {/* Google Maps view driven by mobile rider locations */}
+                  <RiderOverviewMap riders={riders} orders={orders} />
+
+                  {/* Overlay CTA */}
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="flex flex-col items-center">
+                      <div className="w-16 h-16 bg-white/80 rounded-full flex items-center justify-center backdrop-blur-sm mb-3 shadow-lg group-hover:scale-110 transition-transform">
+                          <MapPin size={32} className="text-[#F97316]" />
+                      </div>
+                      <span className="text-gray-700 text-sm font-medium bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm">
+                        Click to view live fleet map
+                      </span>
                     </div>
-                    <span className="text-gray-500 text-sm font-medium bg-white/80 px-3 py-1 rounded-full backdrop-blur-sm">Click to view live map</span>
                   </div>
 
                   {/* Rider Status Stats - derive from summary or riders when available */}

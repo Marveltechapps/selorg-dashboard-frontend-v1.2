@@ -28,7 +28,8 @@ interface ApiOrder {
 
 interface ApiRider {
   id: string;
-  name: string;
+  name?: string;
+  phoneNumber?: string;
   status: string;
   location?: { lat: number; lng: number } | null;
   zone?: string | null;
@@ -171,12 +172,22 @@ function transformOrder(apiOrder: ApiOrder): DispatchOrder {
  * Transform backend rider to frontend rider
  */
 function transformRider(apiRider: ApiRider): DispatchRider {
-  const status = apiRider.status as RiderStatus;
+  const status =
+    apiRider.status === 'available'
+      ? 'online'
+      : (apiRider.status as RiderStatus);
+  const phone = apiRider.phoneNumber;
+  const baseName = apiRider.name || (phone ? String(phone) : 'Rider');
+  const displayName =
+    phone && !String(baseName).includes(String(phone))
+      ? `${baseName} (${phone})`
+      : baseName;
   // Use real API location; no mock coordinates
   const location = apiRider.location ?? { lat: 0, lng: 0 };
   return {
     id: apiRider.id,
-    name: apiRider.name,
+    name: displayName,
+    phone,
     status,
     currentLocation: location,
     activeOrdersCount: apiRider.capacity.currentLoad,
@@ -184,6 +195,44 @@ function transformRider(apiRider: ApiRider): DispatchRider {
     zone: apiRider.zone || 'Unknown',
     avgEtaMinutes: apiRider.avgEtaMins ?? 0,
   };
+}
+
+/**
+ * Prefer v2 rider service (shared with mobile app) for live rider list,
+ * so dashboard dispatch views always see the same riders as the rider app.
+ * Falls back to legacy dispatch map data if v2 is unavailable.
+ */
+async function fetchV2DispatchRiders(): Promise<DispatchRider[]> {
+  // v2 endpoint shared with mobile rider app
+  const v2Data = await apiRequest<any>('/delivery/riders');
+
+  const list: any[] = Array.isArray(v2Data?.riders)
+    ? v2Data.riders
+    : Array.isArray(v2Data)
+      ? v2Data
+      : [];
+
+  return list.map((r: any): DispatchRider => {
+    const status = (r?.status || 'online') as RiderStatus;
+    const location = r?.location && typeof r.location === 'object'
+      ? r.location
+      : { lat: 0, lng: 0 };
+
+    const capacity = r?.capacity && typeof r.capacity === 'object'
+      ? r.capacity
+      : { currentLoad: 0, maxLoad: 5 };
+
+    return {
+      id: String(r?.id ?? ''),
+      name: String(r?.name ?? 'Unknown Rider'),
+      status,
+      currentLocation: location,
+      activeOrdersCount: typeof capacity.currentLoad === 'number' ? capacity.currentLoad : 0,
+      maxCapacity: typeof capacity.maxLoad === 'number' ? capacity.maxLoad : 5,
+      zone: typeof r?.zone === 'string' && r.zone ? r.zone : 'Unknown',
+      avgEtaMinutes: typeof r?.avgEtaMins === 'number' ? r.avgEtaMins : 0,
+    };
+  });
 }
 
 /**
@@ -258,8 +307,18 @@ export async function fetchAllOrders(): Promise<DispatchOrder[]> {
 }
 
 export async function fetchOnlineRiders(): Promise<DispatchRider[]> {
+  // Prefer the same v2 rider list that the mobile app uses,
+  // so manual assignment and the map reflect the true live rider set.
+  try {
+    const v2Riders = await fetchV2DispatchRiders();
+    if (v2Riders.length > 0) {
+      return v2Riders;
+    }
+  } catch (err) {
+    logger.warn('[DispatchAPI.fetchOnlineRiders] v2 /delivery/riders failed, falling back to legacy mapData', err);
+  }
+
   const mapData = await apiRequest<ApiMapData>(API_ENDPOINTS.dispatch.mapData);
-  
   return mapData.riders.map(transformRider);
 }
 

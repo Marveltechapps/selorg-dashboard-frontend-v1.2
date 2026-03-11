@@ -29,6 +29,8 @@ import { MoreHorizontal, Search, ArrowUpDown } from 'lucide-react';
 import { Order, Rider } from './types';
 import { Switch } from '../../../../components/ui/switch';
 import { Label } from '../../../../components/ui/label';
+import { websocketService } from '../../../../utils/websocket';
+import { useWebSocketConnection } from '../../../../hooks/useWebSocketConnection';
 
 interface LiveOrderBoardProps {
   orders: Order[];
@@ -58,14 +60,102 @@ export function LiveOrderBoard({
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Order, direction: 'asc' | 'desc' } | null>(null);
+  const isWsConnected = useWebSocketConnection();
+  const [wsOrders, setWsOrders] = useState<Order[] | null>(null);
 
   // Sync top bar search into board when it changes
   React.useEffect(() => {
     setSearchQuery(initialSearchQuery);
   }, [initialSearchQuery]);
 
+  // Map darkstore live order payloads into Rider dashboard Order shape
+  const mapBackendOrderToRiderOrder = React.useCallback((o: any): Order => {
+    const id = o.order_id || o.id || '';
+    const rawStatus = String(o.status || '').toUpperCase();
+    let status: Order['status'] = 'pending';
+    if (rawStatus === 'ASSIGNED' || rawStatus === 'READY_FOR_DISPATCH' || rawStatus === 'PICKED' || rawStatus === 'PACKED') {
+      status = 'assigned';
+    } else if (rawStatus === 'IN_TRANSIT') {
+      status = 'in_transit';
+    } else if (rawStatus === 'DELIVERED') {
+      status = 'delivered';
+    } else if (rawStatus === 'RTO' || rawStatus === 'RETURNED') {
+      status = rawStatus === 'RTO' ? 'rto' : 'returned';
+    } else if (rawStatus === 'DELAYED') {
+      status = 'delayed';
+    }
+
+    return {
+      id: id,
+      status,
+      riderId: o.riderId || o.rider_id || undefined,
+      etaMinutes: typeof o.etaMinutes === 'number' ? o.etaMinutes : undefined,
+      slaDeadline: o.sla_deadline || o.slaDeadline || new Date().toISOString(),
+      pickupLocation: o.pickup_location || o.pickupLocation || 'Store',
+      dropLocation: o.delivery_address || o.dropLocation || 'Customer',
+      customerName: o.customer_name || o.customer || 'Customer',
+      items: [],
+      timeline: [],
+    };
+  }, []);
+
+  // Subscribe to live order stream via Socket.IO (darkstore events) and keep a live view
+  React.useEffect(() => {
+    websocketService.connect();
+
+    const snapshotHandler = (data: any) => {
+      if (!data || !Array.isArray(data.orders)) return;
+      const mapped = data.orders.map(mapBackendOrderToRiderOrder);
+      setWsOrders(mapped);
+    };
+
+    const createdHandler = (data: any) => {
+      if (!data) return;
+      setWsOrders(prev => {
+        const current = prev ?? [];
+        if (!data.order_id) return current;
+        if (current.some(o => o.id === data.order_id || o.id === `#${data.order_id}`)) return current;
+        return [mapBackendOrderToRiderOrder(data), ...current];
+      });
+    };
+
+    const updatedHandler = (data: any) => {
+      if (!data || !data.order_id) return;
+      setWsOrders(prev => {
+        if (!prev) return prev;
+        return prev.map(o => {
+          if (o.id !== data.order_id && o.id !== `#${data.order_id}`) return o;
+          const updated = mapBackendOrderToRiderOrder({ ...data, riderId: data.riderId ?? o.riderId });
+          return { ...o, ...updated };
+        });
+      });
+    };
+
+    const cancelledHandler = (data: any) => {
+      if (!data || !data.order_id) return;
+      setWsOrders(prev => {
+        if (!prev) return prev;
+        return prev.filter(o => o.id !== data.order_id && o.id !== `#${data.order_id}`);
+      });
+    };
+
+    websocketService.on('live_orders:snapshot', snapshotHandler);
+    websocketService.on('order:created', createdHandler);
+    websocketService.on('order:updated', updatedHandler);
+    websocketService.on('order:cancelled', cancelledHandler);
+
+    return () => {
+      websocketService.off('live_orders:snapshot', snapshotHandler);
+      websocketService.off('order:created', createdHandler);
+      websocketService.off('order:updated', updatedHandler);
+      websocketService.off('order:cancelled', cancelledHandler);
+    };
+  }, [mapBackendOrderToRiderOrder]);
+
+  const effectiveOrders = wsOrders ?? orders;
+
   // Filtering logic
-  const filteredOrders = orders.filter(order => {
+  const filteredOrders = effectiveOrders.filter(order => {
     const matchesStatus = filterStatus === 'All' || order.status.toLowerCase() === filterStatus.toLowerCase();
     
     const riderName = riders.find(r => r.id === order.riderId)?.name || '';

@@ -4,6 +4,11 @@ export type OrderStatus = "assigned" | "picked_up" | "in_transit" | "delivered" 
 export interface Rider {
   id: string;
   name: string;
+  /**
+   * Optional phone number (from v2 /delivery/riders),
+   * used for display/search in dashboards.
+   */
+  phone?: string;
   avatarInitials: string;
   status: RiderStatus;
   currentOrderId?: string;

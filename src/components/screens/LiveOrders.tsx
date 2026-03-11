@@ -4,7 +4,6 @@ import { Filter, MoreHorizontal, Clock, Package, Bike, User, AlertCircle, ArrowR
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from "sonner";
-import { getLiveOrders } from '../../api/dashboard';
 import { callCustomer, markRTO, updateOrder, cancelOrder, assignOrder, startPicking, completePicking, getOrderActionLogs } from '../../api/dashboard/orders.api';
 import { getAvailablePickers } from '../../api/darkstore/pickers.api';
 import { websocketService } from '../../utils/websocket';
@@ -127,7 +126,7 @@ export function LiveOrders() {
   const [orderActionLogs, setOrderActionLogs] = useState<any[]>([]);
   const [orderActionLogsLoading, setOrderActionLogsLoading] = useState(false);
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
+  const storeId = activeStoreId || 'DS-Adyar-01';
   const isWsConnected = useWebSocketConnection();
 
   const [orders, setOrders] = useState<any[]>([]);
@@ -140,14 +139,89 @@ export function LiveOrders() {
     }
   }, [searchParams]);
 
-  // Load orders on mount and when filters change
+  // Load orders when connection is established or store changes
   useEffect(() => {
-    loadOrders();
-  }, [activeTab, storeId]);
+    if (isWsConnected) {
+      console.log('DEBUG: WebSocket connected, loading orders for store:', storeId);
+      loadOrders();
+    }
+  }, [storeId, isWsConnected]);
 
   // Real-time socket: listen for new orders, updates, and cancellations
   useEffect(() => {
     websocketService.connect();
+
+    const snapshotHandler = (data: any) => {
+      console.log('DEBUG: Received live_orders:snapshot', { 
+        ordersCount: data?.orders?.length, 
+        storeId: data?.store_id, 
+        targetStoreId: storeId,
+        status: data?.status
+      });
+      try {
+        if (!data || !Array.isArray(data.orders)) return;
+        
+        // Use a more relaxed store ID check for development or log it clearly
+        if (storeId && data.store_id && data.store_id !== storeId) {
+          console.warn('DEBUG: Snapshot store mismatch', { received: data.store_id, expected: storeId });
+          // return; // Keep going for now during debug if needed, but for now we stick to strict
+          return;
+        }
+
+        // Transform backend orders to frontend format
+        const transformedOrders = data.orders.map((order: any) => ({
+          id: `#${order.order_id}`,
+          order_id: order.order_id,
+          customer: order.customer_name || 'Customer',
+          customerPhone: order.customer_phone || '',
+          deliveryAddress: order.delivery_address || 'Not available',
+          deliveryNotes: order.delivery_notes || '',
+          itemsList: (Array.isArray(order.items) ? order.items : []).map((it: any) => ({
+            productName: it.productName || 'Item',
+            quantity: it.quantity || 1,
+            price: it.price || 0,
+            image: it.image || '',
+            variantSize: it.variantSize || '',
+          })),
+          items: order.item_count,
+          zone: order.zone || '',
+          sla: order.sla_timer,
+          sla_deadline: order.sla_deadline,
+          status: order.status === 'new' ? 'Queued' : order.status === 'processing' || order.status === 'ASSIGNED' ? 'Assigned' : order.status === 'PICKING' ? 'Picking' : order.status === 'ready' || order.status === 'PICKED' || order.status === 'PACKED' ? 'Packing' : order.status === 'READY_FOR_DISPATCH' ? 'Ready for Dispatch' : 'Queued',
+          bagId: order.bagId || '',
+          rackLocation: order.rackLocation || '',
+          readyForDispatch: !!(order.bagId && order.rackLocation),
+          urgency: order.sla_status === 'critical' ? 'critical' : order.sla_status === 'warning' ? 'warning' : 'normal',
+          assignee: order.assignee?.name || order.pickerAssignment?.pickerName || '-',
+          assigneeId: order.assignee?.id || order.pickerAssignment?.pickerId || '',
+          assigneeInitials: order.assignee?.initials || 'UA',
+          order_type: order.order_type,
+          created_at: order.created_at,
+          timeline: order.timeline || [],
+          pickingData: order.pickingData || {},
+          pickerAssignment: order.pickerAssignment || {},
+          missingItems: (order.pickingData?.missingItems || order.missingItems || []).map((mi: any) => ({
+            productName: mi.productName || 'Item',
+            expectedQty: mi.orderedQty ?? mi.quantity ?? mi.expectedQty ?? '—',
+            quantity: mi.scannedQty ?? mi.quantity ?? '—',
+            status: (mi.orderedQty ?? 0) > (mi.scannedQty ?? 0) ? 'not_found' : (mi.status || 'not_found'),
+            pickerName: order.pickerAssignment?.pickerName || mi.pickerName || mi.markedBy || '—',
+          })),
+          supportTicketId: order.supportTicketId || '',
+          refundStatus: order.refundStatus || '',
+          cancellationReason: order.cancellationReason || '',
+          itemStatus: order.itemStatus || {},
+          payment_status: order.payment_status || 'pending',
+          payment_method: order.payment_method || 'cash',
+          total_bill: order.total_bill || 0,
+        }));
+        setOrders(transformedOrders);
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Failed to process live orders snapshot', err);
+        setIsLoading(false);
+      }
+    };
 
     const createdHandler = (data: any) => {
       try {
@@ -267,12 +341,14 @@ export function LiveOrders() {
       }
     };
 
+    websocketService.on('live_orders:snapshot', snapshotHandler);
     websocketService.on('order:created', createdHandler);
     websocketService.on('order:updated', updatedHandler);
     websocketService.on('order:cancelled', cancelledHandler);
     websocketService.on('payment:created', paymentHandler);
 
     return () => {
+      websocketService.off('live_orders:snapshot', snapshotHandler);
       websocketService.off('order:created', createdHandler);
       websocketService.off('order:updated', updatedHandler);
       websocketService.off('order:cancelled', cancelledHandler);
@@ -334,94 +410,16 @@ export function LiveOrders() {
     return () => clearInterval(timerInterval);
   }, []);
 
-  const loadOrders = async () => {
+  const loadOrders = () => {
+    if (!isWsConnected) return;
     try {
       setIsLoading(true);
-      const statusMap: { [key: string]: string } = {
-        'new': 'new',
-        'processing': 'processing',
-        'ready': 'ready',
-      };
-      const status = statusMap[activeTab] || 'all';
-      const response = await getLiveOrders(storeId, status, 100);
-      
-      if (response && response.orders) {
-        // Transform backend orders to frontend format
-        const transformedOrders = response.orders.map((order: any) => ({
-          id: `#${order.order_id}`,
-          order_id: order.order_id,
-          customer: order.customer_name || order.customer?.name || 'Customer',
-          customerPhone: order.customer_phone || '',
-          deliveryAddress: order.delivery_address || order.deliveryAddress || 'Not available',
-          deliveryNotes: order.delivery_notes || order.deliveryNotes || '',
-          itemsList: (Array.isArray(order.items) ? order.items : []).map((it: any) => ({
-            productName: it.productName || it.name || 'Item',
-            quantity: it.quantity || 1,
-            price: it.price || 0,
-            image: it.image || '',
-            variantSize: it.variantSize || '',
-          })),
-          items: order.item_count,
-          zone: order.zone || '',
-          sla: order.sla_timer,
-          sla_deadline: order.sla_deadline,
-          status: order.status === 'new' ? 'Queued' : order.status === 'processing' || order.status === 'ASSIGNED' ? 'Assigned' : order.status === 'PICKING' ? 'Picking' : order.status === 'ready' || order.status === 'PICKED' || order.status === 'PACKED' ? 'Packing' : order.status === 'READY_FOR_DISPATCH' ? 'Ready for Dispatch' : 'Queued',
-          bagId: order.bagId || '',
-          rackLocation: order.rackLocation || '',
-          readyForDispatch: !!(order.bagId && order.rackLocation),
-          urgency: order.sla_status === 'critical' ? 'critical' : order.sla_status === 'warning' ? 'warning' : 'normal',
-          assignee: order.assignee?.name || order.pickerAssignment?.pickerName || '-',
-          assigneeId: order.assignee?.id || order.pickerAssignment?.pickerId || '',
-          assigneeInitials: order.assignee?.initials || 'UA',
-          order_type: order.order_type,
-          created_at: order.created_at,
-          timeline: order.timeline || [],
-          pickingData: order.pickingData || {},
-          pickerAssignment: order.pickerAssignment || {},
-          missingItems: (order.pickingData?.missingItems || order.missingItems || []).map((mi: any) => ({
-            productName: mi.productName || mi.name || 'Item',
-            expectedQty: mi.orderedQty ?? mi.quantity ?? mi.expectedQty ?? '—',
-            quantity: mi.scannedQty ?? mi.quantity ?? '—',
-            status: (mi.orderedQty ?? 0) > (mi.scannedQty ?? 0) ? 'not_found' : (mi.status || 'not_found'),
-            pickerName: order.pickerAssignment?.pickerName || mi.pickerName || mi.markedBy || '—',
-          })),
-          supportTicketId: order.supportTicketId || '',
-          refundStatus: order.refundStatus || '',
-          cancellationReason: order.cancellationReason || '',
-          itemStatus: order.itemStatus || {},
-          payment_status: order.payment_status || order.paymentStatus || 'pending',
-          payment_method: order.payment_method || order.paymentMethod || 'cash',
-          total_bill: order.total_bill || order.totalBill || 0,
-        }));
-        setOrders(transformedOrders);
-      } else {
-        setOrders([]);
-      }
+      websocketService.emit('get:live_orders', { storeId, status: 'all', limit: 100 });
     } catch (error: any) {
-      console.error('Failed to load orders:', error);
-      setOrders([]);
-    } finally {
+      console.error('Failed to request live orders via socket:', error);
       setIsLoading(false);
     }
   };
-
-  // Polling fallback when WebSocket is disconnected — ensures data updates even without real-time
-  const loadOrdersRef = React.useRef(loadOrders);
-  loadOrdersRef.current = loadOrders;
-  useEffect(() => {
-    if (isWsConnected) return;
-    const interval = setInterval(() => loadOrdersRef.current(), 15000);
-    return () => clearInterval(interval);
-  }, [isWsConnected]);
-
-  // Sync data when WebSocket connects — catch up on any orders/updates missed while disconnected
-  const prevWsRef = React.useRef(false);
-  useEffect(() => {
-    if (isWsConnected && !prevWsRef.current) {
-      loadOrdersRef.current();
-    }
-    prevWsRef.current = isWsConnected;
-  }, [isWsConnected]);
 
   // Filter Logic
   const filteredOrders = orders.filter(order => {
@@ -430,7 +428,12 @@ export function LiveOrders() {
       order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.assignee.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = filterStatus ? order.status === filterStatus : true;
+    const matchesStatus = filterStatus ? order.status === filterStatus : (() => {
+      if (activeTab === 'new') return order.status === 'Queued';
+      if (activeTab === 'processing') return order.status === 'Assigned' || order.status === 'Picking';
+      if (activeTab === 'ready') return order.status === 'Packing' || order.status === 'Ready for Dispatch';
+      return true;
+    })();
     const matchesUrgency = filterUrgency ? order.urgency === filterUrgency : true;
 
     return matchesSearch && matchesStatus && matchesUrgency;
@@ -594,9 +597,21 @@ export function LiveOrders() {
     }
   };
 
-  const newOrdersCount = orders.filter(o => o.status === 'Queued').length;
+  // Calculate counts based on frontend status labels (after transformation)
+  const newOrdersCount = orders.filter(o => 
+    o.status === 'Queued' || o.status === 'new' || o.status === 'queued'
+  ).length;
+  const processingCount = orders.filter(o => 
+    o.status === 'Assigned' || o.status === 'Picking' || o.status === 'processing' || o.status === 'ASSIGNED' || o.status === 'PICKING'
+  ).length;
+  const readyCount = orders.filter(o => 
+    o.status === 'Packing' || o.status === 'Ready for Dispatch' || o.status === 'ready' || o.status === 'PICKED' || o.status === 'PACKED' || o.status === 'READY_FOR_DISPATCH'
+  ).length;
+
   const tabs = [
     { id: 'new', label: 'New Orders', count: newOrdersCount, color: 'text-[#1677FF]', border: 'border-[#1677FF]', bg: 'bg-[#E6F7FF]' },
+    { id: 'processing', label: 'Processing', count: processingCount, color: 'text-[#1677FF]', border: 'border-[#1677FF]', bg: 'bg-[#E6F7FF]' },
+    { id: 'ready', label: 'Ready', count: readyCount, color: 'text-[#1677FF]', border: 'border-[#1677FF]', bg: 'bg-[#E6F7FF]' },
   ];
 
   return (
@@ -780,11 +795,26 @@ export function LiveOrders() {
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <Search size={24} className="opacity-20" />
-                      <p>No orders found matching your filters.</p>
-                      <button onClick={handleClearFilters} className="text-[#1677FF] text-xs hover:underline font-medium">
-                        Clear Filters
-                      </button>
+                      {!isWsConnected ? (
+                        <>
+                          <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin mb-2" />
+                          <p className="font-medium text-gray-600">Connecting to live order stream...</p>
+                          <p className="text-xs">If this takes too long, please check your connection.</p>
+                        </>
+                      ) : isLoading ? (
+                        <>
+                          <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin mb-2" />
+                          <p className="font-medium text-gray-600">Fetching live orders...</p>
+                        </>
+                      ) : (
+                        <>
+                          <Search size={24} className="opacity-20" />
+                          <p>No orders found for {tabs.find(t => t.id === activeTab)?.label || activeTab}.</p>
+                          <button onClick={handleClearFilters} className="text-[#1677FF] text-xs hover:underline font-medium">
+                            Clear Filters
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

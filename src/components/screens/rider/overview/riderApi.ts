@@ -7,14 +7,15 @@ import { logger } from '../../../../utils/logger';
  */
 interface ApiRider {
   id: string;
-  name: string;
-  avatarInitials: string;
-  status: 'online' | 'offline' | 'busy' | 'idle';
+  name?: string;
+  phoneNumber?: string;
+  avatarInitials?: string;
+  status: 'online' | 'offline' | 'busy' | 'idle' | 'available';
   currentOrderId?: string | null;
   location?: { lat: number; lng: number } | null;
-  capacity: { currentLoad: number; maxLoad: number };
-  avgEtaMins: number;
-  rating: number;
+  capacity?: { currentLoad: number; maxLoad: number };
+  avgEtaMins?: number;
+  rating?: number;
   zone?: string | null;
 }
 
@@ -134,16 +135,37 @@ async function apiRequest<T>(
  * Transform backend rider to frontend rider
  */
 function transformRider(apiRider: ApiRider): Rider {
+  const phone = apiRider.phoneNumber;
+  const baseName = apiRider.name || (phone ? String(phone) : 'Rider');
+  const displayName = phone && !String(baseName).includes(String(phone))
+    ? `${baseName} (${phone})`
+    : baseName;
+
+  const normalizedStatus =
+    apiRider.status === 'available'
+      ? 'online'
+      : apiRider.status;
+
   return {
     id: apiRider.id,
-    name: apiRider.name,
-    avatarInitials: apiRider.avatarInitials,
-    status: apiRider.status,
+    name: displayName,
+    phone,
+    avatarInitials:
+      apiRider.avatarInitials ||
+      (baseName
+        ? baseName
+            .split(' ')
+            .map((p) => p[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase()
+        : 'R'),
+    status: normalizedStatus as any,
     currentOrderId: apiRider.currentOrderId || undefined,
     location: apiRider.location || undefined,
-    capacity: apiRider.capacity,
-    avgEtaMins: apiRider.avgEtaMins,
-    rating: apiRider.rating,
+    capacity: apiRider.capacity || { currentLoad: 0, maxLoad: 5 },
+    avgEtaMins: apiRider.avgEtaMins ?? 10,
+    rating: apiRider.rating ?? 4.5,
   };
 }
 
@@ -151,12 +173,21 @@ function transformRider(apiRider: ApiRider): Rider {
  * Transform backend order to frontend order
  */
 function transformOrder(apiOrder: ApiOrder): Order {
-  // Transform timeline dates to ISO strings if needed
-  const timeline = (apiOrder.timeline || []).map(event => ({
-    status: event.status,
-    time: typeof event.time === 'string' ? event.time : new Date(event.time).toISOString(),
-    note: event.note,
-  }));
+  // Transform timeline dates to ISO strings if needed, but guard against invalid dates
+  const timeline = (apiOrder.timeline || []).map(event => {
+    let time: string;
+    if (typeof event.time === 'string') {
+      time = event.time;
+    } else {
+      const d = new Date(event.time);
+      time = Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    }
+    return {
+      status: event.status,
+      time,
+      note: event.note,
+    };
+  });
 
   return {
     id: apiOrder.id,
@@ -275,9 +306,22 @@ export const api = {
    * Get all riders
    */
   getRiders: async (): Promise<Rider[]> => {
-    const data = await apiRequest<ApiListResponse<ApiRider>>(API_ENDPOINTS.riders.list);
-    const riders = data?.riders ?? [];
-    return riders.map(transformRider);
+    // Prefer v2 delivery riders API so we see riders who are logged into the mobile app.
+    // Fallback to legacy dashboard riders list if the v2 endpoint is unavailable.
+    try {
+      const v2Riders = await apiRequest<any>('/delivery/riders');
+      const list: ApiRider[] = Array.isArray(v2Riders?.riders)
+        ? v2Riders.riders
+        : Array.isArray(v2Riders)
+          ? v2Riders
+          : [];
+      return list.map(transformRider);
+    } catch (err: any) {
+      logger.warn('[RiderAPI.getRiders] v2 /delivery/riders failed, falling back to legacy', err);
+      const data = await apiRequest<ApiListResponse<ApiRider>>(API_ENDPOINTS.riders.list);
+      const riders = data?.riders ?? [];
+      return riders.map(transformRider);
+    }
   },
 
   /**

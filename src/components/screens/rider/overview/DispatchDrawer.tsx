@@ -60,7 +60,9 @@ export function DispatchDrawer({
     onClose();
   };
 
-  const availableRiders = riders.filter(r => r.status === 'idle' || r.status === 'online');
+  // Show all riders who are not explicitly offline so that mobile-logged-in riders
+  // from the v2 backend appear in the manual assignment list.
+  const availableRiders = riders.filter(r => r.status !== 'offline');
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
@@ -87,8 +89,11 @@ export function DispatchDrawer({
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {unassignedOrders.map(order => (
-                                    <div key={order.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-gray-50">
+                                {unassignedOrders.map((order, index) => (
+                                    <div
+                                      key={order.id || `unassigned-order-${index}`}
+                                      className="flex items-start gap-3 p-3 border rounded-lg hover:bg-gray-50"
+                                    >
                                         <Checkbox 
                                             id={order.id} 
                                             checked={selectedOrders.includes(order.id)}
@@ -114,9 +119,9 @@ export function DispatchDrawer({
                         <div className="mb-4">
                             <label className="text-sm font-medium mb-2 block">Assign Selected To:</label>
                             <div className="flex gap-2 overflow-x-auto pb-2">
-                                {availableRiders.map(rider => (
+                                {availableRiders.map((rider, index) => (
                                     <button 
-                                        key={rider.id}
+                                        key={rider.id || `available-rider-${index}`}
                                         onClick={() => setSelectedRider(rider.id)}
                                         className={`flex-shrink-0 p-2 border rounded-lg w-[120px] text-left transition-colors ${selectedRider === rider.id ? 'border-orange-500 bg-orange-50 ring-1 ring-orange-500' : 'hover:bg-gray-50'}`}
                                     >

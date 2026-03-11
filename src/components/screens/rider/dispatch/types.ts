@@ -25,6 +25,11 @@ export interface DispatchOrder {
 export interface DispatchRider {
   id: string;
   name: string;
+  /**
+   * Optional phone number (from v2 /delivery/riders),
+   * used for display/search in dispatch flows.
+   */
+  phone?: string;
   status: RiderStatus;
   currentLocation: { lat: number; lng: number };
   activeOrdersCount: number;

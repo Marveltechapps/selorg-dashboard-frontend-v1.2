@@ -74,7 +74,14 @@ export function AssignRiderModal({
 
   const filteredRiders = useMemo(() => {
     return baseRiders
-      .filter((r) => r.status !== "offline" && r.name.toLowerCase().includes(search.toLowerCase()))
+      .filter((r) => {
+        if (r.status === "offline") return false;
+        const haystack =
+          (r.name || "") +
+          " " +
+          (r.phone || "");
+        return haystack.toLowerCase().includes(search.toLowerCase());
+      })
       .sort((a, b) => {
         if (a.activeOrdersCount !== b.activeOrdersCount) return a.activeOrdersCount - b.activeOrdersCount;
         return (b.maxCapacity - b.activeOrdersCount) - (a.maxCapacity - a.activeOrdersCount);
