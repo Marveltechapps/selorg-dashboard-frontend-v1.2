@@ -32,7 +32,18 @@ function resolveWsConfig(): { url: string; path: string } {
   return { url: window.location.origin, path: '/hhd-socket.io' };
 }
 
+/**
+ * Use polling-only when proxy doesn't support WebSocket upgrade (e.g. api.selorg.com).
+ * Set VITE_WS_TRANSPORT=websocket to enable WebSocket when proxy is configured.
+ */
+function getTransports(): ('polling' | 'websocket')[] {
+  const env = (import.meta.env.VITE_WS_TRANSPORT ?? '').toLowerCase();
+  if (env === 'websocket') return ['polling', 'websocket'];
+  return ['polling'];
+}
+
 const RETRY_INTERVAL_MS = 30000; // Retry every 30s when connection failed
+const isProd = import.meta.env.PROD;
 
 class WebSocketService {
   private socket: Socket | null = null;
@@ -74,12 +85,13 @@ class WebSocketService {
 
     const { url: socketUrl, path } = resolveWsConfig();
 
+    const transports = getTransports();
     this.socket = io(socketUrl, {
       path,
       auth: { token },
 
-      transports: ['polling', 'websocket'],
-      upgrade: true,
+      transports,
+      upgrade: transports.includes('websocket'),
 
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
@@ -89,7 +101,7 @@ class WebSocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('WebSocket connected');
+      if (!isProd) console.log('Socket connected');
       this.clearRetryTimer();
       this.reconnectAttempts = 0;
       this.hasLoggedMaxAttempts = false;
@@ -107,11 +119,11 @@ class WebSocketService {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.warn('WebSocket disconnected:', reason);
+      if (!isProd) console.warn('Socket disconnected:', reason);
     });
 
     this.socket.on('connect_error', (err) => {
-      console.warn('WebSocket connection error:', err.message);
+      if (!isProd) console.warn('Socket connection error:', err.message);
 
       this.reconnectAttempts++;
 
@@ -122,9 +134,11 @@ class WebSocketService {
         this.hasLoggedMaxAttempts = true;
         this.connectionFailed = true;
 
-        console.warn(
-          `WebSocket: backend unreachable after ${this.maxReconnectAttempts} attempts. Will retry periodically. Real-time updates paused.`
-        );
+        if (!isProd) {
+          console.warn(
+            `Socket: backend unreachable after ${this.maxReconnectAttempts} attempts. Will retry periodically. Real-time updates paused.`
+          );
+        }
 
         this.cleanupSocket();
         this.scheduleRetry();
