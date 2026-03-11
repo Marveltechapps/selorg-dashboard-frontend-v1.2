@@ -78,7 +78,7 @@ class WebSocketService {
       path,
       auth: { token },
 
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       upgrade: true,
 
       reconnection: true,
