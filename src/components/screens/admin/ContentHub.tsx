@@ -9,6 +9,9 @@ import {
   ChevronRight,
   Smartphone,
   HelpCircle,
+  Package,
+  Settings2,
+  Layers,
 } from 'lucide-react';
 import {
   Card,
@@ -27,7 +30,10 @@ const PICKER_ITEMS = [
 ];
 
 const CUSTOMER_ITEMS = [
-  { id: 'customer-app-home', label: 'Customer App Home', desc: 'Banners, categories, sections, products', icon: Home },
+  { id: 'products-introduction', label: 'Products Introduction', desc: 'Single source of truth for products (category, price, GST, etc.)', icon: Package },
+  { id: 'home-config', label: 'Home Config', desc: 'Hero video, search placeholder, section titles', icon: Settings2 },
+  { id: 'customer-app-home', label: 'Customer App Home', desc: 'Banners, categories, sections, lifestyle, promo', icon: Home },
+  { id: 'collections', label: 'Collections', desc: 'Product sets for carousels (from Products Introduction)', icon: Layers },
   { id: 'onboarding', label: 'Onboarding Screens', desc: 'Customer app onboarding flow', icon: BookOpen },
   { id: 'cms-pages', label: 'CMS Pages', desc: 'Slug-based content pages', icon: FileText },
   { id: 'faq-management', label: 'FAQ Management', desc: 'Frequently Asked Questions', icon: HelpCircle },

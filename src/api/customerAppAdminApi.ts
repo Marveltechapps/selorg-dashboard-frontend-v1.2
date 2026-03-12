@@ -39,6 +39,8 @@ export interface Banner {
   slot: string;
   imageUrl: string;
   link?: string;
+  redirectType?: string | null;
+  redirectValue?: string | null;
   title?: string;
   isActive?: boolean;
   order?: number;
@@ -90,6 +92,8 @@ export interface LifestyleItem {
   name?: string;
   imageUrl?: string;
   link?: string;
+  redirectType?: string | null;
+  redirectValue?: string | null;
   blockKey?: string;
   order?: number;
   isActive?: boolean;
@@ -102,6 +106,8 @@ export interface PromoBlock {
   blockKey: string;
   imageUrl?: string;
   link?: string;
+  redirectType?: string | null;
+  redirectValue?: string | null;
   order?: number;
   isActive?: boolean;
   createdAt?: string;
@@ -111,14 +117,26 @@ export interface PromoBlock {
 export interface Product {
   _id: string;
   name: string;
+  sku?: string;
+  description?: string;
   images?: string[];
+  imageUrl?: string;
   price: number;
   originalPrice?: number;
+  costPrice?: number;
+  gstRate?: number;
   discount?: string;
   quantity?: string;
-  description?: string;
-  variants?: Array<{ sku?: string; size?: string; price?: number; originalPrice?: number }>;
+  stockQuantity?: number;
+  lowStockThreshold?: number;
+  brand?: string;
   categoryId?: string;
+  subcategoryId?: string;
+  status?: string;
+  featured?: boolean;
+  variants?: Array<{ sku?: string; size?: string; price?: number; originalPrice?: number }>;
+  attributes?: Record<string, unknown>;
+  tags?: string[];
   isActive?: boolean;
   order?: number;
   createdAt?: string;
@@ -334,5 +352,11 @@ export async function deleteProduct(id: string): Promise<void> {
 /** Fetch the same home payload the customer app receives (for dashboard preview). */
 export async function fetchCustomerHomePayload(): Promise<CustomerHomePayload> {
   const res = await apiRequest<{ success: boolean; data: CustomerHomePayload }>(HOME_PAYLOAD_PREFIX);
+  return res.data;
+}
+
+/** Fetch bootstrap-based preview (matches what the app actually sees from bootstrap). */
+export async function fetchBootstrapPreview(): Promise<CustomerHomePayload> {
+  const res = await apiRequest<{ success: boolean; data: CustomerHomePayload }>(`${PREFIX}/preview`);
   return res.data;
 }

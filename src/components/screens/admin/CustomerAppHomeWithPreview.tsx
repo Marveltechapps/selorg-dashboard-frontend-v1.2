@@ -3,7 +3,7 @@
  * Preview auto-refreshes when data is saved or deleted. Click "Edit" in preview to jump to the right tab.
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchCustomerHomePayload, type CustomerHomePayload } from '@/api/customerAppAdminApi';
+import { fetchBootstrapPreview, type CustomerHomePayload } from '@/api/customerAppAdminApi';
 import { toast } from 'sonner';
 import { HomePreviewPhone } from './HomePreviewPhone';
 import { CustomerAppHome, type ResourceTab } from './CustomerAppHome';
@@ -19,7 +19,7 @@ export function CustomerAppHomeWithPreview() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCustomerHomePayload();
+      const data = await fetchBootstrapPreview();
       setPayload(data);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load preview';

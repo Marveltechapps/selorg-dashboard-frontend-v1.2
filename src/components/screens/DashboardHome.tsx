@@ -721,7 +721,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
              <div className="space-y-4">
                 <div>
                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-[#616161]">Pickers ({staffLoad.pickers.active}/{staffLoad.pickers.total} Active)</span>
+                      <span className="text-[#616161]" title="HHD pickers in shift (punched in)">Pickers ({staffLoad.pickers.active}/{staffLoad.pickers.total} in shift)</span>
                       <span className="font-bold text-[#212121]">{staffLoad.pickers.load_percentage}% Load</span>
                    </div>
                    <div className="w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden">

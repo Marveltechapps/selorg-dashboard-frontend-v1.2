@@ -108,7 +108,7 @@ export function LivePickerBoardScreen() {
         </div>
       ) : pickers.length === 0 ? (
         <div className="bg-white border border-[#E0E0E0] rounded-xl p-12 text-center">
-          <p className="text-[#757575]">No active pickers. ACTIVE picker users will appear here when they send heartbeats.</p>
+          <p className="text-[#757575]">No pickers in shift. Picker users will appear here when they punch in and send heartbeats.</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">

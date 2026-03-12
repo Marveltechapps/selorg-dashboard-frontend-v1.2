@@ -33,6 +33,9 @@ import { PickerActivityLogs } from './screens/admin/PickerActivityLogs';
 import { TrainingContentManagement } from './screens/admin/TrainingContentManagement';
 import { ContentHub } from './screens/admin/ContentHub';
 import { FaqManagement } from './screens/admin/FaqManagement';
+import { HomeConfigScreen } from './screens/admin/HomeConfigScreen';
+import { ProductsIntroductionScreen } from './screens/admin/ProductsIntroductionScreen';
+import { CollectionsScreen } from './screens/admin/CollectionsScreen';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { 
   Tag, 
@@ -88,6 +91,9 @@ const TAB_LABELS: Record<string, string> = {
   'app-cms': 'App CMS',
   'cms-pages': 'CMS Pages',
   'faq-management': 'FAQ Management',
+  'home-config': 'Home Config',
+  'products-introduction': 'Products Introduction',
+  'collections': 'Collections',
 };
 
 function LayoutBreadcrumb({ items }: { items: BreadcrumbSegment[] }) {
@@ -265,6 +271,9 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'integrations' && <IntegrationManager />}
             {activeTab === 'compliance' && <ComplianceCenter />}
             {activeTab === 'content-hub' && <ContentHub setActiveTab={setActiveTab} />}
+            {activeTab === 'home-config' && <HomeConfigScreen />}
+            {activeTab === 'products-introduction' && <ProductsIntroductionScreen />}
+            {activeTab === 'collections' && <CollectionsScreen />}
             {activeTab === 'audit' && <AuditLogs />}
             {activeTab === 'system-tools' && <SystemTools />}
             {activeTab === 'applications' && <ApplicationsManagement />}

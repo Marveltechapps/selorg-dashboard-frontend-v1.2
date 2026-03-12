@@ -4,6 +4,47 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (function() {
+      // Suppress Chrome extension errors (React DevTools, ad blockers, etc.) that inject
+      // "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist"
+      var p = /runtime\.lastError|Receiving end does not exist|Could not establish connection|message port closed/i;
+      function getMessage(args) {
+        if (!args || !args.length) return '';
+        var a = args[0];
+        if (typeof a === 'string') return a;
+        if (a && typeof a === 'object') {
+          if (a.message) return String(a.message);
+          if (a.reason && a.reason.message) return String(a.reason.message);
+        }
+        return String(a);
+      }
+      function filter(args) {
+        var s = getMessage(args);
+        if (s && p.test(s)) return true;
+        for (var i = 1; i < args.length; i++) {
+          s = args[i] && (args[i].message || String(args[i]));
+          if (s && p.test(s)) return true;
+        }
+        return false;
+      }
+      var origError = console.error, origWarn = console.warn, origLog = console.log, origDebug = console.debug, origInfo = console.info;
+      function wrap(orig) { return function() { if (filter(arguments)) return; orig.apply(console, arguments); }; }
+      console.error = wrap(origError);
+      console.warn = wrap(origWarn);
+      console.log = wrap(origLog);
+      console.debug = wrap(origDebug);
+      console.info = wrap(origInfo);
+      window.addEventListener('unhandledrejection', function(e) {
+        var m = (e.reason && (e.reason.message || e.reason.reason)) || String(e.reason || '');
+        if (p.test(m)) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false; }
+      }, true);
+      window.addEventListener('error', function(e) {
+        var m = (e.message || (e.error && e.error.message)) || '';
+        if (p.test(m)) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return true; }
+      }, true);
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Recursive:wght@700..900&display=swap" rel="stylesheet" />

@@ -924,14 +924,31 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
             )}
             {activeTab === 'banners' && (
               <>
-                <p className="text-xs text-[#71717a]">Image URL: upload elsewhere, paste URL. On tap: set Link so the card navigates (product detail, category, or URL).</p>
-                <Input placeholder="Slot (hero | mid)" value={(formData.slot as string) ?? ''} onChange={(e) => setFormData({ ...formData, slot: e.target.value })} />
+                <p className="text-xs text-[#71717a]">Image URL: upload elsewhere, paste URL. On tap: set Redirect or Link so the card navigates.</p>
+                <Input placeholder="Slot (hero | mid | category)" value={(formData.slot as string) ?? ''} onChange={(e) => setFormData({ ...formData, slot: e.target.value })} />
                 <Input placeholder="Image URL" value={(formData.imageUrl as string) ?? ''} onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })} />
                 <Input placeholder="Title" value={(formData.title as string) ?? ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
                 <div>
-                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – navigate to</label>
+                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – redirect (typed)</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background mb-2"
+                    value={(formData.redirectType as string) ?? ''}
+                    onChange={(e) => setFormData({ ...formData, redirectType: e.target.value || null })}
+                  >
+                    <option value="">— Use link below —</option>
+                    <option value="product">Product</option>
+                    <option value="category">Category</option>
+                    <option value="collection">Collection</option>
+                    <option value="page">Page</option>
+                    <option value="url">URL</option>
+                    <option value="screen">Screen</option>
+                  </select>
+                  <Input placeholder="Redirect value (ID, URL, or screen param)" value={(formData.redirectValue as string) ?? ''} onChange={(e) => setFormData({ ...formData, redirectValue: e.target.value || null })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – link (legacy)</label>
                   <Input placeholder="product:ID | category:ID | https://... | ScreenName:param=val" value={(formData.link as string) ?? ''} onChange={(e) => setFormData({ ...formData, link: e.target.value })} />
-                  <p className="text-xs text-[#71717a] mt-1">product:ID → Product detail, category:ID → Category, https://... → External. Empty = Banner detail.</p>
+                  <p className="text-xs text-[#71717a] mt-1">Used when redirect type is empty. product:ID → Product detail, category:ID → Category.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -971,27 +988,59 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
             )}
             {activeTab === 'lifestyle' && (
               <>
-                <p className="text-xs text-[#71717a]">Image URL: upload elsewhere, paste URL. Set Link so when user taps the card they go to product/category/URL.</p>
+                <p className="text-xs text-[#71717a]">Image URL: upload elsewhere, paste URL. Set Redirect or Link so when user taps the card they navigate.</p>
                 <Input placeholder="Title" value={((formData.title ?? formData.name) as string) ?? ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
                 <Input placeholder="Block Key" value={(formData.blockKey as string) ?? ''} onChange={(e) => setFormData({ ...formData, blockKey: e.target.value })} />
                 <Input placeholder="Image URL" value={(formData.imageUrl as string) ?? ''} onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })} />
                 <div>
-                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – navigate to</label>
+                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – redirect (typed)</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background mb-2"
+                    value={(formData.redirectType as string) ?? ''}
+                    onChange={(e) => setFormData({ ...formData, redirectType: e.target.value || null })}
+                  >
+                    <option value="">— Use link below —</option>
+                    <option value="product">Product</option>
+                    <option value="category">Category</option>
+                    <option value="collection">Collection</option>
+                    <option value="page">Page</option>
+                    <option value="url">URL</option>
+                    <option value="screen">Screen</option>
+                  </select>
+                  <Input placeholder="Redirect value (ID, URL, or screen param)" value={(formData.redirectValue as string) ?? ''} onChange={(e) => setFormData({ ...formData, redirectValue: e.target.value || null })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – link (legacy)</label>
                   <Input placeholder="product:ID | category:ID | https://... | ScreenName:param=val" value={(formData.link as string) ?? ''} onChange={(e) => setFormData({ ...formData, link: e.target.value })} />
-                  <p className="text-xs text-[#71717a] mt-1">product:ID → Product detail, category:ID → Category, https://... → External.</p>
                 </div>
                 <Input type="number" placeholder="Order" value={(formData.order as number) ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })} />
               </>
             )}
             {activeTab === 'promoblocks' && (
               <>
-                <p className="text-xs text-[#71717a]">Block key: greens_banner or section_image. Image URL: upload elsewhere, paste URL. Set Link for on-tap navigation.</p>
+                <p className="text-xs text-[#71717a]">Block key: greens_banner or section_image. Image URL: upload elsewhere, paste URL. Set Redirect or Link for on-tap navigation.</p>
                 <Input placeholder="Block Key (greens_banner | section_image)" value={(formData.blockKey as string) ?? ''} onChange={(e) => setFormData({ ...formData, blockKey: e.target.value })} />
                 <Input placeholder="Image URL" value={(formData.imageUrl as string) ?? ''} onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })} />
                 <div>
-                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – navigate to</label>
+                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – redirect (typed)</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background mb-2"
+                    value={(formData.redirectType as string) ?? ''}
+                    onChange={(e) => setFormData({ ...formData, redirectType: e.target.value || null })}
+                  >
+                    <option value="">— Use link below —</option>
+                    <option value="product">Product</option>
+                    <option value="category">Category</option>
+                    <option value="collection">Collection</option>
+                    <option value="page">Page</option>
+                    <option value="url">URL</option>
+                    <option value="screen">Screen</option>
+                  </select>
+                  <Input placeholder="Redirect value (ID, URL, or screen param)" value={(formData.redirectValue as string) ?? ''} onChange={(e) => setFormData({ ...formData, redirectValue: e.target.value || null })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#18181b] mb-1 block">On tap – link (legacy)</label>
                   <Input placeholder="product:ID | category:ID | https://... | ScreenName:param=val" value={(formData.link as string) ?? ''} onChange={(e) => setFormData({ ...formData, link: e.target.value })} />
-                  <p className="text-xs text-[#71717a] mt-1">product:ID → Product detail, category:ID → Category, https://... → External.</p>
                 </div>
                 <Input type="number" placeholder="Order" value={(formData.order as number) ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })} />
               </>
