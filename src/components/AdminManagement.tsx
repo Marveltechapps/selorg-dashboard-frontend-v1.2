@@ -30,6 +30,7 @@ import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
 import { PickerApprovals } from './screens/admin/PickerApprovals';
 import { PickerActivityLogs } from './screens/admin/PickerActivityLogs';
+import { PickerConfigManagement } from './screens/admin/PickerConfigManagement';
 import { TrainingContentManagement } from './screens/admin/TrainingContentManagement';
 import { ContentHub } from './screens/admin/ContentHub';
 import { FaqManagement } from './screens/admin/FaqManagement';
@@ -80,6 +81,7 @@ const TAB_LABELS: Record<string, string> = {
   'audit': 'Audit Logs',
   'picker-approvals': 'Picker Approvals',
   'picker-activity-logs': 'Picker Activity Logs',
+  'picker-config': 'Picker Config',
   'training-content': 'Training Content',
   'ops-alerts': 'Operations Alerts',
   'content-hub': 'Content Hub',
@@ -261,6 +263,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
             {activeTab === 'picker-approvals' && <PickerApprovals />}
             {activeTab === 'picker-activity-logs' && <PickerActivityLogs />}
+            {activeTab === 'picker-config' && <PickerConfigManagement />}
             {activeTab === 'training-content' && <TrainingContentManagement />}
             {activeTab === 'ops-alerts' && <OperationsAlerts />}
             {activeTab === 'support' && <SupportCenter />}

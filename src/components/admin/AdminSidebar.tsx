@@ -50,6 +50,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
     { category: "Workforce", items: [
       { id: 'picker-approvals', label: 'Picker Approvals', icon: UserPlus },
       { id: 'picker-activity-logs', label: 'Picker Activity Logs', icon: History },
+      { id: 'picker-config', label: 'Picker Config', icon: Sliders },
       { id: 'training-content', label: 'Training Content', icon: Video },
       { id: 'ops-alerts', label: 'Operations Alerts', icon: AlertTriangle },
     ]},

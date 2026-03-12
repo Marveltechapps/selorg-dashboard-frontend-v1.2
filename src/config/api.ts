@@ -200,6 +200,10 @@ export const API_ENDPOINTS = {
       update: (id: string) => `/admin/training-videos/${id}`,
       delete: (id: string) => `/admin/training-videos/${id}`,
     },
+    pickerConfig: {
+      get: '/admin/picker-config',
+      update: '/admin/picker-config',
+    },
     fraud: {
       alerts: '/admin/fraud/alerts',
       alertById: (id: string) => `/admin/fraud/alerts/${id}`,
