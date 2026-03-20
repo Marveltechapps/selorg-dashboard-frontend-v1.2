@@ -213,6 +213,65 @@ export const vendorManagementApi = {
   },
 
   /**
+   * Get vendor purchase orders
+   */
+  async getVendorPurchaseOrders(vendorId: string) {
+    const response = await fetch(
+      `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.purchaseOrders(vendorId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken() || ''}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error: any = new Error('Failed to fetch vendor purchase orders');
+      try {
+        const errData = await response.json();
+        error.message = errData.message || errData.error || error.message;
+      } catch {
+        error.message = `Failed to fetch vendor purchase orders (${response.status})`;
+      }
+      throw error;
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Get vendor QC checks (alias)
+   */
+  async getVendorQCChecks(vendorId: string) {
+    // Reuse existing endpoint helper
+    const response = await fetch(
+      `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.qcChecks(vendorId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken() || ''}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error: any = new Error('Failed to fetch vendor QC checks');
+      try {
+        const errData = await response.json();
+        error.message = errData.message || errData.error || error.message;
+      } catch {
+        error.message = `Failed to fetch vendor QC checks (${response.status})`;
+      }
+      throw error;
+    }
+
+    return response.json();
+  },
+
+  /**
    * List all QC checks
    */
   async listQCChecks(filters?: any) {

@@ -1,4 +1,367 @@
 import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Star, Package, CheckCircle, FileText, MessageSquare, TrendingUp, AlertTriangle, Clock } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import * as vendorApi from '../../../api/vendor/vendorManagement.api';
+import { toast } from 'sonner';
+
+interface VendorProfileProps {
+  vendorId: string;
+  vendorName: string;
+  vendorCode: string;
+  vendorCategory: string;
+  vendorStatus: string;
+  vendorRating: string;
+  onBack: () => void;
+}
+
+export function VendorProfile({
+  vendorId, vendorName, vendorCode, vendorCategory,
+  vendorStatus, vendorRating, onBack
+}: VendorProfileProps) {
+  const [activeTab, setActiveTab] = useState<'performance' | 'orders' | 'qc' | 'documents'>('performance');
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [qcChecks, setQcChecks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Mock performance chart data
+  const performanceData = Array.from({ length: 30 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (29 - i));
+    return {
+      date: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      sla: Math.min(100, Math.round(72 + Math.random() * 18 + i * 0.3)),
+      qc: Math.min(100, Math.round(78 + Math.random() * 15 + i * 0.2)),
+    };
+  });
+
+  // Mock documents
+  const documents = [
+    { name: 'GST Certificate', uploadDate: '2024-01-15', expiryDate: '2025-01-14', status: 'valid' },
+    { name: 'FSSAI License', uploadDate: '2024-02-10', expiryDate: '2025-02-09', status: 'valid' },
+    { name: 'Trade License', uploadDate: '2023-11-01', expiryDate: '2026-03-25', status: 'expiring' },
+    { name: 'Bank Details', uploadDate: '2024-01-15', expiryDate: '—', status: 'valid' },
+  ];
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [posResp, qcResp] = await Promise.all([
+          vendorApi.getVendorPurchaseOrders
+            ? vendorApi.getVendorPurchaseOrders(vendorId)
+            : Promise.resolve([]),
+          vendorApi.getVendorQCChecks
+            ? vendorApi.getVendorQCChecks(vendorId)
+            : Promise.resolve([])
+        ]);
+        const pos = Array.isArray(posResp) ? posResp
+          : Array.isArray(posResp?.data) ? posResp.data : [];
+        const qcs = Array.isArray(qcResp) ? qcResp
+          : Array.isArray(qcResp?.data) ? qcResp.data : [];
+        setPurchaseOrders(pos);
+        setQcChecks(qcs);
+      } catch (err) {
+        console.error('Failed to load vendor profile data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [vendorId]);
+
+  const statusColor = vendorStatus === 'Active'
+    ? 'bg-green-100 text-green-700'
+    : vendorStatus === 'Under Review'
+    ? 'bg-yellow-100 text-yellow-700'
+    : 'bg-red-100 text-red-700';
+
+  const tabs = [
+    { key: 'performance', label: 'Performance', icon: <TrendingUp size={14} /> },
+    { key: 'orders',      label: 'Purchase Orders', icon: <Package size={14} /> },
+    { key: 'qc',          label: 'QC History', icon: <CheckCircle size={14} /> },
+    { key: 'documents',   label: 'Documents', icon: <FileText size={14} /> },
+  ] as const;
+
+  const getPOStatusStyle = (status: string) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'fulfilled' || s === 'completed') return 'bg-green-100 text-green-700';
+    if (s === 'acknowledged') return 'bg-purple-100 text-purple-700';
+    if (s === 'sent') return 'bg-blue-100 text-blue-700';
+    if (s === 'cancelled') return 'bg-red-100 text-red-700';
+    return 'bg-gray-100 text-gray-600';
+  };
+
+  const getQCStatusStyle = (status: string) => {
+    const s = (status || '').toLowerCase();
+    if (['approved','passed','pass'].includes(s)) return 'bg-green-100 text-green-700';
+    if (['rejected','failed','fail'].includes(s)) return 'bg-red-100 text-red-700';
+    return 'bg-amber-100 text-amber-700';
+  };
+
+  const getQCStatusLabel = (status: string) => {
+    const s = (status || '').toLowerCase();
+    if (['approved','passed','pass'].includes(s)) return 'Pass';
+    if (['rejected','failed','fail'].includes(s)) return 'Fail';
+    return 'Partial';
+  };
+
+  const getDocStatusStyle = (status: string) => {
+    if (status === 'valid') return 'bg-green-100 text-green-700';
+    if (status === 'expiring') return 'bg-amber-100 text-amber-700';
+    return 'bg-red-100 text-red-700';
+  };
+
+  const getDocStatusLabel = (status: string) => {
+    if (status === 'valid') return 'Valid';
+    if (status === 'expiring') return 'Expiring Soon';
+    return 'Expired';
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm p-6">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-sm text-[#757575] hover:text-[#212121] mb-4 transition-colors"
+        >
+          <ArrowLeft size={16} /> Back to Vendor Overview
+        </button>
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 rounded-xl bg-indigo-50 border border-indigo-100 
+                            flex items-center justify-center text-indigo-600 font-bold text-xl">
+              {vendorName.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-bold text-[#212121]">{vendorName}</h1>
+                <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${statusColor}`}>
+                  {vendorStatus}
+                </span>
+              </div>
+              <p className="text-sm text-[#757575] mt-0.5">{vendorCode} · {vendorCategory}</p>
+              <div className="flex items-center gap-1 mt-1 text-amber-500">
+                <Star size={14} fill="#F59E0B" />
+                <span className="text-sm font-medium text-[#212121]">{vendorRating}</span>
+                <span className="text-xs text-[#9CA3AF] ml-1">Overall Rating</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => toast.info('Purchase Order creation coming soon')}
+              className="px-4 py-2 bg-[#1677FF] text-white text-sm font-medium 
+                         rounded-lg hover:bg-[#409EFF] flex items-center gap-2 transition-colors"
+            >
+              <Package size={15} /> Create PO
+            </button>
+            <button
+              onClick={() => toast.info('Messaging coming soon')}
+              className="px-4 py-2 border border-[#E0E0E0] text-[#616161] text-sm 
+                         font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2 transition-colors"
+            >
+              <MessageSquare size={15} /> Message
+            </button>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          {[
+            { label: 'On-Time Delivery', value: '—', icon: <Clock size={15} />, color: 'text-green-600' },
+            { label: 'QC Pass Rate',     value: '—', icon: <CheckCircle size={15} />, color: 'text-blue-600' },
+            { label: 'Open POs',         value: String(purchaseOrders.filter(p => !['fulfilled','completed','cancelled'].includes((p.status||'').toLowerCase())).length), icon: <Package size={15} />, color: 'text-indigo-600' },
+            { label: 'Member Since',     value: '2024', icon: <Star size={15} />, color: 'text-amber-500' },
+          ].map((stat, i) => (
+            <div key={i} className="bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg p-3">
+              <div className={`${stat.color} mb-1`}>{stat.icon}</div>
+              <p className="text-lg font-bold text-[#212121]">{stat.value}</p>
+              <p className="text-xs text-[#9CA3AF]">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm overflow-hidden">
+        <div className="flex border-b border-[#E0E0E0] overflow-x-auto">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap
+                         border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? 'border-[#1677FF] text-[#1677FF] bg-blue-50/40'
+                  : 'border-transparent text-[#757575] hover:text-[#212121] hover:bg-[#FAFAFA]'
+              }`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-6">
+          {/* Performance Tab */}
+          {activeTab === 'performance' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-bold text-[#212121] mb-1">SLA & Quality Trend</h3>
+                <p className="text-xs text-[#9CA3AF] mb-4">Last 30 days</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={performanceData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickLine={false} interval={6} />
+                    <YAxis domain={[60, 100]} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      formatter={(value: number, name: string) => [`${value}%`, name === 'sla' ? 'SLA Compliance' : 'QC Pass Rate']}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #E0E0E0', fontSize: '12px' }}
+                    />
+                    <Line type="monotone" dataKey="sla" stroke="#22c55e" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="sla" />
+                    <Line type="monotone" dataKey="qc"  stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="qc" />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="flex gap-4 mt-2">
+                  <span className="flex items-center gap-1.5 text-xs text-[#757575]">
+                    <span className="w-3 h-0.5 bg-green-500 inline-block rounded"></span> SLA Compliance
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-[#757575]">
+                    <span className="w-3 h-0.5 bg-blue-500 inline-block rounded"></span> QC Pass Rate
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Purchase Orders Tab */}
+          {activeTab === 'orders' && (
+            <div>
+              {loading ? (
+                <div className="text-center py-12 text-[#9CA3AF] text-sm">Loading orders...</div>
+              ) : purchaseOrders.length === 0 ? (
+                <div className="text-center py-12">
+                  <Package size={36} className="mx-auto text-[#E0E0E0] mb-3" />
+                  <p className="font-medium text-[#757575]">No purchase orders yet</p>
+                  <p className="text-xs text-[#9CA3AF] mt-1">Orders created for this vendor will appear here</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#F5F7FA] text-[#757575] text-xs font-medium">
+                        <th className="px-4 py-3 text-left">PO ID</th>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Items</th>
+                        <th className="px-4 py-3 text-left">Value</th>
+                        <th className="px-4 py-3 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F0F0F0]">
+                      {purchaseOrders.map((po, i) => (
+                        <tr key={i} className="hover:bg-[#FAFAFA]">
+                          <td className="px-4 py-3 font-medium text-[#212121]">{po.code || po._id}</td>
+                          <td className="px-4 py-3 text-[#616161]">
+                            {po.createdAt ? new Date(po.createdAt).toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-[#616161]">
+                            {po.items?.length ?? po.lineItems?.length ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 text-[#616161]">
+                            {po.totalValue != null ? `₹${po.totalValue}` : '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getPOStatusStyle(po.status)}`}>
+                              {po.status || 'Draft'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* QC History Tab */}
+          {activeTab === 'qc' && (
+            <div>
+              {loading ? (
+                <div className="text-center py-12 text-[#9CA3AF] text-sm">Loading QC records...</div>
+              ) : qcChecks.length === 0 ? (
+                <div className="text-center py-12">
+                  <CheckCircle size={36} className="mx-auto text-[#E0E0E0] mb-3" />
+                  <p className="font-medium text-[#757575]">No QC inspections yet</p>
+                  <p className="text-xs text-[#9CA3AF] mt-1">Quality checks for this vendor will appear here</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#F5F7FA] text-[#757575] text-xs font-medium">
+                        <th className="px-4 py-3 text-left">Inspection ID</th>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Category</th>
+                        <th className="px-4 py-3 text-left">Result</th>
+                        <th className="px-4 py-3 text-left">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F0F0F0]">
+                      {qcChecks.map((qc, i) => (
+                        <tr key={i} className="hover:bg-[#FAFAFA]">
+                          <td className="px-4 py-3 font-medium text-[#212121]">{qc.code || qc._id}</td>
+                          <td className="px-4 py-3 text-[#616161]">
+                            {qc.createdAt ? new Date(qc.createdAt).toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-[#616161]">{qc.category || '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getQCStatusStyle(qc.status)}`}>
+                              {getQCStatusLabel(qc.status)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-[#9CA3AF] text-xs">{qc.notes || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Documents Tab */}
+          {activeTab === 'documents' && (
+            <div className="space-y-3">
+              {documents.map((doc, i) => (
+                <div key={i} className="flex items-center justify-between p-3 
+                                        bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <FileText size={16} className="text-[#9CA3AF]" />
+                    <div>
+                      <p className="text-sm font-medium text-[#212121]">{doc.name}</p>
+                      <p className="text-xs text-[#9CA3AF]">
+                        Uploaded {doc.uploadDate} 
+                        {doc.expiryDate !== '—' ? ` · Expires ${doc.expiryDate}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getDocStatusStyle(doc.status)}`}>
+                    {getDocStatusLabel(doc.status)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, X, MoreVertical, Edit, MessageSquare, FileText, 
   BarChart3, Pause, Phone, Mail, MapPin, Building2, CreditCard,

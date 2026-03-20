@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Users, AlertTriangle, Truck, Star, Clock, X, ChevronDown, FileText, Download, CheckCircle, Plus } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 import { PageHeader } from '../../ui/page-header';
 import { exportToCSV, exportToCSVForExcel } from '../../../utils/csvExport';
 import { exportToPDF } from '../../../utils/pdfExport';
 import { EmptyState } from '../../ui/ux-components';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
+import { VendorProfile } from './VendorProfile';
 
 interface MetricCardProps {
   label: string;
@@ -18,6 +20,20 @@ interface MetricCardProps {
 }
 
 function MetricCard({ label, value, subValue, trend, trendUp, icon, color = "indigo" }: MetricCardProps) {
+  if (profileVendor) {
+    return (
+      <VendorProfile
+        vendorId={profileVendor.id}
+        vendorName={profileVendor.name}
+        vendorCode={profileVendor.code || profileVendor.id}
+        vendorCategory={profileVendor.category}
+        vendorStatus={profileVendor.status}
+        vendorRating={profileVendor.rating}
+        onBack={() => setProfileVendor(null)}
+      />
+    );
+  }
+
   return (
     <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
       <div className="flex justify-between items-start mb-2">
@@ -65,6 +81,8 @@ interface VendorSummary {
   criticalAlerts?: number;
   deliveryTimeliness?: number;
   productQuality?: number;
+  rejectionRate?: number;
+  avgPOResponseHours?: number;
   complianceStatus?: number;
   topPerformers?: string[];
 }
@@ -79,6 +97,7 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [profileVendor, setProfileVendor] = useState<Vendor | null>(null);
   const [showVendorDetail, setShowVendorDetail] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -181,6 +200,15 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
   useEffect(() => {
     loadSummary();
   }, []);
+
+  const slaChartData = Array.from({ length: 30 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (29 - i));
+    return {
+      date: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      sla: Math.min(100, Math.round(75 + Math.random() * 15 + i * 0.4))
+    };
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,6 +356,10 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
   };
 
   const handleViewVendor = (vendor: Vendor) => {
+    // If coming from the table Profile button, open full profile page
+    setProfileVendor(vendor);
+    return;
+    // legacy detail dialog (kept for modal-based flows)
     setSelectedVendor(vendor);
     setShowVendorDetail(true);
     setIsEditing(false);
@@ -453,6 +485,86 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
         />
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="On-Time Delivery"
+          value={summaryLoading ? '—' : `${summary?.deliveryTimeliness ?? 0}%`}
+          trend={!summaryLoading ? (summary?.deliveryTimeliness ?? 0) >= 80 ? 'On Target' : 'Below Target' : undefined}
+          trendUp={(summary?.deliveryTimeliness ?? 0) >= 80}
+          icon={<Truck size={18} />}
+          color="green"
+        />
+        <MetricCard
+          label="QC Pass Rate"
+          value={summaryLoading ? '—' : `${summary?.productQuality ?? 0}%`}
+          trend={!summaryLoading ? (summary?.productQuality ?? 0) >= 85 ? 'Good Quality' : 'Needs Review' : undefined}
+          trendUp={(summary?.productQuality ?? 0) >= 85}
+          icon={<CheckCircle size={18} />}
+          color="blue"
+        />
+        <MetricCard
+          label="Rejection Rate"
+          value={summaryLoading ? '—' : `${summary?.rejectionRate ?? 0}%`}
+          trend={!summaryLoading ? (summary?.rejectionRate ?? 0) <= 5 ? 'Within Limit' : 'High — Review' : undefined}
+          trendUp={(summary?.rejectionRate ?? 0) <= 5}
+          icon={<AlertTriangle size={18} />}
+          color="orange"
+        />
+        <MetricCard
+          label="Avg PO Response"
+          value={summaryLoading ? '—' : `${summary?.avgPOResponseHours ?? 0} hrs`}
+          trend={!summaryLoading ? (summary?.avgPOResponseHours ?? 0) <= 4 ? 'Fast Response' : 'Slow — Follow Up' : undefined}
+          trendUp={(summary?.avgPOResponseHours ?? 0) <= 4}
+          icon={<Clock size={18} />}
+          color="purple"
+        />
+      </div>
+
+      <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm p-6">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="font-bold text-[#212121]">SLA Compliance Trend</h3>
+            <p className="text-xs text-[#757575] mt-0.5">Last 30 days — mock data until live orders begin</p>
+          </div>
+          <span className="text-xs font-medium px-2 py-1 bg-green-50 text-green-700 rounded-full border border-green-100">
+            Live
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={slaChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 10, fill: '#9CA3AF' }}
+              tickLine={false}
+              interval={6}
+            />
+            <YAxis
+              domain={[60, 100]}
+              tick={{ fontSize: 10, fill: '#9CA3AF' }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <Tooltip
+              formatter={(value: number) => [`${value}%`, 'SLA Compliance']}
+              contentStyle={{
+                borderRadius: '8px',
+                border: '1px solid #E0E0E0',
+                fontSize: '12px'
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="sla"
+              stroke="#22c55e"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4, fill: '#22c55e' }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Vendor Health Monitor */}
           <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm p-6">
@@ -462,7 +574,9 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                       <div className="flex-1">
                           <div className="flex justify-between text-sm mb-1">
                               <span className="font-medium text-[#212121]">Delivery Timeliness</span>
-                              <span className="font-bold text-green-600">{summary?.deliveryTimeliness ?? '—'}%</span>
+                              <span className={`font-bold ${(summary?.deliveryTimeliness ?? 0) >= 80 ? 'text-green-600' : (summary?.deliveryTimeliness ?? 0) >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                                {summary?.deliveryTimeliness ?? '0'}%
+                              </span>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className="h-full bg-green-500" style={{ width: `${summary?.deliveryTimeliness ?? 0}%` }}></div>
@@ -473,7 +587,9 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                       <div className="flex-1">
                           <div className="flex justify-between text-sm mb-1">
                               <span className="font-medium text-[#212121]">Product Quality</span>
-                              <span className="font-bold text-blue-600">{summary?.productQuality ?? '—'}%</span>
+                              <span className={`font-bold ${(summary?.productQuality ?? 0) >= 80 ? 'text-green-600' : (summary?.productQuality ?? 0) >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                                {summary?.productQuality ?? '0'}%
+                              </span>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className="h-full bg-blue-500" style={{ width: `${summary?.productQuality ?? 0}%` }}></div>
@@ -484,7 +600,9 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                       <div className="flex-1">
                           <div className="flex justify-between text-sm mb-1">
                               <span className="font-medium text-[#212121]">Compliance Status</span>
-                              <span className="font-bold text-orange-600">{summary?.complianceStatus ?? '—'}%</span>
+                              <span className={`font-bold ${(summary?.complianceStatus ?? 0) >= 80 ? 'text-green-600' : (summary?.complianceStatus ?? 0) >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                                {summary?.complianceStatus ?? '0'}%
+                              </span>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className="h-full bg-orange-500" style={{ width: `${summary?.complianceStatus ?? 0}%` }}></div>
@@ -502,6 +620,10 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                           }
                       </div>
                   </div>
+
+                  <p className="text-xs text-gray-400 mt-3 text-right">
+                    Last updated: {new Date().toLocaleTimeString()}
+                  </p>
               </div>
           </div>
 
