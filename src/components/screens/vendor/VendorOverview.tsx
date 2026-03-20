@@ -7,7 +7,7 @@ import { exportToCSV, exportToCSVForExcel } from '../../../utils/csvExport';
 import { exportToPDF } from '../../../utils/pdfExport';
 import { EmptyState } from '../../ui/ux-components';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
-import { VendorProfile } from './VendorProfile';
+import { VendorProfileOverview } from './VendorProfile';
 
 interface MetricCardProps {
   label: string;
@@ -20,20 +20,6 @@ interface MetricCardProps {
 }
 
 function MetricCard({ label, value, subValue, trend, trendUp, icon, color = "indigo" }: MetricCardProps) {
-  if (profileVendor) {
-    return (
-      <VendorProfile
-        vendorId={profileVendor.id}
-        vendorName={profileVendor.name}
-        vendorCode={profileVendor.code || profileVendor.id}
-        vendorCategory={profileVendor.category}
-        vendorStatus={profileVendor.status}
-        vendorRating={profileVendor.rating}
-        onBack={() => setProfileVendor(null)}
-      />
-    );
-  }
-
   return (
     <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
       <div className="flex justify-between items-start mb-2">
@@ -431,6 +417,20 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
     
     return true;
   });
+
+  if (profileVendor) {
+    return (
+      <VendorProfileOverview
+        vendorId={profileVendor.id}
+        vendorName={profileVendor.name}
+        vendorCode={profileVendor.code || profileVendor.id}
+        vendorCategory={profileVendor.category}
+        vendorStatus={profileVendor.status}
+        vendorRating={profileVendor.rating}
+        onBack={() => setProfileVendor(null)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

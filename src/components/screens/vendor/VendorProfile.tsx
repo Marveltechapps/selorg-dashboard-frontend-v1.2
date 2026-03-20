@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Star, Package, CheckCircle, FileText, MessageSquare, TrendingUp, AlertTriangle, Clock } from 'lucide-react';
+import {
+  ArrowLeft, Star, Package, CheckCircle, FileText, MessageSquare, TrendingUp, AlertTriangle, Clock,
+  X, MoreVertical, Edit, BarChart3, Pause, Phone, MapPin, CreditCard,
+  XCircle, Download, Eye, Copy, Trash2, Save, Loader2
+} from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 import { toast } from 'sonner';
+import { createPDFBlob, createPDFViewHTML } from '../../../utils/pdfHelper';
+import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 
-interface VendorProfileProps {
+interface VendorProfileOverviewProps {
   vendorId: string;
   vendorName: string;
   vendorCode: string;
@@ -14,10 +19,10 @@ interface VendorProfileProps {
   onBack: () => void;
 }
 
-export function VendorProfile({
+export function VendorProfileOverview({
   vendorId, vendorName, vendorCode, vendorCategory,
   vendorStatus, vendorRating, onBack
-}: VendorProfileProps) {
+}: VendorProfileOverviewProps) {
   const [activeTab, setActiveTab] = useState<'performance' | 'orders' | 'qc' | 'documents'>('performance');
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [qcChecks, setQcChecks] = useState<any[]>([]);
@@ -360,17 +365,6 @@ export function VendorProfile({
     </div>
   );
 }
-
-import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, X, MoreVertical, Edit, MessageSquare, FileText, 
-  BarChart3, Pause, Phone, Mail, MapPin, Building2, CreditCard,
-  TrendingUp, TrendingDown, CheckCircle, AlertTriangle, XCircle,
-  Download, Eye, RefreshCw, Copy, Trash2, Plus, Save, Loader2
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { createPDFBlob, createPDFViewHTML } from '../../../utils/pdfHelper';
-import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 
 interface Vendor {
   id: string;
