@@ -8,13 +8,31 @@ import { FleetManagement } from './screens/fleet/FleetManagement';
 import { AlertsDashboard as RiderAlerts } from './screens/AlertsDashboard';
 import { RiderAnalytics } from './screens/rider/RiderAnalytics';
 import { StaffShifts } from './screens/rider/StaffShifts';
+import { RiderShiftManagement } from './screens/rider/RiderShiftManagement';
 import { CommunicationHub } from './screens/rider/CommunicationHub';
 import { SystemHealth } from './screens/rider/SystemHealth';
 import { TaskApprovals } from './screens/rider/TaskApprovals';
 import { DeliveryEscalations } from './screens/rider/DeliveryEscalations';
+import { TrainingKitManagement } from './screens/rider/TrainingKitManagement';
+import { GroupDelivery } from './screens/rider/GroupDelivery';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
-const RIDER_TABS = ['overview', 'hr', 'dispatch', 'fleet', 'escalations', 'alerts', 'analytics', 'shifts', 'communication', 'health', 'approvals'] as const;
+const RIDER_TABS = [
+  'overview',
+  'hr',
+  'dispatch',
+  'fleet',
+  'escalations',
+  'alerts',
+  'analytics',
+  'rider-shifts',
+  'shifts',
+  'communication',
+  'health',
+  'approvals',
+  'training-kit',
+  'group-delivery',
+] as const;
 
 export function RiderManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
@@ -36,10 +54,13 @@ export function RiderManagement({ onLogout }: { onLogout: () => void }) {
             {tab === 'escalations' && <DeliveryEscalations searchQuery={riderSearchQuery} />}
             {tab === 'alerts' && <RiderAlerts searchQuery={riderSearchQuery} />}
             {tab === 'analytics' && <RiderAnalytics searchQuery={riderSearchQuery} />}
+            {tab === 'rider-shifts' && <RiderShiftManagement searchQuery={riderSearchQuery} />}
             {tab === 'shifts' && <StaffShifts searchQuery={riderSearchQuery} />}
             {tab === 'communication' && <CommunicationHub searchQuery={riderSearchQuery} />}
             {tab === 'health' && <SystemHealth searchQuery={riderSearchQuery} />}
             {tab === 'approvals' && <TaskApprovals searchQuery={riderSearchQuery} />}
+            {tab === 'training-kit' && <TrainingKitManagement />}
+            {tab === 'group-delivery' && <GroupDelivery searchQuery={riderSearchQuery} />}
         </main>
       </div>
     </div>

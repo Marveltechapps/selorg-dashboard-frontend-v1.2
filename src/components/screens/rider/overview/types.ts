@@ -1,5 +1,5 @@
 export type RiderStatus = "online" | "offline" | "busy" | "idle";
-export type OrderStatus = "assigned" | "picked_up" | "in_transit" | "delivered" | "rto" | "returned" | "delayed" | "pending";
+export type OrderStatus = "assigned" | "picked_up" | "in_transit" | "delivered" | "rto" | "returned" | "delayed" | "pending" | "new" | "ready" | "processing" | "picking" | "picked" | "packed" | "ready_for_dispatch" | "cancelled" | "ASSIGNED" | "PICKED";
 
 export interface Rider {
   id: string;
@@ -29,6 +29,7 @@ export interface Order {
   customerName: string;
   items: string[];
   timeline: { status: OrderStatus; time: string; note?: string }[];
+  coordinates?: { lat: number; lng: number };
 }
 
 export interface DashboardSummary {

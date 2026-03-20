@@ -9,6 +9,12 @@ export interface Product {
   sku: string;
   name: string;
   description: string;
+  classification?: 'Style' | 'Variant';
+  hierarchyCode?: string;
+  taxPercent?: number;
+  isPurchasable?: boolean;
+  isSaleable?: boolean;
+  isStocked?: boolean;
   category: string;
   categoryId: string;
   subcategory: string;
@@ -16,6 +22,8 @@ export interface Product {
   brand: string;
   price: number;
   costPrice: number;
+  hsnCode: string;
+  gstRate: number;
   stockQuantity: number;
   lowStockThreshold: number;
   imageUrl: string;
@@ -169,11 +177,17 @@ function mapBackendProduct(raw: any): Product {
   const subcategoryName = typeof subcategoryObj === 'object' && subcategoryObj ? subcategoryObj.name : '';
   const subcategoryIdStr = typeof subcategoryObj === 'object' && subcategoryObj ? subcategoryObj._id : (subcategoryObj || '');
 
+  const descriptionRaw =
+    typeof raw.description === 'string'
+      ? raw.description
+      : (raw.description?.about || raw.description?.raw || '');
   return {
     id: raw._id,
     sku: raw.sku || '',
     name: raw.name || '',
-    description: raw.description || '',
+    description: descriptionRaw,
+    classification: raw.classification || 'Style',
+    hierarchyCode: raw.hierarchyCode || '',
     category: categoryName,
     categoryId: categoryIdStr,
     subcategory: subcategoryName,
@@ -181,11 +195,17 @@ function mapBackendProduct(raw: any): Product {
     brand: raw.brand || '',
     price: raw.price || 0,
     costPrice: raw.costPrice || 0,
+    hsnCode: raw.hsnCode || '',
+    gstRate: raw.gstRate || 0,
+    taxPercent: raw.taxPercent || raw.gstRate || 0,
     stockQuantity: raw.stockQuantity || 0,
     lowStockThreshold: raw.lowStockThreshold || 10,
     imageUrl: raw.imageUrl || (raw.images?.[0] || ''),
     images: raw.images || [],
     status: raw.status || (raw.isActive === false ? 'inactive' : 'active'),
+    isPurchasable: raw.isPurchasable ?? true,
+    isSaleable: raw.isSaleable ?? true,
+    isStocked: raw.isStocked ?? true,
     featured: raw.featured || false,
     attributes: raw.attributes || {},
     tags: raw.tags || [],
@@ -262,6 +282,8 @@ export async function createProduct(data: Partial<Product>): Promise<Product> {
     brand: data.brand,
     price: data.price,
     costPrice: data.costPrice,
+    hsnCode: data.hsnCode,
+    gstRate: data.gstRate,
     stockQuantity: data.stockQuantity,
     lowStockThreshold: data.lowStockThreshold,
     imageUrl: data.imageUrl,
@@ -283,6 +305,7 @@ export async function createProduct(data: Partial<Product>): Promise<Product> {
 
 const PRODUCT_UPDATE_KEYS = [
   'name', 'sku', 'description', 'brand', 'price', 'costPrice', 'originalPrice',
+  'hsnCode', 'gstRate',
   'stockQuantity', 'lowStockThreshold', 'imageUrl', 'images', 'status', 'featured',
   'attributes', 'tags', 'categoryId', 'subcategoryId',
 ] as const;

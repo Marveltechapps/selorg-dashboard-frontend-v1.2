@@ -13,7 +13,7 @@ export function CustomerAppHomeWithPreview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [activeTab, setActiveTab] = useState<ResourceTab>('categories');
+  const [activeTab, setActiveTab] = useState<ResourceTab>('sectionlist');
 
   const loadPreview = useCallback(async () => {
     setLoading(true);

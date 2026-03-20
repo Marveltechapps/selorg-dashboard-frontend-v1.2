@@ -31,11 +31,17 @@ interface ApiOrder {
   pickupLocation: string;
   pickup_location?: string; // Backend might use snake_case
   dropLocation: string;
-  drop_location?: string; // Backend might use snake_case
+  drop_location?: string;
+  delivery_address?: string;
   customerName: string;
   customer_name?: string; // Backend might use snake_case
   items: string[];
   timeline?: { status: OrderStatus; time: string; note?: string }[];
+  delivery?: {
+    address?: {
+      coordinates?: { lat: number; lng: number };
+    };
+  };
 }
 
 interface ApiDashboardSummary {
@@ -199,10 +205,11 @@ function transformOrder(apiOrder: ApiOrder): Order {
       ? (apiOrder.slaDeadline || apiOrder.sla_deadline || '')
       : new Date(apiOrder.slaDeadline || apiOrder.sla_deadline || Date.now()).toISOString(),
     pickupLocation: apiOrder.pickupLocation || apiOrder.pickup_location || '',
-    dropLocation: apiOrder.dropLocation || apiOrder.drop_location || '',
+    dropLocation: apiOrder.dropLocation || apiOrder.drop_location || apiOrder.delivery_address || '',
     customerName: apiOrder.customerName || apiOrder.customer_name || '',
     items: apiOrder.items || [],
     timeline,
+    coordinates: apiOrder.delivery?.address?.coordinates,
   };
 }
 
@@ -349,10 +356,10 @@ export const api = {
    * Assign order to rider. Throws on API failure so caller can show error and refetch.
    * Returns order shape from API so UI shows server-assigned riderId (e.g. RIDER-0001).
    */
-  assignOrder: async (orderId: string, riderId: string): Promise<{ orderId: string; riderId: string; riderName?: string; status: string; etaMinutes?: number }> => {
+  assignOrder: async (orderId: string, riderId: string, overrideSla = false): Promise<{ orderId: string; riderId: string; riderName?: string; status: string; etaMinutes?: number }> => {
     const res = await apiRequest<{ orderId: string; riderId: string; riderName?: string; status: string; etaMinutes?: number; message?: string }>(
       API_ENDPOINTS.orders.assign(orderId),
-      { method: 'POST', body: JSON.stringify({ orderId, riderId }) }
+      { method: 'POST', body: JSON.stringify({ orderId, riderId, overrideSla }) }
     );
     // Return the full response so caller can use it
     return {
@@ -396,6 +403,62 @@ export const api = {
       }
       throw error;
     }
+  },
+
+  /**
+   * Get clustered orders from backend
+   */
+  getGroupedOrders: async (params?: { radius?: number; minSize?: number; maxSize?: number; status?: string }): Promise<any> => {
+    const queryParams = new URLSearchParams();
+    if (params?.radius) queryParams.append('radius', params.radius.toString());
+    if (params?.minSize) queryParams.append('minSize', params.minSize.toString());
+    if (params?.maxSize) queryParams.append('maxSize', params.maxSize.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    
+    const endpoint = `${API_ENDPOINTS.dispatch.groupDelivery}?${queryParams.toString()}`;
+    return await apiRequest(endpoint);
+  },
+
+  /**
+   * Save clusters to backend
+   */
+  saveClusters: async (clusters: any[]): Promise<any> => {
+    const endpoint = '/rider/dispatch/clusters';
+    return await apiRequest(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ clusters }),
+    });
+  },
+
+  /**
+   * List saved clusters
+   */
+  getClusters: async (params?: { status?: string; zone?: string }): Promise<any[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.zone) queryParams.append('zone', params.zone);
+    
+    const endpoint = `/rider/dispatch/clusters?${queryParams.toString()}`;
+    return await apiRequest(endpoint);
+  },
+
+  /**
+   * Delete a cluster
+   */
+  deleteCluster: async (clusterId: string): Promise<void> => {
+    const endpoint = `/rider/dispatch/clusters/${clusterId}`;
+    await apiRequest(endpoint, { method: 'DELETE' });
+  },
+
+  /**
+   * Assign a cluster to a rider
+   */
+  assignCluster: async (clusterId: string, riderId: string): Promise<any> => {
+    const endpoint = `/rider/dispatch/clusters/${clusterId}/assign`;
+    return await apiRequest(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ riderId }),
+    });
   },
 };
 

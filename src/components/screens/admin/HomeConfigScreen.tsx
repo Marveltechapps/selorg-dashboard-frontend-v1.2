@@ -1,6 +1,6 @@
 /**
- * Home Config – Manage homepage-level settings (hero video, search placeholder, section titles, etc.).
- * Data is included in bootstrap and used by the customer app TopSection.
+ * Home Config – Manage homepage-level settings (hero video, search placeholder, organic tagline).
+ * Fullstack: loads from and saves to backend; used by customer app bootstrap.
  */
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -17,10 +17,7 @@ export function HomeConfigScreen() {
   const [formData, setFormData] = useState({
     heroVideoUrl: '',
     searchPlaceholder: '',
-    categorySectionTitle: '',
     organicTagline: '',
-    organicIconUrl: '',
-    deliveryTypeLabel: '',
   });
 
   const load = async () => {
@@ -32,10 +29,7 @@ export function HomeConfigScreen() {
         setFormData({
           heroVideoUrl: data.heroVideoUrl ?? '',
           searchPlaceholder: data.searchPlaceholder ?? '',
-          categorySectionTitle: data.categorySectionTitle ?? '',
           organicTagline: data.organicTagline ?? '',
-          organicIconUrl: data.organicIconUrl ?? '',
-          deliveryTypeLabel: data.deliveryTypeLabel ?? '',
         });
       }
     } catch {
@@ -80,7 +74,7 @@ export function HomeConfigScreen() {
       <div>
         <h1 className="text-2xl font-bold text-[#18181b]">Home Config</h1>
         <p className="text-sm text-[#71717a] mt-1">
-          Homepage-level settings: hero video, search placeholder, section titles. These appear in the customer app TopSection.
+          Homepage-level settings: hero video, search placeholder, organic tagline. Saved to the backend and used by the customer app. Changes appear in the app on next load or refresh.
         </p>
       </div>
 
@@ -104,39 +98,12 @@ export function HomeConfigScreen() {
           />
         </div>
         <div>
-          <Label htmlFor="categorySectionTitle">Category Section Title</Label>
-          <Input
-            id="categorySectionTitle"
-            value={formData.categorySectionTitle}
-            onChange={(e) => setFormData({ ...formData, categorySectionTitle: e.target.value })}
-            placeholder="e.g. Grocery & Kitchen"
-          />
-        </div>
-        <div>
           <Label htmlFor="organicTagline">Organic Tagline</Label>
           <Input
             id="organicTagline"
             value={formData.organicTagline}
             onChange={(e) => setFormData({ ...formData, organicTagline: e.target.value })}
             placeholder="Organic products tagline"
-          />
-        </div>
-        <div>
-          <Label htmlFor="organicIconUrl">Organic Icon URL</Label>
-          <Input
-            id="organicIconUrl"
-            value={formData.organicIconUrl}
-            onChange={(e) => setFormData({ ...formData, organicIconUrl: e.target.value })}
-            placeholder="https://... (icon image URL)"
-          />
-        </div>
-        <div>
-          <Label htmlFor="deliveryTypeLabel">Delivery Type Label</Label>
-          <Input
-            id="deliveryTypeLabel"
-            value={formData.deliveryTypeLabel}
-            onChange={(e) => setFormData({ ...formData, deliveryTypeLabel: e.target.value })}
-            placeholder="e.g. Delivery (used as Delivery to Home)"
           />
         </div>
         <Button onClick={handleSave} disabled={saving}>

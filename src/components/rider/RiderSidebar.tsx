@@ -1,19 +1,5 @@
 import React from 'react';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Bike, 
-  MapPin, 
-  AlertTriangle, 
-  BarChart3, 
-  CalendarClock, 
-  MessageSquare, 
-  Activity, 
-  ClipboardCheck,
-  ChevronDown,
-  LogOut,
-  Store
-} from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { cn } from "../../lib/utils";
 
 interface RiderSidebarProps {
@@ -24,17 +10,20 @@ interface RiderSidebarProps {
 
 export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebarProps) {
   const navItems = [
-    { id: 'overview', label: 'Rider Overview', icon: LayoutDashboard },
-    { id: 'hr', label: 'Rider HR & Docs', icon: Users },
-    { id: 'dispatch', label: 'Dispatch Operations', icon: MapPin },
-    { id: 'fleet', label: 'Fleet & Vehicle', icon: Bike },
-    { id: 'escalations', label: 'Escalations', icon: AlertTriangle },
-    { id: 'alerts', label: 'Alerts & Exceptions', icon: AlertTriangle },
-    { id: 'analytics', label: 'Analytics & Reports', icon: BarChart3 },
-    { id: 'shifts', label: 'Staff & Shifts', icon: CalendarClock },
-    { id: 'communication', label: 'Communication Hub', icon: MessageSquare },
-    { id: 'health', label: 'System Health', icon: Activity },
-    { id: 'approvals', label: 'Task Approvals', icon: ClipboardCheck },
+    { id: 'overview', label: 'Rider Overview', icon: Icons.LayoutDashboard },
+    { id: 'hr', label: 'Rider HR & Docs', icon: Icons.Users },
+    { id: 'dispatch', label: 'Dispatch Operations', icon: Icons.MapPin },
+    { id: 'fleet', label: 'Fleet & Vehicle', icon: Icons.Bike },
+    { id: 'escalations', label: 'Escalations', icon: Icons.AlertTriangle },
+    { id: 'alerts', label: 'Alerts & Exceptions', icon: Icons.AlertTriangle },
+    { id: 'analytics', label: 'Analytics & Reports', icon: Icons.BarChart3 },
+    { id: 'rider-shifts', label: 'Rider Shifts', icon: Icons.CalendarClock },
+    { id: 'shifts', label: 'Staff & Shifts', icon: Icons.Users2 },
+    { id: 'communication', label: 'Communication Hub', icon: Icons.MessageSquare },
+    { id: 'health', label: 'System Health', icon: Icons.Activity },
+    { id: 'approvals', label: 'Task Approvals', icon: Icons.ClipboardCheck },
+    { id: 'training-kit', label: 'Training & Kit', icon: Icons.Video },
+    { id: 'group-delivery', label: 'Group Delivery', icon: Icons.Map },
   ];
 
   return (
@@ -42,7 +31,7 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
       {/* Fixed single hub (Chennai) */}
       <div className="p-4 border-b border-[#1F2937]">
         <div className="flex items-center gap-2 mb-2 text-[#9E9E9E] text-[10px] uppercase font-bold tracking-wider">
-          <Store size={12} />
+          <Icons.Store size={12} />
           <span>Current Hub</span>
         </div>
         <div className="w-full bg-[#1F2937] p-2.5 rounded-lg flex items-center justify-between border border-[#1F2937]">
@@ -90,7 +79,7 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
             <p className="text-xs text-[#808080] truncate">Fleet Lead</p>
           </div>
           <button onClick={onLogout}>
-            <LogOut size={16} className="text-[#666666] hover:text-[#F87171]" />
+            <Icons.LogOut size={16} className="text-[#666666] hover:text-[#F87171]" />
           </button>
         </div>
       </div>

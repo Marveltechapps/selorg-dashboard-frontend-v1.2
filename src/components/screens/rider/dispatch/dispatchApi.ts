@@ -190,6 +190,8 @@ function transformRider(apiRider: ApiRider): DispatchRider {
     phone,
     status,
     currentLocation: location,
+     // Propagate currentOrderId so frontend eligibility can rely on "no active order"
+    currentOrderId: apiRider.currentOrderId ?? null,
     activeOrdersCount: apiRider.capacity.currentLoad,
     maxCapacity: apiRider.capacity.maxLoad,
     zone: apiRider.zone || 'Unknown',
@@ -227,6 +229,7 @@ async function fetchV2DispatchRiders(): Promise<DispatchRider[]> {
       name: String(r?.name ?? 'Unknown Rider'),
       status,
       currentLocation: location,
+      currentOrderId: (r as any)?.currentOrderId ?? null,
       activeOrdersCount: typeof capacity.currentLoad === 'number' ? capacity.currentLoad : 0,
       maxCapacity: typeof capacity.maxLoad === 'number' ? capacity.maxLoad : 5,
       zone: typeof r?.zone === 'string' && r.zone ? r.zone : 'Unknown',

@@ -36,8 +36,10 @@ import { ContentHub } from './screens/admin/ContentHub';
 import { FaqManagement } from './screens/admin/FaqManagement';
 import { HomeConfigScreen } from './screens/admin/HomeConfigScreen';
 import { ProductsIntroductionScreen } from './screens/admin/ProductsIntroductionScreen';
+import { ContentHubCategoriesScreen } from './screens/admin/ContentHubCategoriesScreen';
 import { CollectionsScreen } from './screens/admin/CollectionsScreen';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
+import { CmsAdminDashboard } from './screens/admin/CmsAdminDashboard';
 import { 
   Tag, 
   Store, 
@@ -95,6 +97,7 @@ const TAB_LABELS: Record<string, string> = {
   'faq-management': 'FAQ Management',
   'home-config': 'Home Config',
   'products-introduction': 'Products Introduction',
+  'content-hub-categories': 'Categories & Subcategories',
   'collections': 'Collections',
 };
 
@@ -274,6 +277,9 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'integrations' && <IntegrationManager />}
             {activeTab === 'compliance' && <ComplianceCenter />}
             {activeTab === 'content-hub' && <ContentHub setActiveTab={setActiveTab} />}
+            {activeTab === 'content-hub-categories' && (
+              <ContentHubCategoriesScreen onBackToHub={() => setActiveTab('content-hub')} />
+            )}
             {activeTab === 'home-config' && <HomeConfigScreen />}
             {activeTab === 'products-introduction' && <ProductsIntroductionScreen />}
             {activeTab === 'collections' && <CollectionsScreen />}
@@ -284,7 +290,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'onboarding' && <OnboardingManagement />}
             {activeTab === 'app-settings' && <CustomerAppSettings onNavigateToLegal={() => setActiveTab('legal-policies')} />}
             {activeTab === 'app-cms' && <AppCMS onEditContent={() => setActiveTab('customer-app-home')} />}
-            {activeTab === 'cms-pages' && <CmsPagesScreen />}
+            {activeTab === 'cms-pages' && <CmsAdminDashboard />}
             {activeTab === 'faq-management' && <FaqManagement />}
         </main>
       </div>

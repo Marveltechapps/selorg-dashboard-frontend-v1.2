@@ -8,6 +8,7 @@ export interface Rider {
   trainingStatus: "not_started" | "in_progress" | "completed";
   appAccess: "enabled" | "disabled";
   deviceAssigned: boolean;
+  hubName?: string;
   contract: {
     startDate: string;
     endDate: string;

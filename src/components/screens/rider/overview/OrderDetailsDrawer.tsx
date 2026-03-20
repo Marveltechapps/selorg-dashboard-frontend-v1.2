@@ -58,8 +58,8 @@ export function OrderDetailsDrawer({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
-        <SheetHeader>
+      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto p-6 pt-5">
+        <SheetHeader className="space-y-2">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-xl">Order #{order.id}</SheetTitle>
             <Badge variant="outline" className="text-sm">
@@ -71,7 +71,7 @@ export function OrderDetailsDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="mt-4 space-y-6">
           {/* Status & ETA */}
           <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 p-4 rounded-lg">

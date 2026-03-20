@@ -34,6 +34,16 @@ export interface Category {
   updatedAt?: string;
 }
 
+export interface BannerContentItem {
+  _id?: string;
+  type: 'banner' | 'video' | 'image' | 'text' | 'products';
+  order?: number;
+  imageUrl?: string;
+  videoUrl?: string;
+  text?: string;
+  productIds?: string[];
+}
+
 export interface Banner {
   _id: string;
   slot: string;
@@ -48,6 +58,8 @@ export interface Banner {
   /** Schedule: banner only visible between these dates */
   startDate?: string | null;
   endDate?: string | null;
+  /** When redirectType is 'banner', tapping shows landing page with these items */
+  contentItems?: BannerContentItem[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -104,6 +116,7 @@ export interface LifestyleItem {
 export interface PromoBlock {
   _id: string;
   blockKey: string;
+  type?: 'greens_banner' | 'section_image' | 'fullwidth_image';
   imageUrl?: string;
   link?: string;
   redirectType?: string | null;
@@ -118,12 +131,26 @@ export interface Product {
   _id: string;
   name: string;
   sku?: string;
-  description?: string;
+  description?: string | {
+    about?: string;
+    nutrition?: string;
+    originOfPlace?: string;
+    healthBenefits?: string;
+    raw?: string;
+  };
+  classification?: 'Style' | 'Variant';
+  hierarchyCode?: string;
+  size?: string;
+  tag?: string;
   images?: string[];
   imageUrl?: string;
+  additionalImages?: string[];
   price: number;
+  mrp?: number;
+  baseCost?: number;
   originalPrice?: number;
   costPrice?: number;
+  taxPercent?: number;
   gstRate?: number;
   discount?: string;
   quantity?: string;
@@ -225,28 +252,44 @@ export async function deleteHomeConfig(): Promise<void> {
   await apiRequest(`${PREFIX}/config`, { method: 'DELETE' });
 }
 
-/** Section definition (key + label + order) for the home section list. Managed in Section list tab. */
+/** Section definition (key + label + order + type + collectionId + type-specific fields) for the home section list. */
 export interface HomeSectionDefinitionItem {
   _id: string;
   key: string;
   label: string;
   order: number;
+  type?: string;
+  collectionId?: string;
+  taglineText?: string;
+  categoryIds?: string[];
+  bannerId?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** Collection (for section list picker) */
+export interface CollectionOption {
+  _id: string;
+  name: string;
+  slug: string;
 }
 
 export async function fetchSectionDefinitions(): Promise<HomeSectionDefinitionItem[]> {
   const res = await apiRequest<ListResponse<HomeSectionDefinitionItem>>(`${PREFIX}/section-definitions`);
   return res.data ?? [];
 }
-export async function createSectionDefinition(body: { key: string; label?: string; order?: number }): Promise<HomeSectionDefinitionItem> {
+export async function createSectionDefinition(body: { key?: string; label?: string; order?: number; type?: string; collectionId?: string; taglineText?: string; categoryIds?: string[]; bannerId?: string }): Promise<HomeSectionDefinitionItem> {
   const res = await apiRequest<OneResponse<HomeSectionDefinitionItem>>(`${PREFIX}/section-definitions`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
   return res.data;
 }
-export async function updateSectionDefinition(id: string, body: { label?: string; order?: number }): Promise<HomeSectionDefinitionItem> {
+export async function fetchCollectionsForHome(): Promise<CollectionOption[]> {
+  const res = await apiRequest<CollectionOption[] | { data?: CollectionOption[] }>(`/customer/admin/cms/collections`);
+  return Array.isArray(res) ? res : (res as { data?: CollectionOption[] })?.data ?? [];
+}
+export async function updateSectionDefinition(id: string, body: { label?: string; order?: number; collectionId?: string; taglineText?: string; categoryIds?: string[]; bannerId?: string }): Promise<HomeSectionDefinitionItem> {
   const res = await apiRequest<OneResponse<HomeSectionDefinitionItem>>(`${PREFIX}/section-definitions/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),
@@ -255,6 +298,12 @@ export async function updateSectionDefinition(id: string, body: { label?: string
 }
 export async function deleteSectionDefinition(id: string): Promise<void> {
   await apiRequest(`${PREFIX}/section-definitions/${id}`, { method: 'DELETE' });
+}
+export async function reorderSectionDefinitions(orderedIds: string[]): Promise<void> {
+  await apiRequest(`${PREFIX}/section-definitions/reorder`, {
+    method: 'POST',
+    body: JSON.stringify({ orderedIds }),
+  });
 }
 
 // Sections
@@ -279,6 +328,13 @@ export async function updateSection(id: string, body: Partial<HomeSection>): Pro
 export async function deleteSection(id: string): Promise<void> {
   await apiRequest(`${PREFIX}/sections/${id}`, { method: 'DELETE' });
 }
+export async function patchSectionProducts(id: string, productIds: string[]): Promise<HomeSection> {
+  const res = await apiRequest<OneResponse<HomeSection>>(`${PREFIX}/sections/${id}/products`, {
+    method: 'PATCH',
+    body: JSON.stringify({ productIds }),
+  });
+  return res.data;
+}
 
 // Lifestyle
 export async function fetchLifestyle(): Promise<LifestyleItem[]> {
@@ -301,6 +357,12 @@ export async function updateLifestyle(id: string, body: Partial<LifestyleItem>):
 }
 export async function deleteLifestyle(id: string): Promise<void> {
   await apiRequest(`${PREFIX}/lifestyle/${id}`, { method: 'DELETE' });
+}
+export async function reorderLifestyle(orderedIds: string[]): Promise<void> {
+  await apiRequest(`${PREFIX}/lifestyle/reorder`, {
+    method: 'POST',
+    body: JSON.stringify({ orderedIds }),
+  });
 }
 
 // Promo blocks
@@ -325,10 +387,35 @@ export async function updatePromoBlock(id: string, body: Partial<PromoBlock>): P
 export async function deletePromoBlock(id: string): Promise<void> {
   await apiRequest(`${PREFIX}/promoblocks/${id}`, { method: 'DELETE' });
 }
+export async function reorderPromoBlocks(orderedIds: string[]): Promise<void> {
+  await apiRequest(`${PREFIX}/promoblocks/reorder`, {
+    method: 'POST',
+    body: JSON.stringify({ orderedIds }),
+  });
+}
 
 // Products
 export async function fetchProducts(): Promise<Product[]> {
   const res = await apiRequest<ListResponse<Product>>(`${PREFIX}/products`);
+  return res.data ?? [];
+}
+export async function fetchProductsByQuery(params: {
+  search?: string;
+  status?: 'active' | 'inactive' | 'draft' | 'all';
+  classification?: 'Style' | 'Variant' | 'All';
+  categoryId?: string;
+  page?: number;
+  limit?: number;
+} = {}): Promise<Product[]> {
+  const qp = new URLSearchParams();
+  if (params.search?.trim()) qp.set('search', params.search.trim());
+  if (params.status && params.status !== 'all') qp.set('status', params.status);
+  if (params.classification && params.classification !== 'All') qp.set('classification', params.classification);
+  if (params.categoryId) qp.set('categoryId', params.categoryId);
+  if (params.page != null) qp.set('page', String(params.page));
+  if (params.limit != null) qp.set('limit', String(params.limit));
+  const url = qp.toString() ? `${PREFIX}/products?${qp.toString()}` : `${PREFIX}/products`;
+  const res = await apiRequest<ListResponse<Product>>(url);
   return res.data ?? [];
 }
 export async function createProduct(body: Partial<Product>): Promise<Product> {
@@ -347,6 +434,20 @@ export async function updateProduct(id: string, body: Partial<Product>): Promise
 }
 export async function deleteProduct(id: string): Promise<void> {
   await apiRequest(`${PREFIX}/products/${id}`, { method: 'DELETE' });
+}
+export async function updateProductStatus(id: string, isActive: boolean): Promise<Product> {
+  const res = await apiRequest<OneResponse<Product>>(`${PREFIX}/products/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  });
+  return res.data;
+}
+export async function bulkUpdateProductStatus(ids: string[], isActive: boolean): Promise<number> {
+  const res = await apiRequest<{ success: boolean; count: number }>(`${PREFIX}/products/bulk-status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, isActive }),
+  });
+  return res.count ?? 0;
 }
 
 /** Fetch the same home payload the customer app receives (for dashboard preview). */

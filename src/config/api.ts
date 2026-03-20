@@ -232,6 +232,18 @@ export const API_ENDPOINTS = {
     distribution: '/rider/distribution',
     summary: '/rider/summary',
   },
+  // Rider Shifts (mounted at /api/v1/rider/shifts)
+  riderShifts: {
+    list: '/rider/shifts',
+    create: '/rider/shifts',
+    byId: (id: string) => `/rider/shifts/${id}`,
+    update: (id: string) => `/rider/shifts/${id}`,
+    delete: (id: string) => `/rider/shifts/${id}`,
+    riderAvailable: '/rider/shifts/available/list',
+    riderSelect: '/rider/shifts/select',
+    riderStart: '/rider/shifts/start',
+    riderEnd: '/rider/shifts/end',
+  },
   // Orders (mounted at /api/v1/rider/orders)
   orders: {
     list: '/rider/orders',
@@ -259,6 +271,7 @@ export const API_ENDPOINTS = {
   dispatch: {
     unassignedOrders: '/rider/dispatch/unassigned-orders',
     unassignedOrdersCount: '/rider/dispatch/unassigned-orders/count',
+    groupDelivery: '/rider/dispatch/group-delivery',
     mapData: '/rider/dispatch/map-data',
     mapRiders: '/rider/dispatch/map-data/riders',
     mapOrders: '/rider/dispatch/map-data/orders',

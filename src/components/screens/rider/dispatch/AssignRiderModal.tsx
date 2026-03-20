@@ -67,22 +67,30 @@ export function AssignRiderModal({
     return () => { cancelled = true; };
   }, [isOpen, isBatch, order?.id, search]);
 
-  // Use recommended riders (with real ETA) for single order, else riders prop
+  // Use recommended riders (with real ETA) for single order when available,
+  // otherwise gracefully fall back to the full live rider list so that
+  // eligible riders (online + free) never disappear from the manual assign UI.
   const baseRiders: RiderWithEta[] = isBatch
     ? riders.map((r) => ({ ...r, estimatedPickupMinutes: r.avgEtaMinutes }))
-    : (recommendedRiders ?? riders.map((r) => ({ ...r, estimatedPickupMinutes: r.avgEtaMinutes })));
+    : (recommendedRiders && recommendedRiders.length > 0
+        ? recommendedRiders
+        : riders.map((r) => ({ ...r, estimatedPickupMinutes: r.avgEtaMinutes })));
 
   const filteredRiders = useMemo(() => {
     return baseRiders
       .filter((r) => {
-        if (r.status === "offline") return false;
-        const haystack =
-          (r.name || "") +
-          " " +
-          (r.phone || "");
+        // Eligibility rules for manual assignment:
+        // - Rider must be online or idle (actively working, not offline/busy)
+        // - Rider must be free (no active orders) – use currentOrderId from backend
+        const isEligibleStatus = r.status === "online" || r.status === "idle";
+        const isFree = !r.currentOrderId;
+        if (!isEligibleStatus || !isFree) return false;
+
+        const haystack = `${r.name || ""} ${r.phone || ""}`;
         return haystack.toLowerCase().includes(search.toLowerCase());
       })
       .sort((a, b) => {
+        // Prefer riders with lower load and more spare capacity
         if (a.activeOrdersCount !== b.activeOrdersCount) return a.activeOrdersCount - b.activeOrdersCount;
         return (b.maxCapacity - b.activeOrdersCount) - (a.maxCapacity - a.activeOrdersCount);
       });

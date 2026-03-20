@@ -9,15 +9,15 @@ import type { CustomerHomePayload } from '@/api/customerAppAdminApi';
 import { ImageWithFallback } from '@/components/figma/ImageWithFallback';
 
 /** Map section key to edit tab for "Edit" link */
-export function sectionToEditTab(sectionKey: string): 'categories' | 'banners' | 'config' | 'sections' | 'lifestyle' | 'promoblocks' | 'products' {
+export function sectionToEditTab(sectionKey: string): 'sectionlist' | 'banners' | 'sections' | 'lifestyle' | 'promoblocks' {
   switch (sectionKey) {
-    case 'categories': return 'categories';
+    case 'categories': return 'sectionlist';
     case 'hero_banner': case 'mid_banner': return 'banners';
     case 'deals': case 'wellbeing': case 'new_deals': case 'fresh_juice': case 'deals_2': return 'sections';
     case 'greens_banner': case 'section_image': return 'promoblocks';
     case 'lifestyle': return 'lifestyle';
-    case 'organic_tagline': return 'config';
-    default: return 'config';
+    case 'organic_tagline': return 'sectionlist';
+    default: return 'sectionlist';
   }
 }
 
@@ -51,7 +51,7 @@ export function getOrderedSectionKeys(payload: CustomerHomePayload | null): stri
   return ordered.filter((key) => visibility[key] !== false);
 }
 
-export type EditTab = 'categories' | 'banners' | 'config' | 'sections' | 'lifestyle' | 'promoblocks' | 'products';
+export type EditTab = 'sectionlist' | 'banners' | 'sections' | 'lifestyle' | 'promoblocks';
 
 export interface HomePreviewPhoneProps {
   payload: CustomerHomePayload | null;
@@ -181,7 +181,7 @@ export function HomePreviewPhone({
               </div>
               {onEditSection && (
                 <div className="flex justify-end">
-                  <EditLink onClick={() => onEditSection('config')} label="Edit hero & search" />
+                  <EditLink onClick={() => onEditSection('sectionlist')} label="Edit hero & search" />
                 </div>
               )}
             </div>
@@ -198,7 +198,7 @@ export function HomePreviewPhone({
                         {config?.categorySectionTitle ?? 'Grocery & Kitchen'}
                       </h3>
                       <div className="flex-1 h-px bg-gradient-to-r from-[#797979] to-[#f5f5f5]" style={{ maxWidth: 214 }} />
-                      {onEditSection && <EditLink onClick={() => onEditSection('categories')} />}
+                      {onEditSection && <EditLink onClick={() => onEditSection('sectionlist')} />}
                     </div>
                     <div className="flex flex-wrap justify-center gap-4">
                       {categories.slice(0, 6).map((c) => (
@@ -430,7 +430,7 @@ export function HomePreviewPhone({
                           <ImageWithFallback src={config.organicIconUrl} alt="" className="w-full h-full object-contain" />
                         </div>
                       )}
-                      {onEditSection && <EditLink onClick={() => onEditSection('config')} />}
+                      {onEditSection && <EditLink onClick={() => onEditSection('sectionlist')} />}
                     </div>
                   </div>
                 );

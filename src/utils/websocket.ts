@@ -21,15 +21,11 @@ function resolveWsConfig(): { url: string; path: string } {
     }
   }
 
-  // Dev: connect directly to backend to bypass Vite proxy (avoids ws proxy "socket hang up")
-  const port = (import.meta.env.VITE_PROXY_PORT ?? '5001').toString();
-  if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    const host = origin.includes('localhost') ? 'localhost' : new URL(origin).hostname;
-    return { url: `http://${host}:${port}`, path: '/hhd-socket.io' };
-  }
-
-  return { url: window.location.origin, path: '/hhd-socket.io' };
+  // Dev fallback: if backend WebSocket endpoint is not explicitly configured,
+  // disable Socket.IO by returning an empty URL. The caller will treat this
+  // as "no realtime backend" and rely on HTTP polling instead of spamming
+  // ERR_CONNECTION_REFUSED logs to /hhd-socket.io.
+  return { url: '', path: '/hhd-socket.io' };
 }
 
 /**
@@ -84,6 +80,19 @@ class WebSocketService {
     if (!token) return;
 
     const { url: socketUrl, path } = resolveWsConfig();
+
+    // If resolveWsConfig returns an empty URL, it means WebSocket backend
+    // is not configured for this environment. Skip connecting entirely to
+    // avoid continuous net::ERR_CONNECTION_REFUSED noise.
+    if (!socketUrl) {
+      if (!isProd) {
+        console.warn(
+          'Socket.io disabled: no VITE_WS_URL / VITE_API_BASE_URL configured for realtime. Falling back to HTTP polling.'
+        );
+      }
+      this.connectionFailed = true;
+      return;
+    }
 
     const transports = getTransports();
     this.socket = io(socketUrl, {

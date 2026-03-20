@@ -175,7 +175,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
     setIsReassignModalOpen(true);
   };
 
-  const handleReassignConfirm = async (riderId: string, riderName: string) => {
+  const handleReassignConfirm = async (riderId: string, riderName: string, overrideSla = false) => {
     if (!orderToReassign) return;
     const orderId = orderToReassign.id;
     const normalizedId = orderId.replace(/^ord-/i, 'ORD-');
@@ -188,7 +188,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
     
     try {
       // Call API first - wait for server confirmation before showing success
-      const result = await api.assignOrder(orderId, riderId);
+      const result = await api.assignOrder(orderId, riderId, overrideSla);
       
       // Verify we got a valid response with required fields
       if (!result) {
@@ -544,17 +544,20 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
           
           // Try normalized matching for different ID formats
           const normalizeId = (id: string) => {
-            const match = id.match(/^(?:r|rider-?)(\d+)$/i);
+            if (!id) return id;
+            const upperId = id.toUpperCase();
+            
+            // Handle new Pro Tip format: RDR-[Store]-[YYMM]-[Sequence]
+            if (upperId.startsWith('RDR-')) return upperId;
+            
+            // Handle legacy formats: RIDER-XXXX, RXXXX, RIDERXXXX
+            const match = upperId.match(/^(?:R|RIDER-?)(\d+)$/);
             if (match) {
               const num = parseInt(match[1], 10);
               return `RIDER-${String(num).padStart(4, '0')}`;
             }
-            const riderMatch = id.match(/^RIDER-(\d+)$/i);
-            if (riderMatch) {
-              const num = parseInt(riderMatch[1], 10);
-              return `RIDER-${String(num).padStart(4, '0')}`;
-            }
-            return id;
+            
+            return upperId;
           };
           
           const normalizedId = normalizeId(selectedOrder.riderId);
@@ -567,8 +570,11 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
         })() : undefined}
         isOpen={isDetailsOpen}
         onClose={() => {
+          // Let the sheet handle its own close animation by only
+          // toggling the open state here. We intentionally keep
+          // selectedOrder set so the content stays mounted until
+          // after the closing transition finishes.
           setIsDetailsOpen(false);
-          setSelectedOrder(null);
         }}
         onReassign={handleReassign}
         onAlert={handleAlertFromDrawer}
@@ -593,11 +599,14 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
           setOrderToReassign(null);
         }}
         onConfirm={handleReassignConfirm}
-        riders={riders.map(r => ({ 
-          id: r.id, 
-          name: r.name, 
-          status: r.status, 
-          load: r.capacity?.currentLoad ?? 0 
+        riders={riders.map(r => ({
+          id: r.id,
+          name: r.name,
+          status: r.status,
+          load: r.capacity?.currentLoad ?? 0,
+          // Use backend "currentOrderId" so reassign modal only shows riders
+          // who are truly free (no active orders).
+          currentOrderId: r.currentOrderId ?? null,
         }))}
       />
 

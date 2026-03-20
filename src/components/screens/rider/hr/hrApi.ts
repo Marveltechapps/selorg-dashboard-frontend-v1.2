@@ -1,6 +1,7 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../../../config/api';
 import { ApprovalHistoryEntry, DocumentStatus, DocumentType, HrDashboardSummary, Rider, RiderDocument } from "./types";
 import { logger } from '../../../../utils/logger';
+import { getAuthToken } from '../../../../contexts/AuthContext';
 
 /**
  * API Response Types (from backend)
@@ -17,6 +18,7 @@ interface ApiRider {
   deviceAssigned: boolean;
   deviceId?: string | null;
   deviceType?: string | null;
+  hubName?: string | null;
   createdAt?: string | null; // Added for days active calculation
   contract: {
     startDate: string;
@@ -68,6 +70,7 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_CONFIG.baseURL}${endpoint}`;
+  const token = getAuthToken();
   
   logger.apiRequest('HRAPI', url);
   
@@ -76,6 +79,7 @@ async function apiRequest<T>(
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || ''}`,
         ...options.headers,
       },
     });
@@ -100,9 +104,25 @@ async function apiRequest<T>(
   } catch (error) {
     logger.apiError('HRAPI', url, error);
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error(`Cannot connect to backend API. Please ensure the backend server is running on port 3001.`);
+      throw new Error(`Cannot connect to backend API. Please ensure the backend server is running.`);
     }
     throw error;
+  }
+}
+
+/**
+ * Helper to safely convert a value to an ISO date string
+ */
+function safeDateIso(value: any, fallback?: string): string | undefined {
+  if (!value) return fallback;
+  if (typeof value === 'string') return value;
+  
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return fallback;
+    return date.toISOString();
+  } catch {
+    return fallback;
   }
 }
 
@@ -110,11 +130,13 @@ async function apiRequest<T>(
  * Transform backend rider to frontend rider
  */
 function transformRider(apiRider: ApiRider): Rider {
+  const defaultIso = new Date().toISOString();
   return {
     id: apiRider.id,
     name: apiRider.name,
     phone: apiRider.phone,
     email: apiRider.email,
+    hubName: apiRider.hubName || undefined,
     status: apiRider.status,
     onboardingStatus: apiRider.onboardingStatus,
     trainingStatus: apiRider.trainingStatus,
@@ -136,11 +158,7 @@ function transformRider(apiRider: ApiRider): Rider {
     suspension: apiRider.suspension ? {
       isSuspended: apiRider.suspension.isSuspended,
       reason: apiRider.suspension.reason || undefined,
-      since: apiRider.suspension.since ? (
-        typeof apiRider.suspension.since === 'string' 
-          ? apiRider.suspension.since 
-          : new Date(apiRider.suspension.since).toISOString()
-      ) : undefined,
+      since: safeDateIso(apiRider.suspension.since),
     } : undefined,
   };
 }
@@ -149,27 +167,18 @@ function transformRider(apiRider: ApiRider): Rider {
  * Transform backend document to frontend document
  */
 function transformDocument(apiDoc: ApiDocument): RiderDocument {
+  const defaultIso = new Date().toISOString();
   return {
     id: apiDoc.id,
     riderId: apiDoc.riderId,
     riderName: apiDoc.riderName,
     documentType: apiDoc.documentType,
-    submittedAt: typeof apiDoc.submittedAt === 'string' 
-      ? apiDoc.submittedAt 
-      : new Date(apiDoc.submittedAt).toISOString(),
-    expiresAt: apiDoc.expiresAt ? (
-      typeof apiDoc.expiresAt === 'string' 
-        ? apiDoc.expiresAt 
-        : new Date(apiDoc.expiresAt).toISOString()
-    ) : undefined,
+    submittedAt: safeDateIso(apiDoc.submittedAt, defaultIso) as string,
+    expiresAt: safeDateIso(apiDoc.expiresAt),
     status: apiDoc.status,
     rejectionReason: apiDoc.rejectionReason || undefined,
     reviewer: apiDoc.reviewer || undefined,
-    reviewedAt: apiDoc.reviewedAt ? (
-      typeof apiDoc.reviewedAt === 'string' 
-        ? apiDoc.reviewedAt 
-        : new Date(apiDoc.reviewedAt).toISOString()
-    ) : undefined,
+    reviewedAt: safeDateIso(apiDoc.reviewedAt),
     fileUrl: apiDoc.fileUrl,
   };
 }

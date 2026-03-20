@@ -32,6 +32,7 @@ export interface DispatchRider {
   phone?: string;
   status: RiderStatus;
   currentLocation: { lat: number; lng: number };
+  currentOrderId?: string | null;
   activeOrdersCount: number;
   maxCapacity: number;
   zone: string;

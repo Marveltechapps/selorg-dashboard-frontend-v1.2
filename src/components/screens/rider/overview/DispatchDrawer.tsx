@@ -60,9 +60,14 @@ export function DispatchDrawer({
     onClose();
   };
 
-  // Show all riders who are not explicitly offline so that mobile-logged-in riders
-  // from the v2 backend appear in the manual assignment list.
-  const availableRiders = riders.filter(r => r.status !== 'offline');
+  // Eligible riders for manual assignment:
+  // - Must be online or idle (actively working)
+  // - Must be free (no currentOrderId set)
+  const availableRiders = riders.filter((r) => {
+    const isEligibleStatus = r.status === 'online' || r.status === 'idle';
+    const isFree = !r.currentOrderId;
+    return isEligibleStatus && isFree;
+  });
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>

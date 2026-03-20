@@ -73,12 +73,9 @@ export function SortableList<T>({
         return (
           <li
             key={id}
-            draggable
-            onDragStart={(e) => handleDragStart(e, id)}
             onDragOver={(e) => handleDragOver(e, id)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, id)}
-            onDragEnd={handleDragEnd}
             className={`
               flex items-center gap-2 rounded-lg border bg-white p-2 transition
               ${isDragging ? 'opacity-50' : ''}
@@ -86,7 +83,13 @@ export function SortableList<T>({
               ${itemClassName}
             `}
           >
-            <span className="cursor-grab active:cursor-grabbing text-[#a1a1aa]" aria-hidden>
+            <span
+              draggable
+              className="cursor-grab active:cursor-grabbing text-[#a1a1aa] touch-none"
+              aria-hidden
+              onDragStart={(e) => handleDragStart(e, id)}
+              onDragEnd={handleDragEnd}
+            >
               <GripVertical className="h-4 w-4" />
             </span>
             <span className="flex-1 min-w-0">{renderItem(item, index)}</span>

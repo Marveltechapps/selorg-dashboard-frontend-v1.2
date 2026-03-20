@@ -1,37 +1,42 @@
 /**
- * Multi-select product picker from catalog (for home sections).
+ * Multi-select category picker (for super_category, lifestyle sections).
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
-import { fetchProductsByQuery, type Product } from '@/api/customerAppAdminApi';
+import { fetchCategories, type Category } from '@/api/customerAppAdminApi';
 import { Loader2, Search } from 'lucide-react';
-import { ImageWithFallback } from '@/components/figma/ImageWithFallback';
 
-export interface ProductPickerProps {
+export interface CategoryPickerProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   maxHeight?: string;
 }
 
-export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: ProductPickerProps) {
-  const [products, setProducts] = useState<Product[]>([]);
+export function CategoryPicker({ selectedIds, onChange, maxHeight = '240px' }: CategoryPickerProps) {
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    fetchProductsByQuery({ status: 'active', classification: 'Style', limit: 200 })
-      .then((data) => { if (mounted) setProducts(data); })
-      .catch(() => { if (mounted) setProducts([]); })
+    fetchCategories()
+      .then((data) => {
+        if (mounted) {
+          // Only show top-level categories (no subcategories)
+          const topLevel = (data ?? []).filter((c) => !c.parentId || c.parentId === null);
+          setCategories(topLevel);
+        }
+      })
+      .catch(() => { if (mounted) setCategories([]); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return products;
+    if (!search.trim()) return categories;
     const q = search.toLowerCase();
-    return products.filter((p) => (p.name ?? '').toLowerCase().includes(q) || (String(p._id)).toLowerCase().includes(q));
-  }, [products, search]);
+    return categories.filter((c) => (c.name ?? '').toLowerCase().includes(q) || (c.slug ?? '').toLowerCase().includes(q) || (String(c._id)).toLowerCase().includes(q));
+  }, [categories, search]);
 
   const toggle = (id: string) => {
     const set = new Set(selectedIds);
@@ -50,11 +55,10 @@ export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: Pr
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-[#71717a]">Select products from Catalog. They will appear in this section on the home screen.</p>
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#a1a1aa]" />
         <Input
-          placeholder="Search products..."
+          placeholder="Search categories..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-8"
@@ -62,11 +66,11 @@ export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: Pr
       </div>
       <div className="border border-[#e4e4e7] rounded-lg overflow-auto bg-[#fafafa]" style={{ maxHeight }}>
         {filtered.length === 0 ? (
-          <p className="p-4 text-sm text-[#71717a]">No products found. Add products in Catalog or Products tab.</p>
+          <p className="p-4 text-sm text-[#71717a]">No categories found.</p>
         ) : (
           <ul className="p-1 space-y-0.5">
-            {filtered.map((p) => {
-              const id = p._id;
+            {filtered.map((c) => {
+              const id = c._id;
               const checked = selectedIds.includes(id);
               return (
                 <li key={id}>
@@ -77,15 +81,7 @@ export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: Pr
                       onChange={() => toggle(id)}
                       className="rounded border-[#e4e4e7]"
                     />
-                    <div className="w-8 h-8 rounded overflow-hidden bg-[#f4f4f5] flex-shrink-0">
-                      {p.images?.[0] ? (
-                        <ImageWithFallback src={p.images[0]} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-[10px] text-[#a1a1aa] flex items-center justify-center w-full h-full">—</span>
-                      )}
-                    </div>
-                    <span className="text-sm truncate flex-1">{p.name ?? id}</span>
-                    <span className="text-xs text-[#71717a]">₹{p.price ?? 0}</span>
+                    <span className="text-sm truncate flex-1">{c.name ?? c.slug ?? id}</span>
                   </label>
                 </li>
               );
@@ -94,7 +90,7 @@ export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: Pr
         )}
       </div>
       {selectedIds.length > 0 && (
-        <p className="text-xs text-[#71717a]">{selectedIds.length} product(s) selected.</p>
+        <p className="text-xs text-[#71717a]">{selectedIds.length} categor{selectedIds.length !== 1 ? 'ies' : 'y'} selected.</p>
       )}
     </div>
   );

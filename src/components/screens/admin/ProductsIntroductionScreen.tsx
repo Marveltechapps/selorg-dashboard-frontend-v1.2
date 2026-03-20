@@ -27,10 +27,9 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  fetchCategories,
   type Product,
-  type Category,
 } from '@/api/customerAppAdminApi';
+import { fetchCategories, type Category } from './catalogApi';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2, Package } from 'lucide-react';
 
@@ -80,7 +79,8 @@ export function ProductsIntroductionScreen() {
     load();
   }, [load]);
 
-  const topLevelCategories = categories.filter((c) => !c.parentId);
+  /** Same source and shape as Admin → Catalog (catalogApi maps `_id` → `id`, `parentId`). */
+  const topLevelCategories = categories.filter((c) => c.parentId === null);
   const subcategories = formData.categoryId
     ? categories.filter((c) => c.parentId === formData.categoryId)
     : [];
@@ -111,12 +111,28 @@ export function ProductsIntroductionScreen() {
     setDialogOpen(true);
   };
 
+  const resolveId = (val: unknown): string => {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object' && val !== null && '_id' in val) return String((val as { _id: string })._id);
+    return '';
+  };
+  const resolveDesc = (val: unknown): string => {
+    if (val == null) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object' && val !== null) {
+      const o = val as { about?: string; raw?: string };
+      return o.about || o.raw || '';
+    }
+    return '';
+  };
+
   const openEdit = (p: Product) => {
     setEditingId(p._id);
     setFormData({
       name: p.name,
       sku: p.sku ?? '',
-      description: p.description ?? '',
+      description: resolveDesc(p.description),
       imageUrl: p.imageUrl ?? (p.images?.[0] ?? ''),
       images: p.images ?? [],
       price: p.price,
@@ -130,8 +146,8 @@ export function ProductsIntroductionScreen() {
       lowStockThreshold: p.lowStockThreshold ?? 10,
       status: p.status ?? 'active',
       featured: p.featured ?? false,
-      categoryId: p.categoryId ?? '',
-      subcategoryId: p.subcategoryId ?? '',
+      categoryId: resolveId(p.categoryId),
+      subcategoryId: resolveId(p.subcategoryId),
       order: p.order ?? 0,
     });
     setDialogOpen(true);
@@ -148,17 +164,33 @@ export function ProductsIntroductionScreen() {
     }
     setSaving(true);
     try {
-      const payload = {
-        ...formData,
+      const payload: Record<string, unknown> = {
+        name: formData.name?.trim(),
+        sku: formData.sku?.trim() || undefined,
+        description: formData.description?.toString().trim() || undefined,
+        imageUrl: formData.imageUrl?.toString().trim() || undefined,
+        images: formData.imageUrl ? [formData.imageUrl] : formData.images ?? [],
+        price: formData.price,
+        costPrice: formData.costPrice,
+        originalPrice: formData.originalPrice,
+        gstRate: formData.gstRate ?? 0,
+        quantity: formData.quantity?.toString().trim() || undefined,
+        brand: formData.brand?.toString().trim() || undefined,
+        discount: formData.discount?.toString().trim() || undefined,
+        stockQuantity: formData.stockQuantity ?? 0,
+        lowStockThreshold: formData.lowStockThreshold ?? 10,
+        status: formData.status ?? 'active',
+        featured: formData.featured ?? false,
         categoryId: formData.categoryId || undefined,
         subcategoryId: formData.subcategoryId || undefined,
-        images: formData.imageUrl ? [formData.imageUrl] : formData.images ?? [],
+        order: formData.order ?? 0,
       };
+      Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
       if (editingId) {
-        await updateProduct(editingId, payload);
+        await updateProduct(editingId, payload as Partial<Product>);
         toast.success('Product updated');
       } else {
-        await createProduct(payload);
+        await createProduct(payload as Partial<Product>);
         toast.success('Product created');
       }
       setDialogOpen(false);
@@ -190,6 +222,7 @@ export function ProductsIntroductionScreen() {
         </h1>
         <p className="text-sm text-[#71717a] mt-1">
           Single source of truth for products. CMS (Banners, Categories, Collections, product carousels) uses this data.
+          Category and subcategory options follow the taxonomy you maintain under Content Hub → Categories &amp; Subcategories.
         </p>
       </div>
 
@@ -210,10 +243,13 @@ export function ProductsIntroductionScreen() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>SKU</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Brand</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Cost</TableHead>
                 <TableHead>GST %</TableHead>
+                <TableHead>Stock</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
@@ -222,12 +258,23 @@ export function ProductsIntroductionScreen() {
               {products.map((p) => (
                 <TableRow key={p._id}>
                   <TableCell className="font-medium">{p.name}</TableCell>
+                  <TableCell className="text-sm text-[#71717a] font-mono">{p.sku ?? '—'}</TableCell>
                   <TableCell className="text-sm text-[#71717a]">
-                    {p.categoryId ? (categories.find((c) => c._id === p.categoryId)?.name ?? '—') : '—'}
+                    {(() => {
+                      const catId = typeof p.categoryId === 'object' && p.categoryId
+                        ? (p.categoryId as { _id?: string })._id
+                        : p.categoryId;
+                      const name = typeof p.categoryId === 'object' && p.categoryId && 'name' in p.categoryId
+                        ? (p.categoryId as { name?: string }).name
+                        : categories.find((c) => c.id === catId)?.name;
+                      return name ?? '—';
+                    })()}
                   </TableCell>
+                  <TableCell className="text-sm text-[#71717a]">{p.brand ?? '—'}</TableCell>
                   <TableCell>₹{p.price}</TableCell>
                   <TableCell>₹{p.costPrice ?? 0}</TableCell>
                   <TableCell>{p.gstRate ?? 0}%</TableCell>
+                  <TableCell>{p.stockQuantity ?? 0}</TableCell>
                   <TableCell>
                     <span
                       className={`px-2 py-0.5 rounded text-xs ${
@@ -251,7 +298,7 @@ export function ProductsIntroductionScreen() {
               ))}
               {products.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-[#71717a] py-12">
+                  <TableCell colSpan={10} className="text-center text-[#71717a] py-12">
                     No products yet. Add products here — CMS will use this data.
                   </TableCell>
                 </TableRow>
@@ -285,46 +332,51 @@ export function ProductsIntroductionScreen() {
                 placeholder="Product description"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="categoryId">Category</Label>
-                <select
-                  id="categoryId"
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  value={formData.categoryId ?? ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      categoryId: e.target.value,
-                      subcategoryId: '',
-                    })
-                  }
-                >
-                  <option value="">— Select —</option>
-                  {topLevelCategories.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="categoryId">Category</Label>
+                  <select
+                    id="categoryId"
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                    value={formData.categoryId ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        categoryId: e.target.value,
+                        subcategoryId: '',
+                      })
+                    }
+                  >
+                    <option value="">— Select —</option>
+                    {topLevelCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="subcategoryId">Sub-category</Label>
+                  <select
+                    id="subcategoryId"
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                    value={formData.subcategoryId ?? ''}
+                    onChange={(e) => setFormData({ ...formData, subcategoryId: e.target.value })}
+                    disabled={!formData.categoryId}
+                  >
+                    <option value="">— Select —</option>
+                    {subcategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="subcategoryId">Sub-category</Label>
-                <select
-                  id="subcategoryId"
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  value={formData.subcategoryId ?? ''}
-                  onChange={(e) => setFormData({ ...formData, subcategoryId: e.target.value })}
-                  disabled={!formData.categoryId}
-                >
-                  <option value="">— Select —</option>
-                  {subcategories.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <p className="text-xs text-[#a1a1aa]">
+                Lists match Content Hub → Categories &amp; Subcategories (customer admin taxonomy API).
+              </p>
             </div>
             <div>
               <Label htmlFor="imageUrl">Product Image URL</Label>

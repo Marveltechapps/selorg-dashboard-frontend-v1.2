@@ -113,7 +113,7 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      toast.error('Category name is required');
+      toast.error(isSubcategoryFlow ? 'Subcategory name is required' : 'Category name is required');
       return;
     }
     if (isSubcategoryFlow && !formData.parentId) {
@@ -153,7 +153,7 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
@@ -175,9 +175,9 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
         </DialogHeader>
 
         <div className="space-y-4 mt-4">
-          {/* Category Name */}
+          {/* Category / Subcategory Name */}
           <div className="space-y-2">
-            <Label htmlFor="cat-name">Category Name *</Label>
+            <Label htmlFor="cat-name">{isSubcategoryFlow ? 'Subcategory Name *' : 'Category Name *'}</Label>
             <Input
               id="cat-name"
               placeholder="e.g., Fresh Produce"

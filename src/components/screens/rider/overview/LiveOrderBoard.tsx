@@ -214,19 +214,20 @@ export function LiveOrderBoard({
     // Try normalized matching for different ID formats
     // Handle cases like: RIDER-1 vs RIDER-0001, r1 vs RIDER-1, etc.
     const normalizeId = (id: string) => {
-      // Remove leading zeros and normalize format
-      const match = id.match(/^(?:r|rider-?)(\d+)$/i);
+      if (!id) return id;
+      const upperId = id.toUpperCase();
+      
+      // Handle new Pro Tip format: RDR-[Store]-[YYMM]-[Sequence]
+      if (upperId.startsWith('RDR-')) return upperId;
+      
+      // Handle legacy formats: RIDER-XXXX, RXXXX, RIDERXXXX
+      const match = upperId.match(/^(?:R|RIDER-?)(\d+)$/);
       if (match) {
         const num = parseInt(match[1], 10);
         return `RIDER-${String(num).padStart(4, '0')}`;
       }
-      // If already in RIDER-XXXX format, normalize padding
-      const riderMatch = id.match(/^RIDER-(\d+)$/i);
-      if (riderMatch) {
-        const num = parseInt(riderMatch[1], 10);
-        return `RIDER-${String(num).padStart(4, '0')}`;
-      }
-      return id;
+      
+      return upperId;
     };
     
     const normalizedId = normalizeId(riderId);
@@ -320,7 +321,11 @@ export function LiveOrderBoard({
                   const isDelayed = order.status === 'delayed';
                   
                   return (
-                    <TableRow key={order.id} className="hover:bg-[#FAFAFA]">
+                  <TableRow
+                    key={order.id}
+                    className="hover:bg-[#FAFAFA] cursor-pointer"
+                    onClick={() => onTrackOrder(order)}
+                  >
                       <TableCell className="font-medium text-[#212121]">{order.id}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={`font-medium border-0 ${getStatusColor(order.status)}`}>
@@ -353,7 +358,14 @@ export function LiveOrderBoard({
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
+                            <Button
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => {
+                                // Prevent row click from triggering when user opens the menu
+                                e.stopPropagation();
+                              }}
+                            >
                               <span className="sr-only">Open menu</span>
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>

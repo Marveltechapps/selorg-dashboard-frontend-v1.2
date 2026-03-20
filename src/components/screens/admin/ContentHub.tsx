@@ -12,6 +12,7 @@ import {
   Package,
   Settings2,
   Layers,
+  FolderTree,
 } from 'lucide-react';
 import {
   Card,
@@ -30,9 +31,15 @@ const PICKER_ITEMS = [
 ];
 
 const CUSTOMER_ITEMS = [
+  {
+    id: 'content-hub-categories',
+    label: 'Categories & Subcategories',
+    desc: 'Taxonomy CRUD; same data as Products Introduction dropdowns',
+    icon: FolderTree,
+  },
   { id: 'products-introduction', label: 'Products Introduction', desc: 'Single source of truth for products (category, price, GST, etc.)', icon: Package },
-  { id: 'home-config', label: 'Home Config', desc: 'Hero video, search placeholder, section titles', icon: Settings2 },
-  { id: 'customer-app-home', label: 'Customer App Home', desc: 'Banners, categories, sections, lifestyle, promo', icon: Home },
+  { id: 'home-config', label: 'Home Config', desc: 'Hero video, search placeholder, organic tagline', icon: Settings2 },
+  { id: 'customer-app-home', label: 'Customer App Home', desc: 'Section order, banners, section list', icon: Home },
   { id: 'collections', label: 'Collections', desc: 'Product sets for carousels (from Products Introduction)', icon: Layers },
   { id: 'onboarding', label: 'Onboarding Screens', desc: 'Customer app onboarding flow', icon: BookOpen },
   { id: 'cms-pages', label: 'CMS Pages', desc: 'Slug-based content pages', icon: FileText },
@@ -53,7 +60,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
         className="cursor-pointer hover:border-[#e11d48]/50 hover:shadow-md transition-all group"
         onClick={() => setActiveTab(item.id)}
       >
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-[#f4f4f5] flex items-center justify-center group-hover:bg-[#e11d48]/10 transition-colors">
               <Icon size={20} className="text-[#71717a] group-hover:text-[#e11d48]" />

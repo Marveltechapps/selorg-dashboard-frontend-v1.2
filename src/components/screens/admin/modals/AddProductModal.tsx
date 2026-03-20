@@ -42,16 +42,24 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
+    classification: 'Style',
+    hierarchyCode: '',
     description: '',
     categoryId: '',
     subcategoryId: '',
     brand: '',
     price: '',
     costPrice: '',
+    hsnCode: '',
+    gstRate: '',
     stockQuantity: '',
     lowStockThreshold: '',
+    taxPercent: '',
     imageUrl: '',
     status: 'active' as 'active' | 'inactive' | 'draft',
+    isPurchasable: true,
+    isSaleable: true,
+    isStocked: true,
     featured: false,
     weight: '',
     dimensions: '',
@@ -68,16 +76,24 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
         setFormData({
           name: editProduct.name,
           sku: editProduct.sku,
+          classification: (editProduct as any).classification || 'Style',
+          hierarchyCode: (editProduct as any).hierarchyCode || '',
           description: editProduct.description,
           categoryId: editProduct.categoryId || '',
           subcategoryId: editProduct.subcategoryId || '',
           brand: editProduct.brand,
           price: editProduct.price.toString(),
           costPrice: editProduct.costPrice.toString(),
+          hsnCode: editProduct.hsnCode || '',
+          gstRate: editProduct.gstRate?.toString() || '',
           stockQuantity: editProduct.stockQuantity.toString(),
           lowStockThreshold: editProduct.lowStockThreshold.toString(),
+          taxPercent: String((editProduct as any).taxPercent ?? ''),
           imageUrl: editProduct.imageUrl,
           status: editProduct.status,
+          isPurchasable: (editProduct as any).isPurchasable ?? true,
+          isSaleable: (editProduct as any).isSaleable ?? true,
+          isStocked: (editProduct as any).isStocked ?? true,
           featured: editProduct.featured,
           weight: editProduct.attributes.weight || '',
           dimensions: editProduct.attributes.dimensions || '',
@@ -106,6 +122,8 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
     setFormData({
       name: '',
       sku: '',
+      classification: 'Style',
+      hierarchyCode: '',
       description: '',
       categoryId: '',
       subcategoryId: '',
@@ -114,8 +132,12 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
       costPrice: '',
       stockQuantity: '',
       lowStockThreshold: '10',
+      taxPercent: '',
       imageUrl: '',
       status: 'active',
+      isPurchasable: true,
+      isSaleable: true,
+      isStocked: true,
       featured: false,
       weight: '',
       dimensions: '',
@@ -166,17 +188,22 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
       const productData: Partial<Product> = {
         name: formData.name.trim(),
         sku: formData.sku.trim(),
+        ...( { classification: formData.classification as any, hierarchyCode: formData.hierarchyCode.trim() } as any),
         description: formData.description.trim(),
         categoryId: formData.categoryId,
         subcategoryId: formData.subcategoryId || '',
         brand: formData.brand.trim(),
         price: parseFloat(formData.price),
         costPrice: parseFloat(formData.costPrice) || 0,
+        hsnCode: formData.hsnCode.trim(),
+        gstRate: parseFloat(formData.gstRate) || 0,
+        ...( { taxPercent: parseFloat(formData.taxPercent) || 0 } as any),
         stockQuantity: parseInt(formData.stockQuantity) || 0,
         lowStockThreshold: parseInt(formData.lowStockThreshold) || 10,
         imageUrl: formData.imageUrl.trim(),
         images: formData.imageUrl.trim() ? [formData.imageUrl.trim()] : [],
         status: formData.status,
+        ...( { isPurchasable: formData.isPurchasable, isSaleable: formData.isSaleable, isStocked: formData.isStocked } as any),
         featured: formData.featured,
         attributes: {
           weight: formData.weight.trim() || undefined,
@@ -264,6 +291,30 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
                 {editProduct && (
                   <p className="text-xs text-[#71717a]">SKU cannot be changed after creation</p>
                 )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Classification</Label>
+                  <Select value={formData.classification} onValueChange={(val) => handleChange('classification', val)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Style">Style</SelectItem>
+                      <SelectItem value="Variant">Variant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hierarchyCode">Hierarchy Code</Label>
+                  <Input
+                    id="hierarchyCode"
+                    placeholder="e.g., A01"
+                    value={formData.hierarchyCode}
+                    onChange={(e) => handleChange('hierarchyCode', e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -452,6 +503,43 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="hsnCode">HSN Code</Label>
+                  <Input
+                    id="hsnCode"
+                    placeholder="e.g., 123456"
+                    value={formData.hsnCode}
+                    onChange={(e) => handleChange('hsnCode', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="gstRate">GST Rate (%)</Label>
+                  <Input
+                    id="gstRate"
+                    type="number"
+                    placeholder="e.g., 5, 12, 18"
+                    value={formData.gstRate}
+                    onChange={(e) => handleChange('gstRate', e.target.value)}
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="taxPercent">Tax Percent (%)</Label>
+                  <Input
+                    id="taxPercent"
+                    type="number"
+                    placeholder="0"
+                    value={formData.taxPercent}
+                    onChange={(e) => handleChange('taxPercent', e.target.value)}
+                    min="0"
+                    max="100"
+                  />
+                </div>
+              </div>
+
               {formData.price && formData.costPrice && (
                 <div className="p-3 bg-[#f4f4f5] rounded-lg">
                   <p className="text-sm text-[#52525b]">
@@ -513,6 +601,33 @@ export function AddProductModal({ open, onOpenChange, onSuccess, editProduct }: 
                   checked={formData.featured}
                   onCheckedChange={(checked) => handleChange('featured', checked)}
                 />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex items-center justify-between p-3 bg-[#f4f4f5] rounded-lg">
+                  <Label htmlFor="isPurchasable" className="text-sm">Purchasable</Label>
+                  <Switch
+                    id="isPurchasable"
+                    checked={formData.isPurchasable}
+                    onCheckedChange={(checked) => handleChange('isPurchasable', checked)}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 bg-[#f4f4f5] rounded-lg">
+                  <Label htmlFor="isSaleable" className="text-sm">Saleable</Label>
+                  <Switch
+                    id="isSaleable"
+                    checked={formData.isSaleable}
+                    onCheckedChange={(checked) => handleChange('isSaleable', checked)}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 bg-[#f4f4f5] rounded-lg">
+                  <Label htmlFor="isStocked" className="text-sm">Stocked</Label>
+                  <Switch
+                    id="isStocked"
+                    checked={formData.isStocked}
+                    onCheckedChange={(checked) => handleChange('isStocked', checked)}
+                  />
+                </div>
               </div>
             </TabsContent>
 

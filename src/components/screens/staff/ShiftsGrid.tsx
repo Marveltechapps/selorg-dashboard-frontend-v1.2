@@ -31,6 +31,16 @@ export function ShiftsGrid({ shifts, loading, onShiftClick }: ShiftsGridProps) {
     return Array.from(map.values());
   }, [shifts]);
 
+  // Compute booked counts per time slot (for header display)
+  const slotCounts = React.useMemo(() => {
+    return TIME_SLOTS.map((slot) => {
+      return shifts.filter(s => {
+        const start = parseInt(s.startTime.split(':')[0]);
+        return start >= slot.start && start < slot.end;
+      }).length;
+    });
+  }, [shifts]);
+
   if (loading) {
     return <div className="h-64 flex items-center justify-center text-gray-400">Loading shifts...</div>;
   }
@@ -77,8 +87,11 @@ export function ShiftsGrid({ shifts, loading, onShiftClick }: ShiftsGridProps) {
       <div className="grid grid-cols-12 gap-px bg-[#E0E0E0] border-b border-[#E0E0E0]">
         <div className="col-span-3 bg-[#F5F7FA] p-3 text-sm font-medium text-[#757575]">Rider</div>
         {TIME_SLOTS.map((slot, i) => (
-          <div key={i} className="col-span-2 bg-[#F5F7FA] p-3 text-sm font-medium text-[#757575] text-center">
-            {slot.label}
+          <div key={i} className="col-span-2 bg-[#F5F7FA] p-0">
+            <div className="p-3 text-sm font-medium text-[#757575] text-center">{slot.label}</div>
+            <div className="p-2 text-xs text-center text-[#6B7280] bg-white border-t border-[#E0E0E0]">
+              <span className="font-semibold">{slotCounts[i]}</span> booked
+            </div>
           </div>
         ))}
         <div className="col-span-1 bg-[#F5F7FA] p-3 text-sm font-medium text-[#757575] text-right">Status</div>

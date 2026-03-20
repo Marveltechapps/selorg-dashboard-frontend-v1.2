@@ -6,6 +6,18 @@ import { apiRequest } from './apiClient';
 
 const PREFIX = '/customer/admin/cms';
 
+export interface AdminCmsOverview {
+  success: boolean;
+  counts: { skus: number; pages: number; banners: number; collections: number };
+  issues?: Record<string, number>;
+}
+
+export interface AdminCmsUploadResult {
+  success: boolean;
+  counts: Record<string, number>;
+  errors: Array<{ sheet?: string; row?: number; message: string }>;
+}
+
 export interface Page {
   _id: string;
   slug: string;
@@ -33,6 +45,29 @@ export interface Media {
   url: string;
   type: 'image' | 'video';
   altText?: string;
+}
+
+export async function fetchCmsOverview(): Promise<AdminCmsOverview> {
+  return apiRequest<AdminCmsOverview>(`${PREFIX}/overview`);
+}
+
+export async function uploadSkuMaster(file: File, overwrite: boolean): Promise<AdminCmsUploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('overwrite', String(overwrite));
+  return apiRequest<AdminCmsUploadResult>(`${PREFIX}/upload/sku-master`, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function uploadCmsPages(file: File): Promise<AdminCmsUploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiRequest<AdminCmsUploadResult>(`${PREFIX}/upload/cms-pages`, {
+    method: 'POST',
+    body: formData,
+  });
 }
 
 export async function fetchPages(): Promise<Page[]> {
