@@ -11,6 +11,7 @@ import { WarehouseManagement } from './components/WarehouseManagement';
 import { AdminManagement } from './components/AdminManagement';
 import { LoginScreen } from './components/LoginScreen';
 import { Toaster } from "./components/ui/sonner";
+import VendorSignup from './pages/VendorSignup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationHandler } from './components/NotificationHandler';
 import { useDynamicFavicon } from './hooks/useDynamicFavicon';
@@ -95,6 +96,9 @@ function App() {
         <NotificationHandler />
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
+
+          {/* Public vendor self-onboarding (invite token required) */}
+          <Route path="/vendor-signup" element={<VendorSignup />} />
           
           <Route 
             path="/darkstore/:screen?" 

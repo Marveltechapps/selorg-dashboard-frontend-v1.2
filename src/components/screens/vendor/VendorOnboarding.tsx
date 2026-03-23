@@ -394,17 +394,13 @@ export function VendorOnboarding() {
 
   // Form states
   const [inviteForm, setInviteForm] = useState({
-    email: '',
     name: '',
-    vendorCode: '',
+    email: '',
     phone: '',
-    gstin: '',
-    paymentTerms: '30 days' as '30 days' | '45 days' | '60 days',
-    line1: '',
-    city: '',
-    state: '',
-    zipCode: '',
     type: '',
+    category: '',
+    expiryDays: '7',
+    assignedTo: '',
     message: ''
   });
 
@@ -542,64 +538,91 @@ export function VendorOnboarding() {
   // Event handlers
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !inviteForm.email?.trim() ||
-      !inviteForm.name?.trim() ||
-      !inviteForm.phone?.trim() ||
-      !inviteForm.gstin?.trim() ||
-      !inviteForm.line1?.trim() ||
-      !inviteForm.city?.trim() ||
-      !inviteForm.state?.trim() ||
-      !inviteForm.zipCode?.trim()
-    ) {
-      toast.error('Please complete name, email, phone, GSTIN, and full address');
+    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
+      toast.error('Vendor name and email are required');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteForm.email)) {
+      toast.error('Please enter a valid email address');
       return;
     }
 
-    const code = inviteForm.vendorCode.trim() || `VND-${Date.now().toString().slice(-6)}`;
-
     try {
-      const payload = {
-        vendorName: inviteForm.name.trim(),
-        vendorCode: code,
-        taxInfo: { gstin: inviteForm.gstin.trim() },
-        paymentTerms: inviteForm.paymentTerms,
-        currencyCode: 'INR',
-        address: {
-          line1: inviteForm.line1.trim(),
-          line2: null,
-          line3: null,
-          city: inviteForm.city.trim(),
-          state: inviteForm.state.trim(),
-          country: 'India',
-          zipCode: inviteForm.zipCode.trim(),
-        },
+      const invitedEmail = inviteForm.email.trim();
+
+      // Step 1: Create vendor record
+      const newVendor = await vendorManagementApi.createVendor({
+        name: inviteForm.name,
+        code: `VND-INV-${Date.now().toString().slice(-6)}`,
+        status: 'invited',
         contact: {
-          name: inviteForm.name.trim(),
-          email: inviteForm.email.trim().toLowerCase(),
-          phone: inviteForm.phone.trim(),
+          name: inviteForm.name,
+          email: inviteForm.email,
+          phone: inviteForm.phone || '',
         },
-        status: 'pending',
-        metadata: { vendorType: inviteForm.type || 'Third-party', category: 'Uncategorized', inviteMessage: inviteForm.message },
-      };
-      await vendorManagementApi.createVendor(payload);
+        address: { line1: '', line2: '', city: '', state: '', pincode: '' },
+        metadata: {
+          vendorType: inviteForm.type || 'Third-party',
+          category: inviteForm.category || 'Uncategorized',
+          assignedTo: inviteForm.assignedTo || '',
+          inviteMessage: inviteForm.message || '',
+          inviteExpiryDays: parseInt(inviteForm.expiryDays || '7'),
+          stage: 'invited',
+        },
+      });
+
+      const newVendorId = (newVendor as any)._id || (newVendor as any).id;
+
+      // Step 2: Send invite email
+      const authToken =
+        localStorage.getItem('token') ||
+        localStorage.getItem('authToken') ||
+        localStorage.getItem('accessToken') ||
+        sessionStorage.getItem('token') ||
+        '';
+
+      const baseUrl =
+        (vendorManagementApi as any).API_BASE_URL ||
+        (vendorManagementApi as any).BASE_URL ||
+        'http://localhost:5001/api/v1';
+
+      const emailRes = await fetch(`${baseUrl}/vendor/vendors/send-invite-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          vendorId: newVendorId,
+          personalMessage: inviteForm.message,
+          expiryDays: parseInt(inviteForm.expiryDays || '7'),
+        }),
+      });
+
+      const emailData = await emailRes.json();
+
       setActiveModal(null);
       setInviteForm({
-        email: '',
         name: '',
-        vendorCode: '',
+        email: '',
         phone: '',
-        gstin: '',
-        paymentTerms: '30 days',
-        line1: '',
-        city: '',
-        state: '',
-        zipCode: '',
         type: '',
+        category: '',
+        expiryDays: '7',
+        assignedTo: '',
         message: '',
       });
-      toast.success(`Invite sent to ${inviteForm.email}`);
       await loadVendors();
+
+      if (emailData.previewUrl) {
+        console.log('📧 Email preview:', emailData.previewUrl);
+        toast.success(`Invite created! Check console for email preview URL.`);
+      } else {
+        toast.success(
+          `Invite email sent to ${invitedEmail}. ` +
+            `Vendor is now in the "Invited" pipeline stage.`
+        );
+      }
     } catch (err: any) {
       toast.error(err?.message || `Failed to send invite to ${inviteForm.email}`);
     }
@@ -1373,163 +1396,135 @@ export function VendorOnboarding() {
               <div className="space-y-4 py-2">
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    EMAIL <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={inviteForm.email}
-                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    placeholder="vendor@example.com"
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    NAME <span className="text-[#EF4444]">*</span>
+                    VENDOR NAME <span className="text-[#EF4444]">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={inviteForm.name}
                     onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
-                    placeholder="Vendor Name"
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    placeholder="e.g. FreshMart Suppliers"
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5]"
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    VENDOR CODE
+                    EMAIL ADDRESS <span className="text-[#EF4444]">*</span>
                   </label>
                   <input
-                    type="text"
-                    value={inviteForm.vendorCode}
-                    onChange={(e) => setInviteForm({ ...inviteForm, vendorCode: e.target.value })}
-                    placeholder="Leave blank to auto-generate"
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    type="email"
+                    required
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    placeholder="vendor@company.com"
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5]"
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    PHONE <span className="text-[#EF4444]">*</span>
+                    PHONE NUMBER
                   </label>
                   <input
                     type="tel"
-                    required
                     value={inviteForm.phone}
                     onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
-                    placeholder="+91..."
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    placeholder="+91 98765 43210"
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5]"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    GSTIN <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={inviteForm.gstin}
-                    onChange={(e) => setInviteForm({ ...inviteForm, gstin: e.target.value })}
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    PAYMENT TERMS <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <select
-                    value={inviteForm.paymentTerms}
-                    onChange={(e) =>
-                      setInviteForm({
-                        ...inviteForm,
-                        paymentTerms: e.target.value as '30 days' | '45 days' | '60 days',
-                      })
-                    }
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  >
-                    <option value="30 days">30 days</option>
-                    <option value="45 days">45 days</option>
-                    <option value="60 days">60 days</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    ADDRESS LINE 1 <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={inviteForm.line1}
-                    onChange={(e) => setInviteForm({ ...inviteForm, line1: e.target.value })}
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
+
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      CITY <span className="text-[#EF4444]">*</span>
+                      VENDOR TYPE
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={inviteForm.city}
-                      onChange={(e) => setInviteForm({ ...inviteForm, city: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
+                    <select
+                      value={inviteForm.type}
+                      onChange={(e) => setInviteForm({ ...inviteForm, type: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
+                    >
+                      <option value="">Select type</option>
+                      <option>Farmer</option>
+                      <option>Distributor</option>
+                      <option>Aggregator</option>
+                      <option>Third-party</option>
+                    </select>
                   </div>
+
                   <div>
                     <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      STATE <span className="text-[#EF4444]">*</span>
+                      CATEGORY
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={inviteForm.state}
-                      onChange={(e) => setInviteForm({ ...inviteForm, state: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
+                    <select
+                      value={inviteForm.category}
+                      onChange={(e) => setInviteForm({ ...inviteForm, category: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
+                    >
+                      <option value="">Select category</option>
+                      <option>Dairy / Perishables</option>
+                      <option>Grocery / Spices</option>
+                      <option>Fresh Produce</option>
+                      <option>Frozen Foods</option>
+                      <option>Bakery</option>
+                      <option>Beverages</option>
+                      <option>Packaged Goods</option>
+                      <option>Cleaning Supplies</option>
+                    </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      PIN <span className="text-[#EF4444]">*</span>
+                      INVITE EXPIRY
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={inviteForm.zipCode}
-                      onChange={(e) => setInviteForm({ ...inviteForm, zipCode: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
+                    <select
+                      value={inviteForm.expiryDays}
+                      onChange={(e) => setInviteForm({ ...inviteForm, expiryDays: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
+                    >
+                      <option value="3">3 days</option>
+                      <option value="7">7 days (recommended)</option>
+                      <option value="14">14 days</option>
+                      <option value="30">30 days</option>
+                    </select>
+                    <p className="text-xs text-[#9CA3AF] mt-1">Link expires after this period</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                      ASSIGN TO
+                    </label>
+                    <select
+                      value={inviteForm.assignedTo}
+                      onChange={(e) => setInviteForm({ ...inviteForm, assignedTo: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
+                    >
+                      <option value="">Select team</option>
+                      <option>Vendor Manager</option>
+                      <option>Supply Chain</option>
+                      <option>Admin</option>
+                    </select>
                   </div>
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    TYPE
-                  </label>
-                  <select
-                    value={inviteForm.type}
-                    onChange={(e) => setInviteForm({ ...inviteForm, type: e.target.value })}
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  >
-                    <option value="">Select type</option>
-                    <option value="Farmer">Farmer</option>
-                    <option value="Distributor">Distributor</option>
-                    <option value="Aggregator">Aggregator</option>
-                    <option value="Third-party">Third-party</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    MESSAGE
+                    PERSONAL MESSAGE
                   </label>
                   <textarea
                     value={inviteForm.message}
                     onChange={(e) => setInviteForm({ ...inviteForm, message: e.target.value })}
-                    placeholder="Welcome message (optional)"
+                    placeholder="Hi, we'd love to have you as our supplier..."
                     rows={3}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    maxLength={300}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5]"
                   />
+                  <p className="text-xs text-[#9CA3AF] text-right">
+                    {inviteForm.message.length}/300
+                  </p>
                 </div>
               </div>
               <DialogFooter>
