@@ -507,11 +507,27 @@ export function AddVendorModal({
 
   const handleSubmit = async () => {
     setSubmitWarnings([]);
-    const nextErrors = validateStep(8);
-    if (Object.keys(nextErrors).length) {
-      setErrors(nextErrors);
+    // Backend requires (for non-draft) GST, paymentTerms, and address fields.
+    // Users can jump between steps via the step indicator, so validate all
+    // required steps here (not just Step 8) before allowing a "pending" submit.
+    const pendingValidationSteps = [1, 2, 3, 5, 6, 8] as const;
+    let firstErrorStep: number | null = null;
+    const combinedErrors: Record<string, string> = {};
+
+    for (const s of pendingValidationSteps) {
+      const stepErrors = validateStep(s);
+      if (Object.keys(stepErrors).length && firstErrorStep == null) {
+        firstErrorStep = s;
+      }
+      Object.assign(combinedErrors, stepErrors);
+    }
+
+    if (Object.keys(combinedErrors).length) {
+      setErrors(combinedErrors);
+      if (firstErrorStep != null) setActiveStep(firstErrorStep);
       return;
     }
+
     setErrors({});
 
     const warnings: string[] = [];
