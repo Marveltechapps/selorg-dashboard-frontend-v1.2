@@ -8,7 +8,13 @@ import {
 } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 import { VendorProfile } from './VendorProfile';
-import { AddVendorModal, VENDOR_PAYMENT_TERMS, type VendorCreatePayload } from './AddVendorModal';
+import {
+  AddVendorModal,
+  VENDOR_PAYMENT_TERMS,
+  type VendorCreatePayload,
+  type VendorWizardFormData,
+  type VendorWizardSubmitPayload,
+} from './AddVendorModal';
 import { PerformanceReportModal } from './PerformanceReportModal';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
@@ -407,7 +413,7 @@ export function VendorList(props: VendorListProps = {}) {
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
 
-  const [editModalPayload, setEditModalPayload] = useState<VendorCreatePayload | null>(null);
+  const [editModalPayload, setEditModalPayload] = useState<VendorWizardFormData | null>(null);
 
   const showToast = (type: 'success' | 'error' | 'warning', message: string) => {
     setToast({ type, message });
@@ -441,39 +447,128 @@ export function VendorList(props: VendorListProps = {}) {
     return 'Address not provided';
   };
 
-  /** Maps GET /vendor/vendors/:id (or list item) into the same shape used by Add vendor / PUT update. */
-  const apiVendorRecordToCreatePayload = (api: any): VendorCreatePayload => {
-    const addr = api.address || {};
-    const termsRaw = String(api.paymentTerms || '').trim();
-    const paymentTerms = (VENDOR_PAYMENT_TERMS as readonly string[]).includes(termsRaw)
-      ? (termsRaw as (typeof VENDOR_PAYMENT_TERMS)[number])
-      : '30 days';
-    const catRaw = String(api.metadata?.category ?? api.category ?? '').trim();
-    const cat = catRaw === '—' ? '' : catRaw;
-    const gstin = String(api.taxInfo?.gstin ?? api.metadata?.gstNumber ?? '').trim();
+  /** Maps a backend vendor record into the shape expected by `AddVendorModal` (wizard initialPayload). */
+  const apiVendorRecordToCreatePayload = (api: any): VendorWizardFormData => {
+    const meta = api?.metadata || {};
+    const addr = api?.address || {};
+    const contact = api?.contact || {};
+
+    const allowedPaymentCodes = new Set(['advance', 'net7', 'net15', 'net30', 'net45', 'cod']);
+    const mapLegacyPaymentTermsToCode = (raw: any): VendorWizardFormData['paymentTermsBank'] => {
+      const s = String(raw ?? '').trim();
+      const sl = s.toLowerCase();
+      if (allowedPaymentCodes.has(sl)) return sl as any;
+      if (sl === '30 days') return 'net30' as any;
+      if (sl === '45 days') return 'net45' as any;
+      // Unsupported legacy term (e.g. 60 days) -> keep blank
+      return '' as any;
+    };
+
+    const allowedUnits = new Set<unknown>(['kg', 'L', 'Pieces', 'Boxes']);
+    const pickUnit = (u: any, fallback: string) => {
+      const su = String(u ?? '').trim();
+      return allowedUnits.has(su) ? (su as any) : (fallback as any);
+    };
+
+    const rawSelectedCats = Array.isArray(meta?.selectedCategories) ? meta.selectedCategories : null;
+    const selectedCategories =
+      rawSelectedCats && rawSelectedCats.length
+        ? rawSelectedCats.map((c: any) => String(c)).filter(Boolean)
+        : (() => {
+            const legacyCat = String(meta?.category ?? api?.category ?? '').trim();
+            if (!legacyCat || legacyCat === '—') return [];
+            return [legacyCat];
+          })();
+
+    const catLimits = Array.isArray(meta?.categoryLimits) ? meta.categoryLimits : [];
+    const categoryLimits: VendorWizardFormData['categoryLimits'] = catLimits.map((x: any) => ({
+      category: String(x?.category ?? '').trim(),
+      minQty: Number(x?.minQty ?? 0),
+      maxQty: Number(x?.maxQty ?? 0),
+      unit: pickUnit(x?.unit, 'kg') as any,
+      leadTimeDays:
+        x?.leadTimeDays != null && x?.leadTimeDays !== '' && Number.isFinite(Number(x.leadTimeDays))
+          ? Number(x.leadTimeDays)
+          : undefined,
+    }));
+
+    const deliveryWindowsRaw = Array.isArray(meta?.deliveryWindows) ? meta.deliveryWindows : [];
+    const allowedDeliveryWindows = new Set<unknown>([
+      'early_morning',
+      'morning',
+      'afternoon',
+      'evening',
+      'night',
+    ]);
+    const deliveryWindows = deliveryWindowsRaw
+      .map((d: any) => String(d).trim())
+      .filter((d: any) => allowedDeliveryWindows.has(d)) as VendorWizardFormData['deliveryWindows'];
+
+    const paymentTermsBank = mapLegacyPaymentTermsToCode(meta?.paymentTermsBank ?? meta?.paymentTerms ?? '');
+    const paymentTermsPreferred = mapLegacyPaymentTermsToCode(
+      meta?.paymentTermsPreferred ?? meta?.paymentTerms ?? ''
+    );
 
     return {
-      vendorCode: String(api.vendorCode ?? api.code ?? '').trim(),
-      vendorName: String(api.vendorName ?? api.name ?? '').trim(),
-      taxInfo: { gstin },
-      paymentTerms,
-      address: {
-        line1: String(addr.line1 ?? '').trim(),
-        line2: addr.line2 != null && String(addr.line2).trim() !== '' ? String(addr.line2).trim() : null,
-        line3: addr.line3 != null && String(addr.line3).trim() !== '' ? String(addr.line3).trim() : null,
-        city: String(addr.city ?? '').trim(),
-        state: String(addr.state ?? '').trim(),
-        country: String(addr.country ?? 'India').trim() || 'India',
-        zipCode: String(addr.zipCode ?? addr.pincode ?? '').trim(),
-      },
-      contact: {
-        name: String(api.contact?.name ?? api.contactName ?? api.vendorName ?? api.name ?? '').trim(),
-        phone: String(api.contact?.phone ?? api.contactPhone ?? '').trim(),
-        email: String(api.contact?.email ?? api.contactEmail ?? '').trim().toLowerCase(),
-      },
-      currencyCode: (String(api.currencyCode ?? 'INR').trim().toUpperCase() || 'INR').slice(0, 3),
-      status: typeof api.status === 'string' ? api.status : undefined,
-      ...(cat ? { metadata: { category: cat } } : {}),
+      // Step 1
+      vendorName: String(api?.vendorName ?? api?.name ?? '').trim(),
+      vendorType: String(meta?.vendorType ?? api?.vendorType ?? '').trim(),
+      tier: String(meta?.tier ?? '').trim(),
+      description: String(meta?.description ?? '').trim(),
+      registrationNumber: String(meta?.registrationNumber ?? '').trim(),
+      onboardingSource: (meta?.onboardingSource ?? '') as any,
+
+      // Step 2
+      contactPerson: String(contact?.name ?? '').trim(),
+      email: String(contact?.email ?? '').trim(),
+      phonePrimary: String(contact?.phone ?? '').trim(),
+      addressLine1: String(addr?.line1 ?? '').trim(),
+      city: String(addr?.city ?? '').trim(),
+      state: String(addr?.state ?? '').trim(),
+      postalCode: String(addr?.zipCode ?? addr?.pincode ?? '').trim(),
+      serviceableZones: Array.isArray(meta?.serviceableZones) ? meta.serviceableZones.map(String) : [],
+
+      // Step 3
+      gstNumber: String(api?.taxInfo?.gstin ?? meta?.gstNumber ?? '').trim(),
+      panNumber: String(meta?.panNumber ?? '').trim(),
+      bankName: String(meta?.bankName ?? '').trim(),
+      accountType: String(meta?.accountType ?? '').trim(),
+      accountNo: String(meta?.bankAccount ?? meta?.accountNo ?? '').trim(),
+      ifscCode: String(meta?.ifscCode ?? '').trim(),
+      accountHolder: String(meta?.accountHolder ?? '').trim(),
+      paymentTermsBank: paymentTermsBank || '',
+      creditLimit:
+        meta?.creditLimit != null && meta.creditLimit !== ''
+          ? String(meta.creditLimit)
+          : '',
+
+      // Step 5 & 6
+      selectedCategories,
+      productType: String(meta?.productType ?? '').trim(),
+      minQtyPerDay:
+        meta?.minQtyPerDay != null && meta?.minQtyPerDay !== '' ? String(meta.minQtyPerDay) : '',
+      maxQtyPerDay:
+        meta?.maxQtyPerDay != null && meta?.maxQtyPerDay !== '' ? String(meta.maxQtyPerDay) : '',
+      qtyUnit: pickUnit(meta?.qtyUnit, 'kg') as any,
+      leadTimeDays:
+        meta?.leadTimeDays != null && meta?.leadTimeDays !== '' ? String(meta.leadTimeDays) : '2',
+      minimumOrderValue:
+        meta?.minimumOrderValue != null && meta?.minimumOrderValue !== '' ? String(meta.minimumOrderValue) : '',
+      paymentTermsPreferred: paymentTermsPreferred || '',
+
+      // Step 7
+      categoryLimits,
+
+      // Step 8
+      deliveryWindows,
+      slaTargetPercent:
+        meta?.slaTargetPercent != null && meta?.slaTargetPercent !== '' ? Number(meta.slaTargetPercent) : 90,
+      substitutionPolicy: (meta?.substitutionPolicy ?? '') as any,
+      returnPolicy: (meta?.returnPolicy ?? '') as any,
+      specialInstructions: String(meta?.specialInstructions ?? '').trim(),
+
+      // Documents
+      documents: (meta?.documents ?? api?.documents ?? {}) as any,
     };
   };
 
@@ -659,43 +754,104 @@ export function VendorList(props: VendorListProps = {}) {
     }
   };
 
-  const handleEditVendorSubmit = async (vendorId: string, payload: VendorCreatePayload) => {
+  const handleEditVendorSubmit = async (vendorId: string, submitPayload: VendorWizardSubmitPayload) => {
     try {
       setIsLoading(true);
-      const updatePayload: Record<string, unknown> = {
-        vendorName: payload.vendorName,
-        name: payload.vendorName,
-        vendorCode: payload.vendorCode,
-        code: payload.vendorCode,
-        taxInfo: payload.taxInfo,
-        paymentTerms: payload.paymentTerms,
-        currencyCode: payload.currencyCode,
-        address: payload.address,
-        contact: {
-          name: payload.contact.name,
-          phone: payload.contact.phone,
-          email: payload.contact.email,
-        },
+      const formData = submitPayload.formData;
+
+      const addressObj = {
+        line1: formData.addressLine1,
+        line2: null,
+        line3: null,
+        city: formData.city,
+        state: formData.state,
+        country: 'India',
+        zipCode: formData.postalCode,
       };
-      if (payload.status !== undefined && payload.status !== '') {
-        updatePayload.status = payload.status;
-      }
-      if (payload.metadata && Object.keys(payload.metadata).length > 0) {
-        updatePayload.metadata = payload.metadata;
-      }
+
+      const paymentTermsResolved = (formData.paymentTermsPreferred || formData.paymentTermsBank || '').trim();
+
+      const metadata = {
+        // Step 1 / onboarding
+        registrationNumber: formData.registrationNumber,
+        onboardingSource: formData.onboardingSource || 'direct',
+        serviceableZones: formData.serviceableZones,
+
+        // Core vendor attributes (wizard Step 1 + Step 3)
+        vendorType: formData.vendorType,
+        tier: formData.tier,
+        description: formData.description,
+        gstNumber: formData.gstNumber,
+        panNumber: formData.panNumber,
+        bankName: formData.bankName,
+        accountType: formData.accountType,
+        bankAccount: formData.accountNo,
+        ifscCode: formData.ifscCode,
+        accountHolder: formData.accountHolder,
+
+        // Step 3 / 6
+        paymentTerms: paymentTermsResolved || 'net15',
+        creditLimit:
+          formData.creditLimit != null && String(formData.creditLimit).trim() !== '' ? Number(formData.creditLimit) : 0,
+        leadTimeDays: Number(formData.leadTimeDays || 2),
+        minimumOrderValue:
+          formData.minimumOrderValue != null && String(formData.minimumOrderValue).trim() !== ''
+            ? Number(formData.minimumOrderValue)
+            : 0,
+
+        // Step 8
+        deliveryWindows: formData.deliveryWindows,
+        slaTargetPercent: Number(formData.slaTargetPercent || 90),
+        substitutionPolicy: formData.substitutionPolicy || 'case_by_case',
+        returnPolicy: formData.returnPolicy || 'partial',
+        specialInstructions: formData.specialInstructions || '',
+
+        // Step 5 & 6 purchase limits (persisted via `strict:false` backend metadata)
+        selectedCategories: formData.selectedCategories,
+        productType: formData.productType,
+        minQtyPerDay: formData.minQtyPerDay !== '' ? Number(formData.minQtyPerDay) : undefined,
+        maxQtyPerDay: formData.maxQtyPerDay !== '' ? Number(formData.maxQtyPerDay) : undefined,
+        qtyUnit: formData.qtyUnit,
+
+        // Extra info to support editing/hydration
+        paymentTermsBank: formData.paymentTermsBank,
+        paymentTermsPreferred: formData.paymentTermsPreferred,
+
+        // Step 7
+        categoryLimits: formData.categoryLimits.map((cl) => ({
+          ...cl,
+          minQty: Number(cl.minQty),
+          maxQty: Number(cl.maxQty),
+          leadTimeDays: cl.leadTimeDays != null ? Number(cl.leadTimeDays) : undefined,
+        })),
+
+        // Documents (Step 4)
+        documents: formData.documents || {},
+      };
+
+      const updatePayload: Record<string, unknown> = {
+        vendorName: formData.vendorName,
+        name: formData.vendorName,
+        vendorCode: submitPayload.vendorCode,
+        code: submitPayload.vendorCode,
+        status: submitPayload.status,
+        contact: {
+          name: formData.contactPerson || formData.vendorName,
+          phone: formData.phonePrimary || '',
+          email: formData.email || '',
+        },
+        address: addressObj,
+        metadata,
+      };
+
       await vendorApi.updateVendor(vendorId, updatePayload);
       await loadVendors();
-      setIsEditModalOpen(false);
-      setEditModalPayload(null);
       if (isViewDetailsOpen) {
         await syncSelectedVendorAfterMutation(vendorId);
-      } else {
-        setSelectedVendor(null);
       }
-      sonnerToast.success(`Changes saved successfully. "${payload.vendorName}" has been updated.`);
     } catch (error: any) {
       console.error('Failed to update vendor:', error);
-      sonnerToast.error(error.message || 'Failed to update vendor');
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -935,20 +1091,111 @@ export function VendorList(props: VendorListProps = {}) {
   };
 
   // Handler for AddVendorModal (submits to real POST /vendor/vendors)
-  const handleAddVendorSubmit = async (payload: VendorCreatePayload) => {
+  const handleAddVendorSubmit = async (submitPayload: VendorWizardSubmitPayload) => {
     try {
       setIsLoading(true);
+      const formData = submitPayload.formData;
 
-      await vendorApi.createVendor(payload);
+      const addressObj = {
+        line1: formData.addressLine1,
+        line2: null,
+        line3: null,
+        city: formData.city,
+        state: formData.state,
+        country: 'India',
+        zipCode: formData.postalCode,
+      };
+
+      const paymentTermsResolved = (formData.paymentTermsPreferred || formData.paymentTermsBank || '').trim();
+
+      const metadata = {
+        // Step 1 / onboarding
+        registrationNumber: formData.registrationNumber,
+        onboardingSource: formData.onboardingSource || 'direct',
+        serviceableZones: formData.serviceableZones,
+
+        // Core vendor attributes (wizard Step 1 + Step 3)
+        vendorType: formData.vendorType,
+        tier: formData.tier,
+        description: formData.description,
+        gstNumber: formData.gstNumber,
+        panNumber: formData.panNumber,
+        bankName: formData.bankName,
+        accountType: formData.accountType,
+        bankAccount: formData.accountNo,
+        ifscCode: formData.ifscCode,
+        accountHolder: formData.accountHolder,
+
+        // Step 3 / 6
+        paymentTerms: paymentTermsResolved || 'net15',
+        creditLimit:
+          formData.creditLimit != null && String(formData.creditLimit).trim() !== '' ? Number(formData.creditLimit) : 0,
+        leadTimeDays: Number(formData.leadTimeDays || 2),
+        minimumOrderValue:
+          formData.minimumOrderValue != null && String(formData.minimumOrderValue).trim() !== ''
+            ? Number(formData.minimumOrderValue)
+            : 0,
+
+        // Step 8
+        deliveryWindows: formData.deliveryWindows,
+        slaTargetPercent: Number(formData.slaTargetPercent || 90),
+        substitutionPolicy: formData.substitutionPolicy || 'case_by_case',
+        returnPolicy: formData.returnPolicy || 'partial',
+        specialInstructions: formData.specialInstructions || '',
+
+        // Step 5 & 6 purchase limits (persisted via `strict:false` backend metadata)
+        selectedCategories: formData.selectedCategories,
+        productType: formData.productType,
+        minQtyPerDay: formData.minQtyPerDay !== '' ? Number(formData.minQtyPerDay) : undefined,
+        maxQtyPerDay: formData.maxQtyPerDay !== '' ? Number(formData.maxQtyPerDay) : undefined,
+        qtyUnit: formData.qtyUnit,
+
+        // Extra info to support editing/hydration
+        paymentTermsBank: formData.paymentTermsBank,
+        paymentTermsPreferred: formData.paymentTermsPreferred,
+
+        // Step 7
+        categoryLimits: formData.categoryLimits.map((cl) => ({
+          ...cl,
+          minQty: Number(cl.minQty),
+          maxQty: Number(cl.maxQty),
+          leadTimeDays: cl.leadTimeDays != null ? Number(cl.leadTimeDays) : undefined,
+        })),
+
+        // Documents (Step 4)
+        documents: formData.documents || {},
+      };
+
+      const payloadToSend: Record<string, unknown> = {
+        vendorName: formData.vendorName,
+        name: formData.vendorName,
+        vendorCode: submitPayload.vendorCode,
+        code: submitPayload.vendorCode,
+        status: submitPayload.status,
+        contact: {
+          name: formData.contactPerson || formData.vendorName,
+          phone: formData.phonePrimary || '',
+          email: formData.email || '',
+        },
+        address: addressObj,
+        metadata,
+      };
+
+      const result = submitPayload.vendorId
+        ? await vendorApi.updateVendor(String(submitPayload.vendorId), payloadToSend)
+        : await vendorApi.createVendor(payloadToSend);
 
       await loadVendors();
 
-      setIsAddModalOpen(false);
-      sonnerToast.success(`Vendor "${payload.vendorName}" added successfully!`);
+      const vendorIdFromResult =
+        result && typeof result === 'object' ? ((result as any)._id ?? (result as any).id) : undefined;
+
+      return {
+        vendorId: vendorIdFromResult ? String(vendorIdFromResult) : submitPayload.vendorId ? String(submitPayload.vendorId) : undefined,
+      };
     } catch (error: any) {
-      console.error('Failed to create vendor:', error);
-      const errorMessage = error.message || 'Failed to create vendor';
-      sonnerToast.error(errorMessage);
+      console.error('Failed to create/update vendor:', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
