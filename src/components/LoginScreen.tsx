@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, UserCircle, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, UserCircle, Lock, User, Eye, EyeOff, Clock, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
-import { login } from '../api/authApi';
+import { login, LoginLockoutError } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useDynamicFavicon } from '../hooks/useDynamicFavicon';
 import { DASHBOARD_BRANDS } from '../utils/dashboardFavicon';
@@ -22,6 +22,12 @@ const ROLE_CONFIG: Record<RoleId, { name: string; color: string; bgSelected: str
 };
 
 const ROLE_ORDER: RoleId[] = ['admin', 'warehouse', 'production', 'darkstore', 'rider', 'vendor', 'finance', 'merch'];
+
+function formatCountdown(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 function DashboardBadge({ dashboardId, size = 40 }: { dashboardId: string; size?: number }) {
   const brand = DASHBOARD_BRANDS[dashboardId as keyof typeof DASHBOARD_BRANDS];
@@ -56,6 +62,21 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [lockout, setLockout] = useState<{ secondsRemaining: number; message: string } | null>(null);
+
+  const lockoutActive = lockout !== null;
+
+  useEffect(() => {
+    if (!lockoutActive) return;
+    const id = window.setInterval(() => {
+      setLockout((prev) => {
+        if (!prev) return null;
+        if (prev.secondsRemaining <= 1) return null;
+        return { ...prev, secondsRemaining: prev.secondsRemaining - 1 };
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [lockoutActive]);
 
   const handleRoleSelect = (role: 'darkstore' | 'production' | 'merch' | 'rider' | 'finance' | 'vendor' | 'warehouse' | 'admin') => {
     setSelectedRole(role);
@@ -86,21 +107,32 @@ export function LoginScreen() {
         return;
       }
 
+      const ru = result.user as typeof result.user & { _id?: string; hubKey?: string };
       auth.login(result.token, {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
-        role: result.user.role,
-        assignedStores: result.user.assignedStores ?? [],
-        primaryStoreId: result.user.primaryStoreId ?? '',
+        id: ru.id || String(ru._id ?? ''),
+        email: ru.email,
+        name: ru.name,
+        role: ru.role,
+        assignedStores: ru.assignedStores ?? [],
+        primaryStoreId: ru.primaryStoreId ?? '',
+        hubKey: ru.hubKey,
       });
 
       const finalRole = canAccessAny ? selectedRole : result.user.role;
       toast.success(`Welcome to ${ROLE_CONFIG[selectedRole as keyof typeof ROLE_CONFIG]?.name || selectedRole}`);
       navigate(`/${finalRole}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
-      toast.error(error.message || 'Login failed. Please check your credentials.');
+      if (error instanceof LoginLockoutError) {
+        setLockout({
+          secondsRemaining: error.retryAfterSeconds,
+          message: error.message,
+        });
+        toast.error(error.message);
+      } else {
+        const msg = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
+        toast.error(msg);
+      }
       setIsLoading(false);
     }
   };
@@ -108,7 +140,35 @@ export function LoginScreen() {
   const roleConfig = selectedRole ? ROLE_CONFIG[selectedRole as keyof typeof ROLE_CONFIG] : null;
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F0F2F5] flex items-center justify-center p-4 relative">
+      {lockout && (
+        <div
+          className="fixed top-4 right-4 z-[200] w-[min(100vw-2rem,11rem)] rounded-xl border border-amber-200 bg-amber-50 shadow-lg"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-2 p-3">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+              <Clock className="h-4 w-4" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold leading-tight text-amber-950">Try again after cooldown</p>
+              <p className="mt-1 text-[11px] leading-snug text-amber-900/90">{lockout.message}</p>
+              <p className="mt-2 font-mono text-lg font-bold tabular-nums tracking-tight text-amber-950">
+                {formatCountdown(lockout.secondsRemaining)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLockout(null)}
+              className="shrink-0 rounded-lg p-1 text-amber-800/70 transition-colors hover:bg-amber-100 hover:text-amber-950"
+              aria-label="Dismiss lockout notice"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-2xl shadow-xl max-w-5xl w-full overflow-hidden border border-[#E0E0E0] flex flex-col md:flex-row">
         
         {/* Left Side: Role Selection */}
@@ -209,10 +269,10 @@ export function LoginScreen() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || lockoutActive}
                   className={cn(
                     "w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all text-white shadow-lg",
-                    isLoading ? "opacity-70 cursor-wait" : "hover:translate-y-[-1px]",
+                    isLoading || lockoutActive ? "opacity-70 cursor-not-allowed" : "hover:translate-y-[-1px]",
                     selectedRole === 'admin' ? "bg-[#e11d48] hover:bg-[#be123c]" :
                     selectedRole === 'warehouse' ? "bg-[#0891b2] hover:bg-[#0e7490]" :
                     selectedRole === 'production' ? "bg-[#16A34A] hover:bg-[#15803d]" :

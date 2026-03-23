@@ -55,91 +55,6 @@ interface LogEntry {
 
 import { systemGatewayApi, SystemService, SystemLog } from '../../../api/vendor/systemGateway.api';
 
-// Mock Data (fallback)
-const mockServices: Service[] = [
-  {
-    id: '1',
-    name: 'Vendor Portal',
-    type: 'Web Interface',
-    status: 'operational',
-    lastSync: 'Real-time',
-    latency: 23,
-    requests: 1234,
-    trend: 12,
-  },
-  {
-    id: '2',
-    name: 'EDI Connection',
-    type: 'Data Exchange',
-    status: 'operational',
-    lastSync: '5 mins ago',
-    latency: 156,
-    requests: 847,
-    trend: 5,
-  },
-  {
-    id: '3',
-    name: 'Email Notifications',
-    type: 'SMTP Service',
-    status: 'slow',
-    lastSync: '1 min ago',
-    latency: 345,
-    requests: 523,
-    trend: -8,
-  },
-  {
-    id: '4',
-    name: 'Payment Gateway',
-    type: 'Financial API',
-    status: 'operational',
-    lastSync: 'Real-time',
-    latency: 78,
-    requests: 456,
-    trend: 3,
-  },
-  {
-    id: '5',
-    name: 'Inventory Sync',
-    type: 'Data Sync',
-    status: 'operational',
-    lastSync: '2 mins ago',
-    latency: 124,
-    requests: 789,
-    trend: 7,
-  },
-];
-
-const mockLogs: LogEntry[] = [
-  {
-    id: '1',
-    timestamp: '2025-12-19 10:48:53',
-    level: 'INFO',
-    service: 'Email Notifications',
-    message: 'Email queue processed - 245 emails sent',
-  },
-  {
-    id: '2',
-    timestamp: '2025-12-19 10:48:42',
-    level: 'INFO',
-    service: 'Email Notifications',
-    message: 'Connection established - SMTP server 192.168.1.100:587',
-  },
-  {
-    id: '3',
-    timestamp: '2025-12-19 10:48:30',
-    level: 'WARNING',
-    service: 'Email Notifications',
-    message: 'Slow response - Response time 345ms (threshold: 300ms)',
-  },
-  {
-    id: '4',
-    timestamp: '2025-12-19 10:48:15',
-    level: 'DEBUG',
-    service: 'Email Notifications',
-    message: 'Retry attempt - Attempt 1/3 for message ID: msg_12345',
-  },
-];
-
 export function SystemGatewayMonitoring() {
   const [services, setServices] = useState<Service[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -169,7 +84,7 @@ export function SystemGatewayMonitoring() {
       } catch (err) {
         console.error('Failed to load services', err);
         toast.error('Failed to load services');
-        setServices(mockServices);
+        setServices([]);
       } finally {
         setLoadingServices(false);
       }
@@ -196,7 +111,7 @@ export function SystemGatewayMonitoring() {
       } catch (err) {
         console.error('Failed to load logs', err);
         toast.error('Failed to load logs');
-        setLogs(mockLogs);
+        setLogs([]);
       } finally {
         setLoadingLogs(false);
       }

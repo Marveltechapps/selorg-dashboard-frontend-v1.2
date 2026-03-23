@@ -96,6 +96,8 @@ export interface AuthUser {
   role: string;
   assignedStores?: string[];
   primaryStoreId?: string;
+  /** Procurement / vendor dashboard tenant from JWT (e.g. chennai-hub) */
+  hubKey?: string;
 }
 
 export interface AuthContextType {
@@ -154,13 +156,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback((newToken: string, newUser: AuthUser) => {
+    const payload = decodeJwtPayload(newToken);
+    const hubFromJwt =
+      typeof payload?.hubKey === 'string' && payload.hubKey.trim() ? String(payload.hubKey).trim() : undefined;
+    const enriched: AuthUser = {
+      ...newUser,
+      hubKey: newUser.hubKey ?? hubFromJwt,
+    };
     _token = newToken;
-    _user = newUser;
-    _activeStoreId = newUser.primaryStoreId ?? newUser.assignedStores?.[0] ?? null;
+    _user = enriched;
+    _activeStoreId = enriched.primaryStoreId ?? enriched.assignedStores?.[0] ?? null;
 
-    persistAuth(newToken, newUser, _activeStoreId);
+    persistAuth(newToken, enriched, _activeStoreId);
     setToken(newToken);
-    setUser(newUser);
+    setUser(enriched);
     setActiveStoreId(_activeStoreId);
   }, []);
 
@@ -194,8 +203,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionChecked.current = true;
 
     if (_token && !isTokenExpired(_token)) {
+      const payload = decodeJwtPayload(_token);
+      const hubFromJwt =
+        typeof payload?.hubKey === 'string' && payload.hubKey.trim() ? String(payload.hubKey).trim() : undefined;
+      const mergedUser =
+        _user && hubFromJwt && !_user.hubKey ? { ..._user, hubKey: hubFromJwt } : _user;
+      if (mergedUser && mergedUser !== _user) {
+        _user = mergedUser;
+        persistAuth(_token, mergedUser, _activeStoreId);
+      }
       setToken(_token);
-      setUser(_user);
+      setUser(mergedUser);
       setActiveStoreId(_activeStoreId);
       setIsLoading(false);
       return;

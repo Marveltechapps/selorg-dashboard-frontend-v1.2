@@ -6,7 +6,8 @@ import { GripVertical } from 'lucide-react';
 
 export interface SortableListProps<T> {
   items: T[];
-  keyFn: (item: T) => string;
+  /** Unique stable id per row (include index when items lack natural ids). */
+  keyFn: (item: T, index: number) => string;
   renderItem: (item: T, index: number) => React.ReactNode;
   onReorder: (newOrder: T[]) => void;
   /** Optional class for the list container */
@@ -49,7 +50,7 @@ export function SortableList<T>({
     setDraggedId(null);
     const sourceId = e.dataTransfer.getData('text/plain');
     if (!sourceId || sourceId === targetId) return;
-    const keys = items.map(keyFn);
+    const keys = items.map((it, i) => keyFn(it, i));
     const from = keys.indexOf(sourceId);
     const to = keys.indexOf(targetId);
     if (from === -1 || to === -1) return;
@@ -67,7 +68,7 @@ export function SortableList<T>({
   return (
     <ul className={`space-y-1 ${className}`}>
       {items.map((item, index) => {
-        const id = keyFn(item);
+        const id = keyFn(item, index);
         const isDragging = draggedId === id;
         const isOver = dragOverId === id;
         return (
@@ -77,7 +78,7 @@ export function SortableList<T>({
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, id)}
             className={`
-              flex items-center gap-2 rounded-lg border bg-white p-2 transition
+              flex min-w-0 max-w-full items-center gap-2 rounded-lg border bg-white p-2 pr-3 transition
               ${isDragging ? 'opacity-50' : ''}
               ${isOver ? 'border-[#034703] ring-1 ring-[#034703]' : 'border-[#e4e4e7]'}
               ${itemClassName}
@@ -85,14 +86,14 @@ export function SortableList<T>({
           >
             <span
               draggable
-              className="cursor-grab active:cursor-grabbing text-[#a1a1aa] touch-none"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-[#a1a1aa] touch-none"
               aria-hidden
               onDragStart={(e) => handleDragStart(e, id)}
               onDragEnd={handleDragEnd}
             >
               <GripVertical className="h-4 w-4" />
             </span>
-            <span className="flex-1 min-w-0">{renderItem(item, index)}</span>
+            <div className="min-w-0 flex-1 overflow-hidden">{renderItem(item, index)}</div>
           </li>
         );
       })}

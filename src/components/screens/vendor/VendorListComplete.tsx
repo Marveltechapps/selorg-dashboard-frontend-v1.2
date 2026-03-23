@@ -1,19 +1,20 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, Download, Upload, X, 
   MoreVertical, Eye, Edit, FileText, MessageSquare,
-  BarChart3, Pause, XCircle, Trash2, CheckCircle,
-  AlertTriangle, MapPin, Send, Loader2
+  BarChart3, Pause, PlayCircle, XCircle, Trash2, CheckCircle,
+  AlertTriangle, MapPin, Send, Loader2, ChevronRight
 } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 import { VendorProfile } from './VendorProfile';
-import { AddVendorModal } from './AddVendorModal';
+import { AddVendorModal, VENDOR_PAYMENT_TERMS, type VendorCreatePayload } from './AddVendorModal';
 import { PerformanceReportModal } from './PerformanceReportModal';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
-import { createPDFBlob, createPDFViewHTML } from '../../../utils/pdfHelper';
-
+import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 interface Vendor {
   id: string;
+  code: string;
   name: string;
   category: string;
   phone: string;
@@ -24,35 +25,275 @@ interface Vendor {
   statusColor: string;
 }
 
-interface AddVendorFormData {
-  vendorName: string;
-  vendorType: string;
-  category: string;
-  tier: string;
-  description: string;
-  contactPerson: string;
-  phonePrimary: string;
-  phoneAlternate: string;
-  email: string;
-  fullAddress: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  gstNumber: string;
-  panNumber: string;
-  bankAccount: string;
-  bankName: string;
-  ifscCode: string;
-  accountHolder: string;
-  accountType: string;
+/** Portaled row action menu width (matches `w-56`). */
+const VENDOR_ACTION_MENU_WIDTH = 224;
+
+/** Rough height for full menu (~10 items + dividers); used to choose above vs below. */
+const VENDOR_ACTION_MENU_ESTIMATED_HEIGHT = 360;
+
+type VendorActionMenuPosition = {
+  left: number;
+  maxHeight: number;
+  top?: number;
+  bottom?: number;
+};
+
+/**
+ * Viewport-fixed position for the portaled menu. Flips above the ⋮ when there is not
+ * enough space below so the panel is not clipped by the window (or visually by the card edge).
+ */
+function computeVendorActionMenuPosition(anchorEl: HTMLElement): VendorActionMenuPosition {
+  const rect = anchorEl.getBoundingClientRect();
+  const gap = 6;
+  const margin = 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let left = rect.right - VENDOR_ACTION_MENU_WIDTH;
+  if (left < margin) left = margin;
+  if (left + VENDOR_ACTION_MENU_WIDTH > vw - margin) {
+    left = Math.max(margin, vw - VENDOR_ACTION_MENU_WIDTH - margin);
+  }
+
+  const spaceBelow = vh - rect.bottom - gap - margin;
+  const spaceAbove = rect.top - gap - margin;
+  const cap = Math.min(vh * 0.85, 520);
+  const needBelow = Math.min(VENDOR_ACTION_MENU_ESTIMATED_HEIGHT, cap);
+  const openBelow = spaceBelow >= needBelow || spaceBelow >= spaceAbove;
+
+  if (openBelow) {
+    const top = rect.bottom + gap;
+    const maxHeight = Math.min(cap, Math.max(180, spaceBelow));
+    return { left, top, maxHeight };
+  }
+
+  const maxHeight = Math.min(cap, Math.max(180, spaceAbove));
+  const bottom = vh - rect.top + gap;
+  return { left, bottom, maxHeight };
 }
 
-export function VendorList() {
+/** Expected bulk-import columns (UTF-8 CSV, header row required). line2/line3 may be empty. */
+const VENDOR_BULK_IMPORT_CSV_HEADER =
+  'vendorCode,vendorName,gstin,paymentTerms,currencyCode,line1,line2,line3,city,state,country,zipCode,contactName,contactPhone,contactEmail';
+
+type FlatVendorCsvRow = {
+  vendorCode: string;
+  vendorName: string;
+  gstin: string;
+  paymentTerms: string;
+  currencyCode: string;
+  line1: string;
+  line2: string;
+  line3: string;
+  city: string;
+  state: string;
+  country: string;
+  zipCode: string;
+  contactName: string;
+  contactPhone: string;
+  contactEmail: string;
+};
+
+const CSV_HEADER_MAP: Record<string, keyof FlatVendorCsvRow> = {
+  vendorcode: 'vendorCode',
+  code: 'vendorCode',
+  vendorname: 'vendorName',
+  name: 'vendorName',
+  gstin: 'gstin',
+  paymentterms: 'paymentTerms',
+  currencycode: 'currencyCode',
+  line1: 'line1',
+  addressline1: 'line1',
+  line2: 'line2',
+  addressline2: 'line2',
+  line3: 'line3',
+  addressline3: 'line3',
+  city: 'city',
+  state: 'state',
+  country: 'country',
+  zipcode: 'zipCode',
+  pincode: 'zipCode',
+  postalcode: 'zipCode',
+  contactname: 'contactName',
+  contactphone: 'contactPhone',
+  phone: 'contactPhone',
+  contactemail: 'contactEmail',
+};
+
+function parseCsvRows(content: string): string[][] {
+  const s = content.replace(/^\uFEFF/, '');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let i = 0;
+  let inQuotes = false;
+
+  const pushField = () => {
+    row.push(field);
+    field = '';
+  };
+  const pushRow = () => {
+    if (row.some((c) => c.trim() !== '')) {
+      rows.push(row.map((c) => c.trim()));
+    }
+    row = [];
+  };
+
+  while (i < s.length) {
+    const c = s[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (c === ',') {
+      pushField();
+      i++;
+      continue;
+    }
+    if (c === '\n') {
+      pushField();
+      pushRow();
+      i++;
+      continue;
+    }
+    if (c === '\r') {
+      if (s[i + 1] === '\n') {
+        pushField();
+        pushRow();
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    field += c;
+    i++;
+  }
+  pushField();
+  if (row.length) pushRow();
+  return rows;
+}
+
+function mapCsvHeaderToKeys(headers: string[]): (keyof FlatVendorCsvRow | null)[] {
+  return headers.map((h) => {
+    const compact = h.trim().toLowerCase().replace(/[\s_-]+/g, '');
+    return CSV_HEADER_MAP[compact] ?? null;
+  });
+}
+
+function cellsToFlatRow(
+  keys: (keyof FlatVendorCsvRow | null)[],
+  cells: string[],
+): FlatVendorCsvRow {
+  const out: Record<string, string> = {
+    vendorCode: '',
+    vendorName: '',
+    gstin: '',
+    paymentTerms: '',
+    currencyCode: '',
+    line1: '',
+    line2: '',
+    line3: '',
+    city: '',
+    state: '',
+    country: '',
+    zipCode: '',
+    contactName: '',
+    contactPhone: '',
+    contactEmail: '',
+  };
+  keys.forEach((key, idx) => {
+    if (!key) return;
+    out[key] = (cells[idx] ?? '').trim();
+  });
+  return out as FlatVendorCsvRow;
+}
+
+function flatRowToCreatePayload(row: FlatVendorCsvRow): VendorCreatePayload | { error: string } {
+  const paymentTermsRaw = row.paymentTerms.trim();
+  const allowedTerms = VENDOR_PAYMENT_TERMS as readonly string[];
+  if (!allowedTerms.includes(paymentTermsRaw)) {
+    return {
+      error: `Row "${row.vendorCode || row.vendorName}": paymentTerms must be one of: ${VENDOR_PAYMENT_TERMS.join(', ')}`,
+    };
+  }
+  const paymentTerms = paymentTermsRaw as VendorCreatePayload['paymentTerms'];
+  if (!row.vendorCode || !row.vendorName || !row.gstin) {
+    return { error: 'Each data row needs vendorCode, vendorName, and gstin.' };
+  }
+  if (!row.line1 || !row.city || !row.state || !row.zipCode) {
+    return { error: `Row "${row.vendorCode}": line1, city, state, and zipCode are required.` };
+  }
+  if (!row.contactName || !row.contactPhone || !row.contactEmail) {
+    return { error: `Row "${row.vendorCode}": contactName, contactPhone, and contactEmail are required.` };
+  }
+  const country = row.country.trim() || 'India';
+  const currencyCode = (row.currencyCode.trim().toUpperCase() || 'INR').slice(0, 3);
+  return {
+    vendorCode: row.vendorCode.trim(),
+    vendorName: row.vendorName.trim(),
+    taxInfo: { gstin: row.gstin.trim() },
+    paymentTerms,
+    address: {
+      line1: row.line1.trim(),
+      line2: row.line2.trim() || null,
+      line3: row.line3.trim() || null,
+      city: row.city.trim(),
+      state: row.state.trim(),
+      country,
+      zipCode: row.zipCode.trim(),
+    },
+    contact: {
+      name: row.contactName.trim(),
+      phone: row.contactPhone.trim(),
+      email: row.contactEmail.trim().toLowerCase(),
+    },
+    currencyCode,
+    status: 'pending',
+  };
+}
+
+type VendorActionMenuState = { vendorId: string } & VendorActionMenuPosition;
+
+type VendorListProps = {
+  /** Navigate vendor app tabs (e.g. breadcrumb → Vendor Overview). */
+  onNavigateTab?: (tab: string) => void;
+};
+
+function VendorListBreadcrumbSeparator() {
+  return (
+    <li aria-hidden className="flex items-center text-[#D1D5DB]">
+      <ChevronRight className="h-4 w-4 shrink-0" />
+    </li>
+  );
+}
+
+export function VendorList(props: VendorListProps = {}) {
+  const { onNavigateTab } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const actionMenuAnchorRef = useRef<HTMLElement | null>(null);
+  const actionMenuPanelRef = useRef<HTMLDivElement | null>(null);
   
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -60,7 +301,10 @@ export function VendorList() {
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isSuspendDialogOpen, setIsSuspendDialogOpen] = useState(false);
+  /** When true, suspend dialog reactivates a suspended vendor instead. */
+  const [suspendIsReactivate, setSuspendIsReactivate] = useState(false);
   const [isDeactivateDialogOpen, setIsDeactivateDialogOpen] = useState(false);
+  const [isActivateDialogOpen, setIsActivateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
   const [isPerformanceReportOpen, setIsPerformanceReportOpen] = useState(false);
@@ -69,9 +313,88 @@ export function VendorList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
-  const [activeSection, setActiveSection] = useState<'basic' | 'contact' | 'bank' | 'documents'>('basic');
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  /** Single state so the portal never opens with a stale (top,left) from a previous menu. */
+  const [actionMenu, setActionMenu] = useState<VendorActionMenuState | null>(null);
+
+  const closeActionMenu = useCallback(() => {
+    actionMenuAnchorRef.current = null;
+    setActionMenu(null);
+  }, []);
+
+  const openActionMenuForVendor = useCallback((vendorId: string, anchorEl: HTMLElement) => {
+    actionMenuAnchorRef.current = anchorEl;
+    setActionMenu({ vendorId, ...computeVendorActionMenuPosition(anchorEl) });
+  }, []);
+
+  useLayoutEffect(() => {
+    const vendorId = actionMenu?.vendorId;
+    if (!vendorId) return;
+    const el = actionMenuAnchorRef.current;
+    if (!el) return;
+    const next = computeVendorActionMenuPosition(el);
+    setActionMenu((prev) => {
+      if (!prev || prev.vendorId !== vendorId) return prev;
+      const same =
+        prev.left === next.left &&
+        prev.maxHeight === next.maxHeight &&
+        (prev.top ?? null) === (next.top ?? null) &&
+        (prev.bottom ?? null) === (next.bottom ?? null);
+      if (same) return prev;
+      return { vendorId: prev.vendorId, ...next };
+    });
+  }, [actionMenu?.vendorId]);
+
+  useEffect(() => {
+    if (!actionMenu) return;
+    const onScrollOrResize = () => closeActionMenu();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [actionMenu, closeActionMenu]);
+
+  /** Close on outside click / Escape — avoids a full-viewport transparent button blocking the page. */
+  useEffect(() => {
+    if (!actionMenu) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (actionMenuPanelRef.current?.contains(t)) return;
+      if (actionMenuAnchorRef.current?.contains(t)) return;
+      closeActionMenu();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeActionMenu();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [actionMenu, closeActionMenu]);
+
+  useEffect(() => {
+    if (!actionMenu) return;
+    if (!vendors.some((v) => v.id === actionMenu.vendorId)) {
+      closeActionMenu();
+    }
+  }, [actionMenu, vendors, closeActionMenu]);
+
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+
+  const goToVendorOverview = useCallback(() => {
+    setIsViewDetailsOpen(false);
+    setSelectedVendor(null);
+    onNavigateTab?.('overview');
+  }, [onNavigateTab]);
+
+  const goToVendorListRoot = useCallback(() => {
+    setIsViewDetailsOpen(false);
+    setSelectedVendor(null);
+  }, []);
+
   const [documentTab, setDocumentTab] = useState<'verified' | 'pending' | 'rejected' | 'upload'>('verified');
   
   // Form states
@@ -84,21 +407,7 @@ export function VendorList() {
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
 
-  const [formData, setFormData] = useState<AddVendorFormData>({
-    vendorName: '', vendorType: '', category: '', tier: '', description: '',
-    contactPerson: '', phonePrimary: '', phoneAlternate: '', email: '',
-    fullAddress: '', city: '', state: 'Tamil Nadu', postalCode: '',
-    gstNumber: '', panNumber: '', bankAccount: '', bankName: '',
-    ifscCode: '', accountHolder: '', accountType: ''
-  });
-  
-  const [editFormData, setEditFormData] = useState<AddVendorFormData>({
-    vendorName: '', vendorType: '', category: '', tier: '', description: '',
-    contactPerson: '', phonePrimary: '', phoneAlternate: '', email: '',
-    fullAddress: '', city: '', state: 'Tamil Nadu', postalCode: '',
-    gstNumber: '', panNumber: '', bankAccount: '', bankName: '',
-    ifscCode: '', accountHolder: '', accountType: ''
-  });
+  const [editModalPayload, setEditModalPayload] = useState<VendorCreatePayload | null>(null);
 
   const showToast = (type: 'success' | 'error' | 'warning', message: string) => {
     setToast({ type, message });
@@ -123,12 +432,49 @@ export function VendorList() {
       if (address.city) parts.push(address.city);
       if (address.state) parts.push(address.state);
       if (address.pincode) parts.push(address.pincode);
+      if (address.zipCode) parts.push(address.zipCode);
       if (address.postalCode) parts.push(address.postalCode);
       
       return parts.length > 0 ? parts.join(', ') : 'Address not provided';
     }
     
     return 'Address not provided';
+  };
+
+  /** Maps GET /vendor/vendors/:id (or list item) into the same shape used by Add vendor / PUT update. */
+  const apiVendorRecordToCreatePayload = (api: any): VendorCreatePayload => {
+    const addr = api.address || {};
+    const termsRaw = String(api.paymentTerms || '').trim();
+    const paymentTerms = (VENDOR_PAYMENT_TERMS as readonly string[]).includes(termsRaw)
+      ? (termsRaw as (typeof VENDOR_PAYMENT_TERMS)[number])
+      : '30 days';
+    const catRaw = String(api.metadata?.category ?? api.category ?? '').trim();
+    const cat = catRaw === '—' ? '' : catRaw;
+    const gstin = String(api.taxInfo?.gstin ?? api.metadata?.gstNumber ?? '').trim();
+
+    return {
+      vendorCode: String(api.vendorCode ?? api.code ?? '').trim(),
+      vendorName: String(api.vendorName ?? api.name ?? '').trim(),
+      taxInfo: { gstin },
+      paymentTerms,
+      address: {
+        line1: String(addr.line1 ?? '').trim(),
+        line2: addr.line2 != null && String(addr.line2).trim() !== '' ? String(addr.line2).trim() : null,
+        line3: addr.line3 != null && String(addr.line3).trim() !== '' ? String(addr.line3).trim() : null,
+        city: String(addr.city ?? '').trim(),
+        state: String(addr.state ?? '').trim(),
+        country: String(addr.country ?? 'India').trim() || 'India',
+        zipCode: String(addr.zipCode ?? addr.pincode ?? '').trim(),
+      },
+      contact: {
+        name: String(api.contact?.name ?? api.contactName ?? api.vendorName ?? api.name ?? '').trim(),
+        phone: String(api.contact?.phone ?? api.contactPhone ?? '').trim(),
+        email: String(api.contact?.email ?? api.contactEmail ?? '').trim().toLowerCase(),
+      },
+      currencyCode: (String(api.currencyCode ?? 'INR').trim().toUpperCase() || 'INR').slice(0, 3),
+      status: typeof api.status === 'string' ? api.status : undefined,
+      ...(cat ? { metadata: { category: cat } } : {}),
+    };
   };
 
   // Helper function to map API vendor to local Vendor format
@@ -168,10 +514,20 @@ export function VendorList() {
       addressValue = formatAddress(apiVendor.contact.address);
     }
     
+    const displayName =
+      (typeof apiVendor.vendorName === 'string' && apiVendor.vendorName.trim()) ||
+      (typeof apiVendor.name === 'string' && apiVendor.name.trim()) ||
+      'Unknown Vendor';
+    const displayCode =
+      (typeof apiVendor.vendorCode === 'string' && apiVendor.vendorCode.trim()) ||
+      (typeof apiVendor.code === 'string' && apiVendor.code.trim()) ||
+      '';
+
     return {
-      id: apiVendor.id || apiVendor._id || `VND-${Math.floor(1000 + Math.random() * 9000)}`,
-      name: apiVendor.name || 'Unknown Vendor',
-      category: apiVendor.category || apiVendor.metadata?.category || 'General',
+      id: String(apiVendor.id || apiVendor._id || ''),
+      code: displayCode,
+      name: displayName,
+      category: apiVendor.category || apiVendor.metadata?.category || '—',
       phone: apiVendor.contactPhone || apiVendor.contact?.phone || apiVendor.phone || 'N/A',
       email: apiVendor.contactEmail || apiVendor.contact?.email || apiVendor.email || 'N/A',
       address: addressValue,
@@ -230,25 +586,39 @@ export function VendorList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
+    void loadVendors();
+  });
+
+  const syncSelectedVendorAfterMutation = async (vendorId: string) => {
+    try {
+      const raw = await vendorApi.getVendorById(vendorId);
+      setSelectedVendor(mapApiVendorToLocal(raw));
+    } catch {
+      setIsViewDetailsOpen(false);
+      setSelectedVendor(null);
+    }
+  };
+
   const handleActionClick = (action: string, vendor: Vendor) => {
     setSelectedVendor(vendor);
-    setOpenMenuId(null);
+    closeActionMenu();
     
     switch(action) {
       case 'edit':
-        setEditFormData({
-          vendorName: vendor.name,
-          category: vendor.category,
-          phonePrimary: vendor.phone,
-          email: vendor.email,
-          fullAddress: vendor.address,
-          vendorType: '', tier: '', description: '',
-          contactPerson: '', phoneAlternate: '',
-          city: '', state: 'Tamil Nadu', postalCode: '',
-          gstNumber: '', panNumber: '', bankAccount: '', bankName: '',
-          ifscCode: '', accountHolder: '', accountType: ''
-        });
-        setIsEditModalOpen(true);
+        void (async () => {
+          try {
+            setIsLoading(true);
+            const raw = await vendorApi.getVendorById(vendor.id);
+            setEditModalPayload(apiVendorRecordToCreatePayload(raw));
+            setIsEditModalOpen(true);
+          } catch (error: any) {
+            console.error('Failed to load vendor for edit:', error);
+            sonnerToast.error(error?.message || 'Failed to load vendor details');
+          } finally {
+            setIsLoading(false);
+          }
+        })();
         break;
       case 'documents':
         setDocumentTab('verified');
@@ -258,9 +628,18 @@ export function VendorList() {
         setMessageForm({ subject: '', message: '' });
         setIsMessageModalOpen(true);
         break;
+      case 'unsuspend':
+        setSuspendReason('');
+        setSuspendIsReactivate(true);
+        setIsSuspendDialogOpen(true);
+        break;
       case 'suspend':
         setSuspendReason('');
+        setSuspendIsReactivate(false);
         setIsSuspendDialogOpen(true);
+        break;
+      case 'activate':
+        setIsActivateDialogOpen(true);
         break;
       case 'deactivate':
         setDeactivateReason('');
@@ -280,51 +659,40 @@ export function VendorList() {
     }
   };
 
-  const handleEditSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVendor) return;
-    
+  const handleEditVendorSubmit = async (vendorId: string, payload: VendorCreatePayload) => {
     try {
       setIsLoading(true);
-      
-      // Parse address
-      let addressObj: any = {};
-      if (editFormData.fullAddress) {
-        if (typeof editFormData.fullAddress === 'string') {
-          addressObj = {
-            line1: editFormData.fullAddress,
-            line2: '',
-            city: '',
-            state: '',
-            pincode: ''
-          };
-        } else {
-          addressObj = editFormData.fullAddress;
-        }
-      }
-      
-      const updatePayload: any = {
-        name: editFormData.vendorName,
+      const updatePayload: Record<string, unknown> = {
+        vendorName: payload.vendorName,
+        name: payload.vendorName,
+        vendorCode: payload.vendorCode,
+        code: payload.vendorCode,
+        taxInfo: payload.taxInfo,
+        paymentTerms: payload.paymentTerms,
+        currencyCode: payload.currencyCode,
+        address: payload.address,
         contact: {
-          name: editFormData.contactPerson || editFormData.vendorName,
-          email: editFormData.email,
-          phone: editFormData.phonePrimary
+          name: payload.contact.name,
+          phone: payload.contact.phone,
+          email: payload.contact.email,
         },
-        address: addressObj,
-        metadata: {
-          category: editFormData.category
-        }
       };
-      
-      await vendorApi.updateVendor(selectedVendor.id, updatePayload);
-      
-      // Reload vendors to get updated data
+      if (payload.status !== undefined && payload.status !== '') {
+        updatePayload.status = payload.status;
+      }
+      if (payload.metadata && Object.keys(payload.metadata).length > 0) {
+        updatePayload.metadata = payload.metadata;
+      }
+      await vendorApi.updateVendor(vendorId, updatePayload);
       await loadVendors();
-      
       setIsEditModalOpen(false);
-      sonnerToast.success(`✓ Changes saved successfully. "${editFormData.vendorName}" has been updated.`);
-      setActiveSection('basic');
-      setSelectedVendor(null);
+      setEditModalPayload(null);
+      if (isViewDetailsOpen) {
+        await syncSelectedVendorAfterMutation(vendorId);
+      } else {
+        setSelectedVendor(null);
+      }
+      sonnerToast.success(`Changes saved successfully. "${payload.vendorName}" has been updated.`);
     } catch (error: any) {
       console.error('Failed to update vendor:', error);
       sonnerToast.error(error.message || 'Failed to update vendor');
@@ -339,42 +707,116 @@ export function VendorList() {
       sonnerToast.error('Please fill in both subject and message');
       return;
     }
-    
+
     try {
-      // Here you would typically call an API to send the message
-      // For now, we'll simulate it
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      setIsLoading(true);
+      const res = (await vendorApi.vendorAction(selectedVendor.id, 'send_message', {
+        subject: messageForm.subject.trim(),
+        message: messageForm.message.trim(),
+      })) as {
+        message?: string;
+        emailSent?: boolean;
+        emailTo?: string;
+      };
+
       setIsMessageModalOpen(false);
-      sonnerToast.success(`✓ Message sent successfully to "${selectedVendor.name}".`);
+      const base =
+        typeof res?.message === 'string' && res.message.trim()
+          ? res.message
+          : `Message saved for "${selectedVendor.name}".`;
+      if (res?.emailSent === true) {
+        sonnerToast.success(
+          res.emailTo ? `${base} Email sent to ${res.emailTo}.` : `${base} Email sent.`,
+        );
+      } else if (res?.emailSent === false) {
+        sonnerToast.warning(
+          `${base}${res.emailTo ? ` Email could not be sent (saved on record). Intended: ${res.emailTo}.` : ' Email could not be sent (saved on record).'}`,
+          { duration: 6000 },
+        );
+      } else {
+        sonnerToast.success(base);
+      }
       setMessageForm({ subject: '', message: '' });
+      await loadVendors();
     } catch (error: any) {
       console.error('Failed to send message:', error);
       sonnerToast.error(error.message || 'Failed to send message');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSuspend = async () => {
     if (!selectedVendor) return;
-    
+
+    const vendorId = selectedVendor.id;
+    const vendorName = selectedVendor.name;
+    const keepDetail = isViewDetailsOpen;
+
     try {
       setIsLoading(true);
-      await vendorApi.updateVendor(selectedVendor.id, { 
-        status: 'suspended',
-        metadata: {
-          suspendReason: suspendReason,
-          suspendedAt: new Date().toISOString()
-        }
-      });
-      
-      await loadVendors();
-      setIsSuspendDialogOpen(false);
-      sonnerToast.success(`✓ Vendor suspended successfully. "${selectedVendor.name}" no longer receives new orders.`);
-      setSelectedVendor(null);
+      if (suspendIsReactivate) {
+        await vendorApi.updateVendor(vendorId, {
+          status: 'active',
+          metadata: {
+            unsuspendedAt: new Date().toISOString(),
+            unsuspendNote: suspendReason.trim() || undefined,
+          },
+        });
+        await loadVendors();
+        setIsSuspendDialogOpen(false);
+        setSuspendIsReactivate(false);
+        sonnerToast.success(`"${vendorName}" is active again.`);
+      } else {
+        await vendorApi.updateVendor(vendorId, {
+          status: 'suspended',
+          metadata: {
+            suspendReason: suspendReason,
+            suspendedAt: new Date().toISOString(),
+          },
+        });
+        await loadVendors();
+        setIsSuspendDialogOpen(false);
+        sonnerToast.success(`Vendor suspended. "${vendorName}" no longer receives new orders.`);
+      }
       setSuspendReason('');
+      if (keepDetail) {
+        await syncSelectedVendorAfterMutation(vendorId);
+      } else {
+        setSelectedVendor(null);
+      }
     } catch (error: any) {
-      console.error('Failed to suspend vendor:', error);
-      sonnerToast.error(error.message || 'Failed to suspend vendor');
+      console.error('Failed to update vendor status:', error);
+      sonnerToast.error(error.message || 'Failed to update vendor');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleActivateVendor = async () => {
+    if (!selectedVendor) return;
+    const vendorId = selectedVendor.id;
+    const vendorName = selectedVendor.name;
+    const keepDetail = isViewDetailsOpen;
+    try {
+      setIsLoading(true);
+      await vendorApi.updateVendor(vendorId, {
+        status: 'active',
+        metadata: {
+          reactivatedAt: new Date().toISOString(),
+        },
+      });
+      await loadVendors();
+      setIsActivateDialogOpen(false);
+      sonnerToast.success(`"${vendorName}" has been activated.`);
+      if (keepDetail) {
+        await syncSelectedVendorAfterMutation(vendorId);
+      } else {
+        setSelectedVendor(null);
+      }
+    } catch (error: any) {
+      console.error('Failed to activate vendor:', error);
+      sonnerToast.error(error.message || 'Failed to activate vendor');
     } finally {
       setIsLoading(false);
     }
@@ -382,10 +824,13 @@ export function VendorList() {
 
   const handleDeactivate = async () => {
     if (!selectedVendor) return;
-    
+    const vendorId = selectedVendor.id;
+    const vendorName = selectedVendor.name;
+    const keepDetail = isViewDetailsOpen;
+
     try {
       setIsLoading(true);
-      await vendorApi.updateVendor(selectedVendor.id, { 
+      await vendorApi.updateVendor(vendorId, { 
         status: 'inactive',
         metadata: {
           deactivateReason: deactivateReason,
@@ -395,9 +840,13 @@ export function VendorList() {
       
       await loadVendors();
       setIsDeactivateDialogOpen(false);
-      sonnerToast.success(`✓ Vendor deactivated successfully. "${selectedVendor.name}" is now inactive.`);
-      setSelectedVendor(null);
+      sonnerToast.success(`Vendor deactivated. "${vendorName}" is now inactive.`);
       setDeactivateReason('');
+      if (keepDetail) {
+        await syncSelectedVendorAfterMutation(vendorId);
+      } else {
+        setSelectedVendor(null);
+      }
     } catch (error: any) {
       console.error('Failed to deactivate vendor:', error);
       sonnerToast.error(error.message || 'Failed to deactivate vendor');
@@ -461,6 +910,7 @@ export function VendorList() {
         // Reload vendors list to ensure consistency with backend
         await loadVendors();
         setIsDeleteDialogOpen(false);
+        setIsViewDetailsOpen(false);
         setSelectedVendor(null);
         setDeleteConfirmation('');
         setDeleteReason('');
@@ -485,63 +935,16 @@ export function VendorList() {
   };
 
   // Handler for AddVendorModal (submits to real POST /vendor/vendors)
-  const handleAddVendorSubmit = async (formData: any) => {
+  const handleAddVendorSubmit = async (payload: VendorCreatePayload) => {
     try {
       setIsLoading(true);
-      
-      // Generate vendor code
-      const vendorCode = `VND-${Date.now().toString().slice(-6)}`;
-      
-      // Parse address if it's a string
-      let addressObj: any = {};
-      if (formData.fullAddress) {
-        // Try to parse if it's structured, otherwise use as line1
-        if (typeof formData.fullAddress === 'string') {
-          addressObj = {
-            line1: formData.fullAddress,
-            line2: '',
-            city: formData.city || '',
-            state: formData.state || '',
-            pincode: formData.postalCode || ''
-          };
-        } else {
-          addressObj = formData.fullAddress;
-        }
-      }
-      
-      // Build payload according to backend schema
-      const payload = {
-        name: formData.vendorName,
-        code: vendorCode,
-        status: 'pending',
-        contact: {
-          name: formData.contactPerson || formData.vendorName,
-          email: formData.email || '',
-          phone: formData.phonePrimary || formData.phoneAlternate || ''
-        },
-        address: addressObj,
-        metadata: {
-          category: Array.isArray(formData.selectedCategories) ? formData.selectedCategories[0] : formData.category || 'General',
-          vendorType: formData.vendorType || 'manufacturer',
-          gstNumber: formData.gstNumber || '',
-          panNumber: formData.panNumber || '',
-          bankAccount: formData.bankAccount || '',
-          bankName: formData.bankName || '',
-          ifscCode: formData.ifscCode || '',
-          accountHolder: formData.accountHolder || '',
-          accountType: formData.accountType || '',
-          tier: formData.tier || '',
-          description: formData.description || ''
-        }
-      };
-      
-      const response = await vendorApi.createVendor(payload);
-      
-      // Reload vendors to get the newly created vendor with proper ID
+
+      await vendorApi.createVendor(payload);
+
       await loadVendors();
-      
+
       setIsAddModalOpen(false);
-      sonnerToast.success(`Vendor "${formData.vendorName}" added successfully!`);
+      sonnerToast.success(`Vendor "${payload.vendorName}" added successfully!`);
     } catch (error: any) {
       console.error('Failed to create vendor:', error);
       const errorMessage = error.message || 'Failed to create vendor';
@@ -559,6 +962,7 @@ export function VendorList() {
     const matchesSearch = !q || 
       vendor.name.toLowerCase().includes(q) ||
       vendor.id.toLowerCase().includes(q) ||
+      (vendor.code && vendor.code.toLowerCase().includes(q)) ||
       vendor.email.toLowerCase().includes(q) ||
       vendor.phone.toLowerCase().includes(q);
     
@@ -572,7 +976,7 @@ export function VendorList() {
     try {
       const headers = ['Vendor ID', 'Name', 'Category', 'Phone', 'Email', 'Address', 'Compliance', 'Status'];
       const rows = filteredVendors.map((v) => [
-        v.id,
+        v.code || v.id,
         v.name,
         v.category,
         v.phone,
@@ -616,18 +1020,113 @@ export function VendorList() {
     fileInputRef.current?.click();
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadImportTemplate = () => {
+    const csv = `${VENDOR_BULK_IMPORT_CSV_HEADER}\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vendor-import-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    sonnerToast.success('Template downloaded (UTF-8 CSV)');
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      if (fileExtension === 'csv' || fileExtension === 'xlsx' || fileExtension === 'xls') {
-        sonnerToast.success(`File selected: ${file.name}. Processing bulk import...`);
-        // Reset the input so the same file can be selected again
-        e.target.value = '';
-      } else {
-        sonnerToast.error('Invalid file type. Please select a CSV or Excel file.');
-        e.target.value = '';
+    e.target.value = '';
+    if (!file) return;
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'csv') {
+      sonnerToast.error('Use a UTF-8 .csv file. Export from Excel as “CSV UTF-8 (comma delimited)” if needed.');
+      return;
+    }
+
+    setIsBulkImporting(true);
+    try {
+      const text = await file.text();
+      const rows = parseCsvRows(text);
+      if (rows.length < 2) {
+        sonnerToast.error('CSV must include a header row and at least one data row.');
+        return;
       }
+
+      const headerKeys = mapCsvHeaderToKeys(rows[0]);
+
+      const required: (keyof FlatVendorCsvRow)[] = [
+        'vendorCode',
+        'vendorName',
+        'gstin',
+        'paymentTerms',
+        'currencyCode',
+        'line1',
+        'city',
+        'state',
+        'country',
+        'zipCode',
+        'contactName',
+        'contactPhone',
+        'contactEmail',
+      ];
+      const present = new Set(headerKeys.filter(Boolean) as (keyof FlatVendorCsvRow)[]);
+      const missing = required.filter((k) => !present.has(k));
+      if (missing.length) {
+        sonnerToast.error(`CSV is missing required columns: ${missing.join(', ')}`);
+        return;
+      }
+
+      let created = 0;
+      let failed = 0;
+      const failures: string[] = [];
+
+      for (let r = 1; r < rows.length; r++) {
+        const flat = cellsToFlatRow(headerKeys, rows[r]);
+        if (
+          !flat.vendorCode.trim() &&
+          !flat.vendorName.trim() &&
+          !flat.gstin.trim() &&
+          !flat.contactEmail.trim()
+        ) {
+          continue;
+        }
+        const payloadOrErr = flatRowToCreatePayload(flat);
+        if ('error' in payloadOrErr) {
+          failed++;
+          failures.push(payloadOrErr.error);
+          continue;
+        }
+        try {
+          await vendorApi.createVendor(payloadOrErr);
+          created++;
+        } catch (err: any) {
+          failed++;
+          const msg = err?.message || String(err);
+          failures.push(`${flat.vendorCode || `row ${r + 1}`}: ${msg}`);
+        }
+      }
+
+      await loadVendors();
+
+      if (created) {
+        sonnerToast.success(`Imported ${created} vendor(s)${failed ? `, ${failed} failed` : ''}.`);
+      } else {
+        sonnerToast.error('No vendors were created.');
+      }
+      if (failures.length) {
+        sonnerToast.error(failures.slice(0, 5).join(' | '), { duration: 8000 });
+        if (failures.length > 5) {
+          sonnerToast.warning(`${failures.length - 5} more error(s) logged in the console.`);
+          // eslint-disable-next-line no-console
+          console.error('Bulk import errors', failures);
+        }
+      }
+    } catch (err: any) {
+      sonnerToast.error(err?.message || 'Failed to read or import CSV.');
+    } finally {
+      setIsBulkImporting(false);
     }
   };
 
@@ -635,7 +1134,7 @@ export function VendorList() {
     <div className="space-y-6">
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-4 right-4 z-50 animate-slide-in">
+        <div className="fixed top-4 right-4 z-[500] animate-slide-in">
           <div className={`min-w-[400px] px-6 py-4 rounded-lg shadow-2xl flex items-start gap-3 ${
             toast.type === 'success' ? 'bg-[#10B981] text-white' :
             toast.type === 'warning' ? 'bg-[#F59E0B] text-[#1F2937]' :
@@ -651,39 +1150,124 @@ export function VendorList() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <div className="text-xs text-[#6B7280] mb-1">Vendor Overview &gt; Vendor List</div>
-          <h1 className="text-2xl font-bold text-[#1F2937]">Vendor List</h1>
-          <p className="text-sm text-[#6B7280] mt-1">Manage all vendors and suppliers</p>
+      {/* Breadcrumb + title / actions */}
+      <div className="flex justify-between items-start flex-wrap gap-4">
+        <div className="min-w-0">
+          <nav className="mb-2" aria-label="Breadcrumb">
+            <ol className="m-0 flex list-none flex-wrap items-center gap-x-1 gap-y-1 p-0 text-sm text-[#6B7280]">
+              <li className="min-w-0">
+                {onNavigateTab ? (
+                  <button
+                    type="button"
+                    className="max-w-full truncate rounded px-0.5 text-left font-medium text-[#6B7280] transition-colors hover:text-[#4F46E5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2"
+                    onClick={goToVendorOverview}
+                  >
+                    Vendor Overview
+                  </button>
+                ) : (
+                  <span className="font-medium text-[#6B7280]">Vendor Overview</span>
+                )}
+              </li>
+              <VendorListBreadcrumbSeparator />
+              {isViewDetailsOpen && selectedVendor ? (
+                <>
+                  <li className="min-w-0">
+                    <button
+                      type="button"
+                      className="max-w-full truncate rounded px-0.5 text-left font-medium text-[#6B7280] transition-colors hover:text-[#4F46E5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2"
+                      onClick={goToVendorListRoot}
+                    >
+                      Vendor List
+                    </button>
+                  </li>
+                  <VendorListBreadcrumbSeparator />
+                  <li className="min-w-0">
+                    <span
+                      className="block truncate font-semibold text-[#1F2937]"
+                      title={selectedVendor.name}
+                      aria-current="page"
+                    >
+                      {selectedVendor.name}
+                    </span>
+                  </li>
+                </>
+              ) : (
+                <li className="min-w-0">
+                  <span className="font-semibold text-[#1F2937]" aria-current="page">
+                    Vendor List
+                  </span>
+                </li>
+              )}
+            </ol>
+          </nav>
+          {!isViewDetailsOpen && (
+            <>
+              <h1 className="text-2xl font-bold text-[#1F2937]">Vendor List</h1>
+              <p className="text-sm text-[#6B7280] mt-1">Manage all vendors and suppliers</p>
+            </>
+          )}
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={handleBulkImportClick}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6]"
-          >
-            <Upload size={16} />
-            Bulk Import
-          </button>
-          <button 
-            onClick={handleDownloadReport}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6]"
-          >
-            <Download size={16} />
-            Download Report
-          </button>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-2 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA]"
-          >
-            <span className="text-lg">+</span>
-            Add Vendor
-          </button>
-        </div>
+        {!isViewDetailsOpen && (
+          <div className="flex flex-wrap gap-3 justify-end">
+            <button
+              type="button"
+              onClick={handleDownloadImportTemplate}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6]"
+            >
+              <FileText size={16} />
+              CSV template
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkImportClick}
+              disabled={isBulkImporting || isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] disabled:opacity-50"
+            >
+              {isBulkImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              {isBulkImporting ? 'Importing…' : 'Bulk import CSV'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadReport}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6]"
+            >
+              <Download size={16} />
+              Download Report
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-2 px-6 py-2 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA]"
+            >
+              <span className="text-lg">+</span>
+              Add Vendor
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Search & Filters */}
+      {isViewDetailsOpen && selectedVendor ? (
+        <VendorProfile
+          variant="inline"
+          vendor={selectedVendor}
+          onClose={() => {
+            setIsViewDetailsOpen(false);
+            setSelectedVendor(null);
+          }}
+          onEdit={() => handleActionClick('edit', selectedVendor)}
+          onMessage={() => handleActionClick('message', selectedVendor)}
+          onViewDocs={() => handleActionClick('documents', selectedVendor)}
+          onSuspend={() => handleActionClick('suspend', selectedVendor)}
+          onUnsuspend={() => handleActionClick('unsuspend', selectedVendor)}
+          onDeactivate={() => handleActionClick('deactivate', selectedVendor)}
+          onActivate={() => handleActionClick('activate', selectedVendor)}
+          onReport={() => handleActionClick('performance', selectedVendor)}
+        />
+      ) : null}
+
+      {/* Search & Filters + table (hidden while viewing vendor details inline) */}
+      {!isViewDetailsOpen && (
+        <>
       <div className="bg-white p-4 rounded-xl border border-[#E5E7EB] shadow-sm">
         <div className="flex gap-4 items-center flex-wrap">
           <div className="flex-1 min-w-[300px]">
@@ -799,7 +1383,7 @@ export function VendorList() {
               <tbody className="divide-y divide-[#E5E7EB]">
                 {filteredVendors.map((vendor) => (
                   <tr key={vendor.id} className="hover:bg-[#F3F4F6] transition-colors">
-                    <td className="px-6 py-4 font-mono text-xs text-[#6B7280]">{vendor.id}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-[#6B7280]">{vendor.code || vendor.id}</td>
                     <td className="px-6 py-4 font-semibold text-[#1F2937]">{vendor.name}</td>
                     <td className="px-6 py-4 text-[#6B7280]">{vendor.category}</td>
                     <td className="px-6 py-4 text-[#1F2937]">{vendor.phone}</td>
@@ -833,73 +1417,20 @@ export function VendorList() {
                         {vendor.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 relative">
-                      <button 
-                        onClick={() => setOpenMenuId(openMenuId === vendor.id ? null : vendor.id)}
-                        className="p-1 hover:bg-[#F3F4F6] rounded"
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        type="button"
+                        aria-expanded={actionMenu?.vendorId === vendor.id}
+                        aria-haspopup="menu"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (actionMenu?.vendorId === vendor.id) closeActionMenu();
+                          else openActionMenuForVendor(vendor.id, e.currentTarget);
+                        }}
+                        className="p-1 hover:bg-[#F3F4F6] rounded inline-flex"
                       >
                         <MoreVertical size={18} className="text-[#6B7280]" />
                       </button>
-                      
-                      {openMenuId === vendor.id && (
-                        <>
-                          <div 
-                            className="fixed inset-0 z-10" 
-                            onClick={() => setOpenMenuId(null)}
-                          />
-                          <div className="absolute right-0 top-8 z-20 bg-white border border-[#E5E7EB] rounded-lg shadow-xl py-1 w-56">
-                            <button 
-                              onClick={() => handleActionClick('view', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#F3F4F6] flex items-center gap-2 text-[#4F46E5]"
-                            >
-                              <Eye size={14} /> View Details
-                            </button>
-                            <button 
-                              onClick={() => handleActionClick('edit', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#F3F4F6] flex items-center gap-2 text-[#4F46E5]"
-                            >
-                              <Edit size={14} /> Edit Vendor
-                            </button>
-                            <button 
-                              onClick={() => handleActionClick('documents', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#F3F4F6] flex items-center gap-2 text-[#1F2937]"
-                            >
-                              <FileText size={14} /> View Documents
-                            </button>
-                            <button 
-                              onClick={() => handleActionClick('message', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#F3F4F6] flex items-center gap-2 text-[#1F2937]"
-                            >
-                              <MessageSquare size={14} /> Send Message
-                            </button>
-                            <button 
-                              onClick={() => handleActionClick('performance', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#F3F4F6] flex items-center gap-2 text-[#1F2937]"
-                            >
-                              <BarChart3 size={14} /> Performance Report
-                            </button>
-                            <div className="border-t border-[#E5E7EB] my-1" />
-                            <button 
-                              onClick={() => handleActionClick('suspend', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#FEF3C7] flex items-center gap-2 text-[#92400E]"
-                            >
-                              <Pause size={14} /> Suspend Vendor
-                            </button>
-                            <button 
-                              onClick={() => handleActionClick('deactivate', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#FEE2E2] flex items-center gap-2 text-[#EF4444]"
-                            >
-                              <XCircle size={14} /> Deactivate
-                            </button>
-                            <button 
-                              onClick={() => handleActionClick('delete', vendor)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#FEE2E2] flex items-center gap-2 text-[#EF4444]"
-                            >
-                              <Trash2 size={14} /> Delete
-                            </button>
-                          </div>
-                        </>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -908,154 +1439,121 @@ export function VendorList() {
           </div>
         )}
       </div>
+        </>
+      )}
 
-      {/* Edit Vendor Modal - Same structure as Add Vendor but with pre-filled data */}
-      {isEditModalOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsEditModalOpen(false)}>
-          <div 
-            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 border-b border-[#E5E7EB]">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-xl font-bold text-[#1F2937]">Edit Vendor</h2>
-                  <p className="text-sm text-[#6B7280] mt-1">Update vendor information</p>
-                </div>
-                <button 
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="text-[#6B7280] hover:text-[#1F2937] p-1 hover:bg-[#F3F4F6] rounded"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="flex gap-2 mt-4 overflow-x-auto">
-                <button
-                  onClick={() => setActiveSection('basic')}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap ${
-                    activeSection === 'basic' ? 'bg-[#4F46E5] text-white' : 'bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB]'
-                  }`}
-                >
-                  Basic Info
-                </button>
-                <button
-                  onClick={() => setActiveSection('contact')}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap ${
-                    activeSection === 'contact' ? 'bg-[#4F46E5] text-white' : 'bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB]'
-                  }`}
-                >
-                  Contact & Address
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleEditSave} className="flex-1 overflow-y-auto">
-              <div className="p-6">
-                {activeSection === 'basic' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                        Vendor Name <span className="text-[#EF4444]">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={editFormData.vendorName}
-                        onChange={(e) => setEditFormData({ ...editFormData, vendorName: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                        Category <span className="text-[#EF4444]">*</span>
-                      </label>
-                      <select
-                        value={editFormData.category}
-                        onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                        required
-                      >
-                        <option value="">Select category</option>
-                        <option value="Vegetables">Vegetables</option>
-                        <option value="Fruits">Fruits</option>
-                        <option value="Spices">Spices</option>
-                        <option value="Dairy / Perishables">Dairy / Perishables</option>
-                        <option value="Packaged Goods">Packaged Goods</option>
-                        <option value="Fresh Produce">Fresh Produce</option>
-                        <option value="Packaging">Packaging</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {activeSection === 'contact' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                        Phone Number <span className="text-[#EF4444]">*</span>
-                      </label>
-                      <input
-                        type="tel"
-                        value={editFormData.phonePrimary}
-                        onChange={(e) => setEditFormData({ ...editFormData, phonePrimary: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                        Email <span className="text-[#EF4444]">*</span>
-                      </label>
-                      <input
-                        type="email"
-                        value={editFormData.email}
-                        onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                        Full Address
-                      </label>
-                      <textarea
-                        value={editFormData.fullAddress}
-                        onChange={(e) => setEditFormData({ ...editFormData, fullAddress: e.target.value })}
-                        rows={2}
-                        className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-6 border-t border-[#E5E7EB] bg-[#F9FAFB] flex justify-end gap-3">
+      {actionMenu &&
+        typeof document !== 'undefined' &&
+        (() => {
+          const menuVendor = vendors.find((v) => v.id === actionMenu.vendorId);
+          if (!menuVendor) return null;
+          return createPortal(
+            <div
+              ref={actionMenuPanelRef}
+              className="fixed z-[300] w-56 overflow-y-auto rounded-lg border border-[#E5E7EB] bg-white py-1 shadow-xl"
+              style={{
+                left: actionMenu.left,
+                maxHeight: actionMenu.maxHeight,
+                ...(actionMenu.top != null ? { top: actionMenu.top } : {}),
+                ...(actionMenu.bottom != null ? { bottom: actionMenu.bottom } : {}),
+              }}
+              role="menu"
+            >
                 <button
                   type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-6 py-2 border border-[#D1D5DB] rounded-lg text-sm font-bold text-[#1F2937] hover:bg-[#F3F4F6] transition-colors"
+                  role="menuitem"
+                  onClick={() => handleActionClick('view', menuVendor)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#4F46E5] hover:bg-[#F3F4F6]"
                 >
-                  Cancel
+                  <Eye size={14} /> View Details
                 </button>
                 <button
-                  type="submit"
-                  className="px-6 py-2 bg-[#4F46E5] text-white rounded-lg text-sm font-bold hover:bg-[#4338CA] transition-colors"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleActionClick('edit', menuVendor)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#4F46E5] hover:bg-[#F3F4F6]"
                 >
-                  Save Changes
+                  <Edit size={14} /> Edit Vendor
                 </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleActionClick('documents', menuVendor)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#1F2937] hover:bg-[#F3F4F6]"
+                >
+                  <FileText size={14} /> View Documents
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleActionClick('message', menuVendor)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#1F2937] hover:bg-[#F3F4F6]"
+                >
+                  <MessageSquare size={14} /> Send Message
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleActionClick('performance', menuVendor)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#1F2937] hover:bg-[#F3F4F6]"
+                >
+                  <BarChart3 size={14} /> Performance Report
+                </button>
+                <div className="my-1 border-t border-[#E5E7EB]" />
+                {menuVendor.status === 'Suspended' ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => handleActionClick('unsuspend', menuVendor)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#065F46] hover:bg-[#D1FAE5]"
+                  >
+                    <PlayCircle size={14} /> Lift Suspension
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => handleActionClick('suspend', menuVendor)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#92400E] hover:bg-[#FEF3C7]"
+                  >
+                    <Pause size={14} /> Suspend
+                  </button>
+                )}
+                {menuVendor.status === 'Inactive' ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => handleActionClick('activate', menuVendor)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#065F46] hover:bg-[#D1FAE5]"
+                  >
+                    <CheckCircle size={14} /> Activate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => handleActionClick('deactivate', menuVendor)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#EF4444] hover:bg-[#FEE2E2]"
+                  >
+                    <XCircle size={14} /> Deactivate
+                  </button>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleActionClick('delete', menuVendor)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#EF4444] hover:bg-[#FEE2E2]"
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
+            </div>,
+            document.body,
+          );
+        })()}
 
       {/* View Documents Modal */}
       {isDocumentsModalOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsDocumentsModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsDocumentsModalOpen(false)}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" 
             onClick={(e) => e.stopPropagation()}
@@ -1096,77 +1594,12 @@ export function VendorList() {
 
             <div className="flex-1 overflow-y-auto p-6">
               {documentTab === 'verified' && (
-                <div className="space-y-3">
-                  {[
-                    { name: 'GST Certificate', expiry: '2026-01-15', url: '#' },
-                    { name: 'FSSAI License', expiry: '2025-12-31', url: '#' },
-                    { name: 'Insurance Certificate', expiry: '2026-06-30', url: '#' }
-                  ].map((doc, i) => (
-                    <div key={i} className="p-4 border border-[#E5E7EB] rounded-lg hover:border-[#4F46E5] transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <FileText size={24} className="text-[#4F46E5]" />
-                          <div>
-                            <p className="font-medium text-[#1F2937]">{doc.name}</p>
-                            <p className="text-xs text-[#6B7280]">Expires: {doc.expiry}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              try {
-                                const content = `Document: ${doc.name}\nValid Until: ${doc.expiry}\n\nThis is a sample document for demonstration purposes.\nIn a production environment, this would be the actual document content.`;
-                                const htmlContent = createPDFViewHTML(doc.name, content);
-                                const blob = new Blob([htmlContent], { type: 'text/html' });
-                                const url = URL.createObjectURL(blob);
-                                const newWindow = window.open(url, '_blank');
-                                if (newWindow) {
-                                  sonnerToast.success(`Opening ${doc.name}...`);
-                                  setTimeout(() => URL.revokeObjectURL(url), 2000);
-                                } else {
-                                  sonnerToast.error('Please allow popups to view documents');
-                                  URL.revokeObjectURL(url);
-                                }
-                              } catch (error) {
-                                console.error('Error viewing document:', error);
-                                sonnerToast.error('Failed to open document');
-                              }
-                            }}
-                            className="px-3 py-1 text-xs font-medium text-[#4F46E5] hover:bg-[#F0F7FF] rounded transition-colors flex items-center gap-1"
-                          >
-                            <Eye size={14} />
-                            View
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              try {
-                                const content = `Document: ${doc.name}\nValid Until: ${doc.expiry}\n\nThis is a sample document for demonstration purposes.`;
-                                const pdfBlob = createPDFBlob(content, doc.name);
-                                const url = URL.createObjectURL(pdfBlob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `${doc.name.replace(/\s+/g, '_')}.pdf`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                setTimeout(() => URL.revokeObjectURL(url), 100);
-                                sonnerToast.success(`Downloaded ${doc.name} as PDF`);
-                              } catch (error) {
-                                console.error('Error downloading document:', error);
-                                sonnerToast.error('Failed to download document');
-                              }
-                            }}
-                            className="px-3 py-1 text-xs font-medium text-[#4F46E5] hover:bg-[#F0F7FF] rounded transition-colors flex items-center gap-1"
-                          >
-                            <Download size={14} />
-                            Download
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="text-center py-12">
+                  <FileText size={48} className="mx-auto text-[#9CA3AF] mb-3" />
+                  <p className="text-[#6B7280]">No verified documents</p>
+                  <p className="text-xs text-[#9CA3AF] mt-2 max-w-sm mx-auto">
+                    Document lists are not loaded from the database for this screen yet.
+                  </p>
                 </div>
               )}
 
@@ -1185,54 +1618,12 @@ export function VendorList() {
               )}
 
               {documentTab === 'upload' && (
-                <div className="space-y-4">
-                  <input
-                    type="file"
-                    id="document-upload"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        if (file.size > 5 * 1024 * 1024) {
-                          sonnerToast.error('File size exceeds 5MB limit');
-                          return;
-                        }
-                        sonnerToast.success(`File "${file.name}" selected. Ready to upload.`);
-                        // In a real app, you would upload the file here
-                      }
-                    }}
-                  />
-                  <label
-                    htmlFor="document-upload"
-                    className="border-2 border-dashed border-[#D1D5DB] rounded-lg p-8 text-center hover:border-[#4F46E5] transition-colors cursor-pointer block"
-                  >
-                    <Upload size={48} className="mx-auto text-[#6B7280] mb-3" />
-                    <p className="font-medium text-[#1F2937] mb-1">Drag files here or click to browse</p>
-                    <p className="text-xs text-[#6B7280]">Accepted: PDF, JPG, PNG (Max 5MB)</p>
-                  </label>
-                  <select className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]">
-                    <option>Select document type</option>
-                    <option>GST Certificate</option>
-                    <option>FSSAI License</option>
-                    <option>Business License</option>
-                    <option>ISO Certificate</option>
-                    <option>Insurance Certificate</option>
-                  </select>
-                  <button
-                    onClick={() => {
-                      const fileInput = document.getElementById('document-upload') as HTMLInputElement;
-                      if (fileInput?.files?.[0]) {
-                        sonnerToast.success('Document uploaded successfully!');
-                        fileInput.value = '';
-                      } else {
-                        sonnerToast.error('Please select a file first');
-                      }
-                    }}
-                    className="w-full px-4 py-2 bg-[#4F46E5] text-white rounded-lg text-sm font-medium hover:bg-[#4338CA] transition-colors"
-                  >
-                    Upload Document
-                  </button>
+                <div className="text-center py-12">
+                  <Upload size={48} className="mx-auto text-[#9CA3AF] mb-3" />
+                  <p className="text-[#6B7280]">Document upload is not available here</p>
+                  <p className="text-xs text-[#9CA3AF] mt-2 max-w-sm mx-auto">
+                    There is no document-storage API wired to this list view. Use a dedicated compliance or files module when it exists.
+                  </p>
                 </div>
               )}
             </div>
@@ -1251,7 +1642,7 @@ export function VendorList() {
 
       {/* Send Message Modal */}
       {isMessageModalOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsMessageModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsMessageModalOpen(false)}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" 
             onClick={(e) => e.stopPropagation()}
@@ -1323,40 +1714,71 @@ export function VendorList() {
         </div>
       )}
 
-      {/* Suspend Confirmation Dialog */}
+      {/* Suspend / lift suspension confirmation */}
       {isSuspendDialogOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsSuspendDialogOpen(false)}>
-          <div 
-            className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" 
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4"
+          onClick={() => {
+            setIsSuspendDialogOpen(false);
+            setSuspendIsReactivate(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center mb-4">
-              <div className="w-12 h-12 bg-[#FEF3C7] rounded-full flex items-center justify-center mx-auto mb-3">
-                <Pause size={24} className="text-[#F59E0B]" />
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 ${
+                  suspendIsReactivate ? 'bg-[#D1FAE5]' : 'bg-[#FEF3C7]'
+                }`}
+              >
+                {suspendIsReactivate ? (
+                  <PlayCircle size={24} className="text-[#059669]" />
+                ) : (
+                  <Pause size={24} className="text-[#F59E0B]" />
+                )}
               </div>
-              <h3 className="text-lg font-bold text-[#1F2937] mb-2">Suspend Vendor?</h3>
+              <h3 className="text-lg font-bold text-[#1F2937] mb-2">
+                {suspendIsReactivate ? 'Lift Suspension?' : 'Suspend vendor?'}
+              </h3>
               <p className="text-sm text-[#6B7280] mb-4">
-                Are you sure you want to suspend <span className="font-bold text-[#1F2937]">"{selectedVendor.name}"</span>?
+                {suspendIsReactivate ? (
+                  <>
+                    Restore <span className="font-bold text-[#1F2937]">"{selectedVendor.name}"</span> to active
+                    status?
+                  </>
+                ) : (
+                  <>
+                    Suspend <span className="font-bold text-[#1F2937]">"{selectedVendor.name}"</span>?
+                  </>
+                )}
               </p>
             </div>
 
-            <div className="bg-[#FEF3C7] border border-[#FDE68A] rounded-lg p-3 mb-4 text-sm text-[#92400E]">
-              <p className="font-medium mb-2">Suspended vendors will:</p>
-              <ul className="space-y-1 text-xs">
-                <li>• Not receive new orders</li>
-                <li>• Keep existing orders active</li>
-                <li>• Can be reactivated anytime</li>
-              </ul>
-            </div>
+            {!suspendIsReactivate ? (
+              <div className="bg-[#FEF3C7] border border-[#FDE68A] rounded-lg p-3 mb-4 text-sm text-[#92400E]">
+                <p className="font-medium mb-2">Suspended vendors will:</p>
+                <ul className="space-y-1 text-xs">
+                  <li>• Not receive new orders</li>
+                  <li>• Keep existing orders active</li>
+                  <li>• Suspension can be lifted anytime</li>
+                </ul>
+              </div>
+            ) : (
+              <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-lg p-3 mb-4 text-sm text-[#065F46]">
+                <p className="text-xs">The vendor will return to active status and can receive new orders again.</p>
+              </div>
+            )}
 
             <div className="mb-4">
-              <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                Reason (optional)
-              </label>
+              <label className="block text-sm font-bold text-[#1F2937] mb-2">Note (optional)</label>
               <textarea
                 value={suspendReason}
                 onChange={(e) => setSuspendReason(e.target.value)}
-                placeholder="Enter reason for suspension..."
+                placeholder={
+                  suspendIsReactivate ? 'Optional note when lifting suspension…' : 'Reason for suspension…'
+                }
                 rows={2}
                 className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
               />
@@ -1364,16 +1786,25 @@ export function VendorList() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => setIsSuspendDialogOpen(false)}
+                type="button"
+                onClick={() => {
+                  setIsSuspendDialogOpen(false);
+                  setSuspendIsReactivate(false);
+                }}
                 className="flex-1 px-4 py-2 border border-[#D1D5DB] rounded-lg text-sm font-bold text-[#1F2937] hover:bg-[#F3F4F6]"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSuspend}
-                className="flex-1 px-4 py-2 bg-[#F59E0B] text-white rounded-lg text-sm font-bold hover:bg-[#D97706]"
+                className={`flex-1 px-4 py-2 text-white rounded-lg text-sm font-bold ${
+                  suspendIsReactivate
+                    ? 'bg-[#059669] hover:bg-[#047857]'
+                    : 'bg-[#F59E0B] hover:bg-[#D97706]'
+                }`}
               >
-                Suspend
+                {suspendIsReactivate ? 'Lift Suspension' : 'Suspend'}
               </button>
             </div>
           </div>
@@ -1382,7 +1813,7 @@ export function VendorList() {
 
       {/* Deactivate Confirmation Dialog */}
       {isDeactivateDialogOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsDeactivateDialogOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsDeactivateDialogOpen(false)}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" 
             onClick={(e) => e.stopPropagation()}
@@ -1440,9 +1871,56 @@ export function VendorList() {
         </div>
       )}
 
+      {/* Activate Confirmation Dialog */}
+      {isActivateDialogOpen && selectedVendor && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setIsActivateDialogOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="relative z-[401] w-full max-w-md rounded-xl bg-white p-6 shadow-2xl ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="activate-vendor-title"
+          >
+            <div className="flex flex-col gap-8">
+              <div className="text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                  <CheckCircle size={24} className="text-emerald-600" aria-hidden />
+                </div>
+                <h3 id="activate-vendor-title" className="mb-2 text-lg font-bold text-gray-800">
+                  Activate vendor?
+                </h3>
+                <p className="text-sm leading-relaxed text-gray-600">
+                  Set <span className="font-bold text-gray-900">"{selectedVendor.name}"</span> back to active?
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setIsActivateDialogOpen(false)}
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleActivateVendor}
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                >
+                  Activate
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Dialog */}
       {isDeleteDialogOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsDeleteDialogOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsDeleteDialogOpen(false)}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" 
             onClick={(e) => e.stopPropagation()}
@@ -1534,31 +2012,20 @@ export function VendorList() {
         />
       )}
 
-      {/* View Details Modal */}
-      {isViewDetailsOpen && selectedVendor && (
-        <VendorProfile 
-          vendor={selectedVendor}
-          onClose={() => setIsViewDetailsOpen(false)}
-          onEdit={() => {
-            setIsViewDetailsOpen(false);
-            handleActionClick('edit', selectedVendor);
+      {isEditModalOpen && selectedVendor && (
+        <AddVendorModal
+          mode="edit"
+          isOpen={isEditModalOpen}
+          editVendorId={selectedVendor.id}
+          initialPayload={editModalPayload}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditModalPayload(null);
+            if (!isViewDetailsOpen) {
+              setSelectedVendor(null);
+            }
           }}
-          onMessage={() => {
-            setIsViewDetailsOpen(false);
-            handleActionClick('message', selectedVendor);
-          }}
-          onViewDocs={() => {
-            setIsViewDetailsOpen(false);
-            handleActionClick('documents', selectedVendor);
-          }}
-          onSuspend={() => {
-            setIsViewDetailsOpen(false);
-            handleActionClick('suspend', selectedVendor);
-          }}
-          onReport={() => {
-            setIsViewDetailsOpen(false);
-            handleActionClick('performance', selectedVendor);
-          }}
+          onEditSubmit={handleEditVendorSubmit}
         />
       )}
 
@@ -1574,7 +2041,7 @@ export function VendorList() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.xlsx,.xls"
+        accept=".csv"
         onChange={handleFileSelect}
         className="hidden"
       />

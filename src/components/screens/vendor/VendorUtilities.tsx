@@ -25,6 +25,7 @@ import {
   type Contract,
   type AuditLogEntry,
 } from '../../../api/vendor/vendorUtilities.api';
+import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 
 export function VendorUtilities() {
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
@@ -104,6 +105,12 @@ export function VendorUtilities() {
       setAuditLogsLoading(false);
     }
   }, []);
+
+  useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
+    void loadUploadHistory();
+    void loadContracts();
+    void loadAuditLogs();
+  });
 
   const handleOpenBulkUploadModal = () => {
     setShowBulkUploadModal(true);

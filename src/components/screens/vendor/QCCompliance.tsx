@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/dialog';
 
 import vendorManagementApi from '../../../api/vendor/vendorManagement.api';
+import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 
 // Types
 type QCResult = 'Pass' | 'Fail' | 'Pending';
@@ -128,6 +129,11 @@ export function QCCompliance() {
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
 
   const [loadingChecks, setLoadingChecks] = useState(false);
+  const [qcDataRefreshToken, setQcDataRefreshToken] = useState(0);
+
+  useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
+    setQcDataRefreshToken((t) => t + 1);
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -291,7 +297,7 @@ export function QCCompliance() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [qcDataRefreshToken]);
 
   const setLoadingFor = (id: string, val: boolean) =>
     setLoadingIds(prev => ({ ...prev, [id]: val }));
@@ -743,7 +749,7 @@ export function QCCompliance() {
       const response = await vendorManagementApi.scheduleAudit(auditData);
       const newAudit: Audit = {
         id: response.data?._id?.toString() || response.data?.id || id,
-        auditId: response.data?.auditId || `SCH-${Math.floor(1000 + Math.random() * 9000)}`,
+        auditId: response.data?.auditId || response.data?._id?.toString() || id,
         vendor: vendorName,
         vendorId: vendorId, // Ensure vendorId is included
         date: response.data?.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),

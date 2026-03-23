@@ -13,12 +13,22 @@ import {
   Activity, 
   CreditCard, 
   Wrench,
-  ChevronDown,
   LogOut,
-  Building2,
+  Store,
   Users
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
+import { useAuth } from "../../contexts/AuthContext";
+
+function formatHubLabel(hubKeyOrStore?: string | null): string {
+  const raw = (hubKeyOrStore && String(hubKeyOrStore).trim()) || "";
+  if (!raw) return "Hub";
+  return raw
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
 
 interface VendorSidebarProps {
   activeTab: string;
@@ -27,6 +37,9 @@ interface VendorSidebarProps {
 }
 
 export function VendorSidebar({ activeTab, setActiveTab, onLogout }: VendorSidebarProps) {
+  const { user, activeStoreId } = useAuth();
+  const hubLabel = formatHubLabel(user?.hubKey ?? activeStoreId);
+
   const navItems = [
     { id: 'overview', label: 'Vendor Overview', icon: LayoutDashboard },
     { id: 'vendor-list', label: 'Vendor List', icon: Users },
@@ -46,36 +59,21 @@ export function VendorSidebar({ activeTab, setActiveTab, onLogout }: VendorSideb
 
   return (
     <div className="w-[240px] h-screen bg-[#111827] text-[#E6E6E6] flex flex-col fixed left-0 top-0 z-50 shadow-xl border-r border-[#1F2937]">
-      {/* Category Selector */}
+      {/* Hub label from JWT / user (matches backend tenant for all vendor API data) */}
       <div className="p-4 border-b border-[#1F2937]">
         <div className="flex items-center gap-2 mb-2 text-[#9E9E9E] text-[10px] uppercase font-bold tracking-wider">
-          <Building2 size={12} />
-          <span>Procurement Unit</span>
+          <Store size={12} />
+          <span>Current Hub</span>
         </div>
-        <details className="relative group">
-          <summary className="list-none [&::-webkit-details-marker]:hidden w-full bg-[#1F2937] hover:bg-[#2A3647] transition-colors p-2.5 rounded-lg flex items-center justify-between cursor-pointer border border-transparent hover:border-[#4F46E5] outline-none">
-            <div className="flex flex-col items-start">
-              <span className="font-bold text-sm text-white">Global Sourcing</span>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className="w-2 h-2 rounded-full bg-[#4F46E5] animate-pulse shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
-                <span className="text-[10px] text-[#4F46E5]">Active</span>
-              </div>
-            </div>
-            <ChevronDown size={14} className="text-[#666666] group-hover:text-white transition-transform group-open:rotate-180" />
-          </summary>
-          
-          <div className="absolute top-full left-0 right-0 mt-2 bg-[#1F2937] border border-[#4F46E5] rounded-lg shadow-xl overflow-hidden z-50">
-            <div className="p-2.5 hover:bg-[#2A3647] cursor-pointer flex items-center justify-between border-b border-[#4F46E5]/50 transition-colors">
-               <div className="flex flex-col items-start">
-                 <span className="font-bold text-sm text-[#E6E6E6]">Local Procurement</span>
-                 <div className="flex items-center gap-1.5 mt-1">
-                   <span className="w-2 h-2 rounded-full bg-[#4F46E5]" />
-                   <span className="text-[10px] text-[#4F46E5]">Active</span>
-                 </div>
-               </div>
+        <div className="w-full bg-[#1F2937] p-2.5 rounded-lg flex items-center justify-between border border-[#1F2937]">
+          <div className="flex flex-col items-start">
+            <span className="font-bold text-sm text-white">{hubLabel}</span>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="w-2 h-2 rounded-full bg-[#F97316] animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
+              <span className="text-[10px] text-[#F97316]">Active</span>
             </div>
           </div>
-        </details>
+        </div>
       </div>
 
       {/* Navigation */}

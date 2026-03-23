@@ -1,5 +1,10 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../config/api';
 import { getAuthToken } from '../../contexts/AuthContext';
+import { DASHBOARD_TOPICS, emitDashboardRefresh } from '../../lib/dashboardRefreshBus';
+
+function notifyVendorDataMutated() {
+  emitDashboardRefresh(DASHBOARD_TOPICS.vendor);
+}
 
 /**
  * Vendor Management API
@@ -72,7 +77,9 @@ export const vendorManagementApi = {
       throw error;
     }
 
-    return response.json();
+    const json = await response.json();
+    notifyVendorDataMutated();
+    return json;
   },
 
   /**
@@ -109,10 +116,18 @@ export const vendorManagementApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Failed to create vendor' }));
-      throw new Error(error.message || 'Failed to create vendor');
+      const msg =
+        typeof error.message === 'string'
+          ? error.message
+          : Array.isArray(error.details)
+            ? error.details.map((d: { msg?: string }) => d.msg).filter(Boolean).join('; ')
+            : 'Failed to create vendor';
+      throw new Error(msg || 'Failed to create vendor');
     }
 
-    return response.json();
+    const json = await response.json();
+    notifyVendorDataMutated();
+    return json;
   },
 
   /**
@@ -133,7 +148,9 @@ export const vendorManagementApi = {
       throw new Error(error.message || 'Failed to update vendor');
     }
 
-    return response.json();
+    const json = await response.json();
+    notifyVendorDataMutated();
+    return json;
   },
 
   /**
@@ -164,7 +181,9 @@ export const vendorManagementApi = {
       throw error;
     }
 
-    return response.json().catch(() => ({}));
+    const json = await response.json().catch(() => ({}));
+    notifyVendorDataMutated();
+    return json;
   },
 
   /**
@@ -186,6 +205,37 @@ export const vendorManagementApi = {
         error.message = errData.message || errData.error || error.message;
       } catch {
         error.message = `Failed to fetch vendor summary (${response.status})`;
+      }
+      throw error;
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Vendor performance metrics (PO, QC, GRN aggregates — real DB data)
+   */
+  async getVendorPerformance(vendorId: string, query?: { startDate?: string; endDate?: string }) {
+    const params = new URLSearchParams();
+    if (query?.startDate) params.append('startDate', query.startDate);
+    if (query?.endDate) params.append('endDate', query.endDate);
+    const q = params.toString();
+    const url = `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.performance(vendorId)}${q ? `?${q}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAuthToken() || ''}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error: any = new Error('Failed to fetch vendor performance');
+      try {
+        const errData = await response.json();
+        error.message = errData.message || errData.error || error.message;
+      } catch {
+        error.message = `Failed to fetch vendor performance (${response.status})`;
       }
       throw error;
     }
@@ -438,6 +488,7 @@ export const vendorManagementApi = {
 
     const result = await response.json();
     console.log('API: updateQCCheck success:', result);
+    notifyVendorDataMutated();
     // Handle both { success: true, data: {...} } and direct object responses
     return result.data || result;
   },
@@ -475,7 +526,9 @@ export const vendorManagementApi = {
       throw new Error(errorMessage);
     }
 
-    return response.json();
+    const json = await response.json();
+    notifyVendorDataMutated();
+    return json;
   },
 
   /**
@@ -505,7 +558,9 @@ export const vendorManagementApi = {
       throw new Error(errorMessage);
     }
 
-    return response.json();
+    const json = await response.json();
+    notifyVendorDataMutated();
+    return json;
   },
 
   /**
@@ -532,7 +587,9 @@ export const vendorManagementApi = {
       throw new Error(errorMessage);
     }
 
-    return response.json();
+    const json = await response.json();
+    notifyVendorDataMutated();
+    return json;
   },
 };
 
@@ -545,6 +602,9 @@ export const createVendor = vendorManagementApi.createVendor.bind(vendorManageme
 export const updateVendor = vendorManagementApi.updateVendor.bind(vendorManagementApi);
 export const deleteVendor = vendorManagementApi.deleteVendor.bind(vendorManagementApi);
 export const getVendorSummary = vendorManagementApi.getVendorSummary.bind(vendorManagementApi);
+export const getVendorPerformance = vendorManagementApi.getVendorPerformance.bind(vendorManagementApi);
+export const getVendorPurchaseOrders = vendorManagementApi.getVendorPurchaseOrders.bind(vendorManagementApi);
+export const getVendorQCChecks = vendorManagementApi.getVendorQCChecks.bind(vendorManagementApi);
 export const listVendorQCChecks = vendorManagementApi.listVendorQCChecks.bind(vendorManagementApi);
 export const listQCChecks = vendorManagementApi.listQCChecks.bind(vendorManagementApi);
 export const listVendorCertificates = vendorManagementApi.listVendorCertificates.bind(vendorManagementApi);

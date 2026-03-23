@@ -25,6 +25,7 @@ import {
     markInvoicePaid,
     rejectInvoice
 } from './payablesApi';
+import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 
 export function VendorPayments() {
   // --- State ---
@@ -53,7 +54,7 @@ export function VendorPayments() {
   const [rejectOpen, setRejectOpen] = useState(false);
 
   // --- Data Fetching ---
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
       try {
           const data = await fetchPayablesSummary();
           setSummary(data);
@@ -64,9 +65,9 @@ export function VendorPayments() {
       } finally {
           setIsLoadingSummary(false);
       }
-  };
+  }, []);
 
-  const loadVendors = async () => {
+  const loadVendors = useCallback(async () => {
       try {
           const data = await fetchVendors();
           setVendors(data);
@@ -75,7 +76,7 @@ export function VendorPayments() {
           toast.error("Failed to load vendors");
           setVendors([]);
       }
-  };
+  }, []);
 
   const loadInvoices = useCallback(async () => {
       setIsLoadingInvoices(true);
@@ -93,11 +94,20 @@ export function VendorPayments() {
   useEffect(() => {
       loadSummary();
       loadVendors();
-  }, []);
+  }, [loadSummary, loadVendors]);
 
   useEffect(() => {
       loadInvoices();
   }, [loadInvoices]);
+
+  const refreshPayablesRelated = useCallback(() => {
+      void loadSummary();
+      void loadVendors();
+      void loadInvoices();
+  }, [loadSummary, loadVendors, loadInvoices]);
+
+  useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, refreshPayablesRelated);
+  useOnDashboardRefresh(DASHBOARD_TOPICS.financePayables, refreshPayablesRelated);
 
   // --- Handlers ---
   const handleSummaryFilterClick = (filterType: string) => {

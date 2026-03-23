@@ -20,7 +20,47 @@ export interface LoginResponse {
     role: string;
     assignedStores?: string[];
     primaryStoreId?: string;
+    hubKey?: string;
   };
+}
+
+/** Thrown when login returns 429 (account lockout or auth rate limit). */
+export class LoginLockoutError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message);
+    this.name = 'LoginLockoutError';
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
+function parseRetryAfterSeconds(response: Response, body: Record<string, unknown>): number {
+  const fromBody = body.retryAfterSeconds ?? body.retryAfter;
+  if (typeof fromBody === 'number' && Number.isFinite(fromBody) && fromBody > 0) {
+    return Math.ceil(fromBody);
+  }
+  if (typeof fromBody === 'string' && /^\d+$/.test(fromBody.trim())) {
+    return Math.ceil(parseInt(fromBody.trim(), 10));
+  }
+
+  const retryHeader = response.headers.get('Retry-After');
+  if (retryHeader) {
+    const n = parseInt(retryHeader.trim(), 10);
+    if (!Number.isNaN(n) && n > 0) return n;
+  }
+
+  const resetHeader = response.headers.get('RateLimit-Reset');
+  if (resetHeader) {
+    const ts = parseInt(resetHeader.trim(), 10);
+    if (!Number.isNaN(ts)) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const delta = ts - nowSec;
+      if (delta > 0) return Math.ceil(delta);
+    }
+  }
+
+  return 900;
 }
 
 function getLoginEndpoint(role?: string): string {
@@ -58,8 +98,22 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Login failed' }));
-    throw new Error(error.message || 'Invalid credentials');
+    const error = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const nested =
+      error && typeof error.error === 'object' && error.error !== null
+        ? (error.error as Record<string, unknown>)
+        : null;
+    const message =
+      (typeof error.message === 'string' && error.message) ||
+      (nested && typeof nested.message === 'string' && nested.message) ||
+      'Login failed';
+
+    if (response.status === 429) {
+      const seconds = parseRetryAfterSeconds(response, error);
+      throw new LoginLockoutError(message, seconds);
+    }
+
+    throw new Error(message);
   }
 
   return response.json();

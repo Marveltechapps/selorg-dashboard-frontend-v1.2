@@ -59,10 +59,10 @@ function mapPayablesToFinanceSummary(p: {
     approvedInvoices: Number(p.pendingApprovalCount ?? 0),
     disputedAmount: 0,
     paidThisMonth: 0,
-    avgPaymentCycle: 12,
+    avgPaymentCycle: 0,
     outstandingBalance: outstanding,
-    creditLimit: 500000,
-    availableCredit: 500000 - outstanding,
+    creditLimit: 0,
+    availableCredit: 0,
     overdueAmount: overdue,
     overdueVendorsCount: Number(p.overdueVendorsCount ?? 0),
   };
@@ -98,6 +98,7 @@ function mapPayablesInvoiceToFinance(inv: {
     poReference: '',
     description: inv.notes ?? '',
     attachments: 0,
+    transactionId: inv.paymentId ? String(inv.paymentId) : String(inv.id),
   };
 }
 
@@ -325,7 +326,7 @@ export function VendorFinance() {
       const csvData: (string | number)[][] = [
         ['Payment Receipt'],
         [''],
-        ['Transaction ID', `TXN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`],
+        ['Transaction ID', invoice.transactionId ?? invoice.id],
         ['Invoice ID', invoice.id],
         ['Vendor', invoice.vendorName],
         ['Payment Date', invoice.paymentDate || new Date().toISOString().split('T')[0]],
@@ -953,7 +954,7 @@ export function VendorFinance() {
                       <td className="px-6 py-4 text-[#616161]">{invoice.paymentMethod}</td>
                       <td className="px-6 py-4">
                         <code className="px-2 py-1 bg-[#F5F7FA] text-[#4F46E5] rounded text-xs font-mono">
-                          TXN-{Math.random().toString(36).substr(2, 9).toUpperCase()}
+                          {invoice.transactionId ?? invoice.id}
                         </code>
                       </td>
                       <td className="px-6 py-4 text-right">

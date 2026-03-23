@@ -72,6 +72,130 @@ interface PurchaseOrder {
   totalQuantity?: number;
 }
 
+function coerceNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
+function mapBackendStatusToUi(status: string | undefined): POStatus {
+  const key = (status || '').toLowerCase().replace(/[\s-]+/g, '_');
+  switch (key) {
+    case 'draft':
+    case 'pending_approval':
+      return 'Pending Approval';
+    case 'approved':
+    case 'sent':
+      return 'Sent';
+    case 'partially_received':
+      return 'Partially Received';
+    case 'fully_received':
+      return 'Fully Received';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'on_hold':
+    case 'hold':
+    case 'rejected':
+      return 'On Hold';
+    default:
+      return 'Pending Approval';
+  }
+}
+
+/** Maps backend /vendor/purchase-orders documents to the UI PurchaseOrder shape. */
+function mapApiPurchaseOrder(raw: Record<string, unknown>): PurchaseOrder {
+  const id =
+    raw.id != null ? String(raw.id) : raw._id != null ? String(raw._id) : '';
+  const totals = (raw.totals as Record<string, unknown> | undefined) || {};
+  const items = Array.isArray(raw.items) ? (raw.items as Record<string, unknown>[]) : [];
+  const lineItems: LineItem[] = items.map((it) => {
+    const qty = coerceNumber(it.quantity);
+    const unitPrice = coerceNumber(it.unitPrice);
+    const lineTotal = qty * unitPrice;
+    return {
+      sku: String(it.sku ?? ''),
+      product: String(it.description ?? it.product ?? ''),
+      quantity: qty,
+      unit: String(it.unit ?? 'unit'),
+      unitPrice,
+      total: lineTotal,
+    };
+  });
+  const computedSub = lineItems.reduce((s, li) => s + li.total, 0);
+  const subtotal = coerceNumber(totals.subTotal, computedSub);
+  const tax = coerceNumber(totals.taxTotal);
+  const totalValue = coerceNumber(totals.grandTotal, subtotal + tax);
+
+  const createdAt = raw.createdAt ? new Date(String(raw.createdAt)) : null;
+  const delivery = raw.expectedDeliveryDate ? new Date(String(raw.expectedDeliveryDate)) : null;
+
+  return {
+    id,
+    poNumber: String(raw.reference ?? raw.externalReference ?? (id ? `PO-${id.slice(-8)}` : 'PO')),
+    vendor: String(raw.vendorName ?? raw.vendor ?? raw.vendorId ?? '—'),
+    vendorContact: String(raw.vendorContact ?? '—'),
+    vendorEmail: String(raw.vendorEmail ?? ''),
+    vendorPhone: String(raw.vendorPhone ?? ''),
+    createdDate: createdAt ? createdAt.toLocaleDateString() : '—',
+    deliveryDue: delivery ? delivery.toLocaleDateString() : '—',
+    totalValue,
+    status: mapBackendStatusToUi(typeof raw.status === 'string' ? raw.status : undefined),
+    poType: (raw.poType as POType) || 'Standard',
+    category: String(raw.category ?? 'General'),
+    referenceNumber:
+      raw.reference != null ? String(raw.reference) : raw.externalReference != null ? String(raw.externalReference) : undefined,
+    paymentTerms: (raw.paymentTerms as PaymentTerms) || 'Net 30',
+    lineItems,
+    notes: raw.notes != null ? String(raw.notes) : undefined,
+    subtotal,
+    tax,
+    createdBy: String(raw.createdBy ?? '—'),
+    sentDate: raw.sentDate != null ? String(raw.sentDate) : undefined,
+    receivedDate: raw.receivedDate != null ? String(raw.receivedDate) : undefined,
+  };
+}
+
+/** API list responses use `{ data: [...] }`; local create flow uses UI-shaped objects with `lineItems`. */
+function normalizePurchaseOrderInput(raw: unknown): PurchaseOrder {
+  const r = raw as Record<string, unknown> | PurchaseOrder;
+  if (
+    r &&
+    typeof r === 'object' &&
+    'lineItems' in r &&
+    Array.isArray((r as PurchaseOrder).lineItems) &&
+    (r as PurchaseOrder).poNumber != null
+  ) {
+    const po = r as PurchaseOrder;
+    return {
+      ...po,
+      id: String(po.id ?? (po as unknown as { _id?: string })._id ?? ''),
+      totalValue: coerceNumber(po.totalValue, 0),
+      subtotal: coerceNumber(po.subtotal, 0),
+      tax: coerceNumber(po.tax, 0),
+    };
+  }
+  return mapApiPurchaseOrder(r as Record<string, unknown>);
+}
+
+function normalizePurchaseOrderList(resp: unknown): PurchaseOrder[] {
+  let raw: unknown[] = [];
+  if (Array.isArray(resp)) {
+    raw = resp;
+  } else if (resp && typeof resp === 'object' && 'data' in resp && Array.isArray((resp as { data: unknown }).data)) {
+    raw = (resp as { data: unknown[] }).data;
+  } else if (resp && typeof resp === 'object' && 'items' in resp && Array.isArray((resp as { items: unknown }).items)) {
+    raw = (resp as { items: unknown[] }).items;
+  }
+  return raw.map((r) => mapApiPurchaseOrder(r as Record<string, unknown>));
+}
+
+function formatInr(value: unknown): string {
+  const n = coerceNumber(value, 0);
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 // Status Badge Component
 const StatusBadge: React.FC<{ status: POStatus }> = ({ status }) => {
@@ -165,14 +289,7 @@ export function PurchaseOrders() {
         setLoadingOrders(true);
         const resp = await purchaseOrdersApi.listPurchaseOrders({ page: 1, perPage: 25 });
         if (!mounted) return;
-        const items = resp.data ?? resp.items ?? resp;
-        if (Array.isArray(items)) {
-          setOrders(items);
-        } else if (items && Array.isArray(items.data)) {
-          setOrders(items.data);
-        } else {
-          setOrders([]);
-        }
+        setOrders(normalizePurchaseOrderList(resp));
       } catch (err) {
         console.error('Failed to load purchase orders', err);
         if (mounted) {
@@ -199,8 +316,9 @@ export function PurchaseOrders() {
     try {
       const resp = await purchaseOrdersApi.performPOAction(id, 'approve');
       const updatedPO = (resp && (resp.data || resp)) || null;
-      if (updatedPO) {
-        setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...updatedPO } : o)));
+      if (updatedPO && typeof updatedPO === 'object') {
+        const next = mapApiPurchaseOrder(updatedPO as Record<string, unknown>);
+        setOrders(prev => prev.map(o => (o.id === id ? next : o)));
       }
       toast.success('Purchase order approved', { description: `${id} approved and sent` });
     } catch (err) {
@@ -220,8 +338,9 @@ export function PurchaseOrders() {
     try {
       const resp = await purchaseOrdersApi.performPOAction(id, 'reject', { reason: 'Rejected via UI' });
       const updatedPO = (resp && (resp.data || resp)) || null;
-      if (updatedPO) {
-        setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...updatedPO } : o)));
+      if (updatedPO && typeof updatedPO === 'object') {
+        const next = mapApiPurchaseOrder(updatedPO as Record<string, unknown>);
+        setOrders(prev => prev.map(o => (o.id === id ? next : o)));
       }
       toast.error('Purchase order rejected', { description: `${id} rejected` });
     } catch (err) {
@@ -240,8 +359,9 @@ export function PurchaseOrders() {
     try {
       const resp = await purchaseOrdersApi.performPOAction(id, 'cancel');
       const updatedPO = (resp && (resp.data || resp)) || null;
-      if (updatedPO) {
-        setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...updatedPO } : o)));
+      if (updatedPO && typeof updatedPO === 'object') {
+        const next = mapApiPurchaseOrder(updatedPO as Record<string, unknown>);
+        setOrders(prev => prev.map(o => (o.id === id ? next : o)));
       }
       toast.success('Purchase order cancelled', { description: `${id} cancelled` });
     } catch (err) {
@@ -292,9 +412,9 @@ export function PurchaseOrders() {
           <tr><td>Payment Terms</td><td>${latestPO.paymentTerms}</td></tr>
           ${latestPO.referenceNumber ? `<tr><td>Reference Number</td><td>${latestPO.referenceNumber}</td></tr>` : ''}
           ${latestPO.notes ? `<tr><td>Notes</td><td>${latestPO.notes}</td></tr>` : ''}
-          <tr><td>Subtotal</td><td>₹${latestPO.subtotal.toFixed(2)}</td></tr>
-          <tr><td>Tax</td><td>₹${latestPO.tax.toFixed(2)}</td></tr>
-          <tr><td><strong>Total Value</strong></td><td><strong>₹${latestPO.totalValue.toFixed(2)}</strong></td></tr>
+          <tr><td>Subtotal</td><td>₹${coerceNumber(latestPO.subtotal, 0).toFixed(2)}</td></tr>
+          <tr><td>Tax</td><td>₹${coerceNumber(latestPO.tax, 0).toFixed(2)}</td></tr>
+          <tr><td><strong>Total Value</strong></td><td><strong>₹${coerceNumber(latestPO.totalValue, 0).toFixed(2)}</strong></td></tr>
         </table>
         <h3>Line Items</h3>
         <table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse;">
@@ -312,8 +432,8 @@ export function PurchaseOrders() {
               <td>${item.product}</td>
               <td style="text-align:right;">${item.quantity}</td>
               <td>${item.unit}</td>
-              <td style="text-align:right;">₹${item.unitPrice.toFixed(2)}</td>
-              <td style="text-align:right;">₹${item.total.toFixed(2)}</td>
+              <td style="text-align:right;">₹${coerceNumber(item.unitPrice, 0).toFixed(2)}</td>
+              <td style="text-align:right;">₹${coerceNumber(item.total, 0).toFixed(2)}</td>
             </tr>
           `).join('')}
         </table>
@@ -507,9 +627,7 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
       }
       // Reload orders
       const resp = await purchaseOrdersApi.listPurchaseOrders({ page: 1, perPage: 25 });
-      const items = resp.data || resp.items || resp;
-      if (Array.isArray(items)) setOrders(items);
-      else if (items && Array.isArray(items.data)) setOrders(items.data);
+      setOrders(normalizePurchaseOrderList(resp));
     } catch (error) {
       toast.error('Failed to upload purchase orders');
     }
@@ -585,32 +703,22 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
         const createdPO = await purchaseOrdersApi.createPurchaseOrder(newPO);
         // If API returns the created PO, use it instead of our local one
         const finalPO = (createdPO && (createdPO.data || createdPO)) || newPO;
-        // Add to local orders state
-        setOrders(prev => {
-          const updated = [finalPO, ...prev];
-          return updated;
-        });
+        const normalizedCreate = normalizePurchaseOrderInput(finalPO);
+        setOrders(prev => [normalizedCreate, ...prev]);
         
         // Reload orders to ensure consistency
         try {
           await new Promise(resolve => setTimeout(resolve, 500));
           const resp = await purchaseOrdersApi.listPurchaseOrders({ page: 1, perPage: 25 });
-          const items = resp.data || resp.items || resp;
-          if (Array.isArray(items) && items.length > 0) {
-            setOrders(items);
-          } else if (items && Array.isArray(items.data) && items.data.length > 0) {
-            setOrders(items.data);
-          }
+          const next = normalizePurchaseOrderList(resp);
+          if (next.length > 0) setOrders(next);
         } catch (reloadError) {
           console.warn('Failed to reload orders after create:', reloadError);
         }
       } catch (apiError) {
         // If API fails, add to local state anyway for UI feedback
         console.warn('API create failed, adding to local state:', apiError);
-        setOrders(prev => {
-          const updated = [newPO, ...prev];
-          return updated;
-        });
+        setOrders(prev => [normalizePurchaseOrderInput(newPO), ...prev]);
       }
       
       // Reset form
@@ -733,7 +841,7 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
                   <td className="px-6 py-4 text-[#616161]">{po.createdDate}</td>
                   <td className="px-6 py-4 text-[#616161]">{po.deliveryDue}</td>
                   <td className="px-6 py-4 font-bold text-[#212121] text-right">
-                    ₹{po.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{formatInr(po.totalValue)}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <StatusBadge status={po.status} />
@@ -1310,8 +1418,8 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
                           <td className="px-3 py-2 text-xs text-[#1F2937]">{item.product}</td>
                           <td className="px-3 py-2 text-xs text-[#1F2937] text-right">{item.quantity}</td>
                           <td className="px-3 py-2 text-xs text-[#1F2937]">{item.unit}</td>
-                          <td className="px-3 py-2 text-xs text-[#1F2937] text-right">₹{item.unitPrice.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-xs text-[#1F2937] text-right font-medium">₹{item.total.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-xs text-[#1F2937] text-right">₹{coerceNumber(item.unitPrice, 0).toFixed(2)}</td>
+                          <td className="px-3 py-2 text-xs text-[#1F2937] text-right font-medium">₹{coerceNumber(item.total, 0).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1321,16 +1429,16 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
                 <div className="mt-4 space-y-2 text-right">
                   <div className="flex justify-end gap-4 text-xs text-[#6B7280]">
                     <span>Subtotal:</span>
-                    <span>₹{selectedPO.subtotal.toFixed(2)}</span>
+                    <span>₹{coerceNumber(selectedPO.subtotal, 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-end gap-4 text-xs text-[#6B7280]">
                     <span>Tax (0%):</span>
-                    <span>₹{selectedPO.tax.toFixed(2)}</span>
+                    <span>₹{coerceNumber(selectedPO.tax, 0).toFixed(2)}</span>
                   </div>
                   <div className="pt-2 border-t border-[#E5E7EB]">
                     <div className="flex justify-end gap-4 text-sm font-bold text-[#1F2937]">
                       <span>Total:</span>
-                      <span>₹{selectedPO.totalValue.toFixed(2)}</span>
+                      <span>₹{coerceNumber(selectedPO.totalValue, 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -1969,7 +2077,7 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
               <div className="flex justify-between">
                 <span className="text-sm font-bold text-[#1F2937]">Total Value:</span>
                 <span className="text-sm font-bold text-[#1F2937]">
-                  ${selectedPO?.totalValue.toFixed(2)}
+                  ₹{coerceNumber(selectedPO?.totalValue, 0).toFixed(2)}
                 </span>
               </div>
             </div>

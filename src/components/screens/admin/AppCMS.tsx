@@ -26,6 +26,7 @@ import {
 } from '@/api/customerAppAdminApi';
 import { toast } from 'sonner';
 import { ImageWithFallback } from '@/components/figma/ImageWithFallback';
+import { useAdminDashboardRefresh } from '@/contexts/AdminDashboardContext';
 
 const DEFAULT_SECTION_ORDER = [
   'categories',
@@ -65,6 +66,7 @@ interface AppCMSProps {
 }
 
 export function AppCMS({ onEditContent }: AppCMSProps) {
+  const { dataVersion } = useAdminDashboardRefresh();
   const [payload, setPayload] = useState<CustomerHomePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +92,7 @@ export function AppCMS({ onEditContent }: AppCMSProps) {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, dataVersion]);
 
   const orderedSectionKeys = useMemo(
     () => getOrderedSectionKeys(payload),

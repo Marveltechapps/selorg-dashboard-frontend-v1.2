@@ -1,5 +1,6 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../config/api';
 import { getAuthToken } from '../../contexts/AuthContext';
+import { DASHBOARD_TOPICS, emitDashboardRefresh } from '../../lib/dashboardRefreshBus';
 
 function authHeaders(): Record<string, string> {
   const token = getAuthToken() || '';
@@ -79,7 +80,9 @@ export async function bulkUploadVendors(file: File): Promise<BulkUploadResponse>
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || err.message || 'Failed to upload file');
   }
-  return res.json();
+  const data = await res.json();
+  emitDashboardRefresh(DASHBOARD_TOPICS.vendor);
+  return data;
 }
 
 export async function fetchContracts(params?: {
@@ -123,7 +126,9 @@ export async function createContract(body: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || err.message || 'Failed to create contract');
   }
-  return res.json();
+  const out = await res.json();
+  emitDashboardRefresh(DASHBOARD_TOPICS.vendor);
+  return out;
 }
 
 export async function deleteContract(contractId: string): Promise<void> {
@@ -135,6 +140,7 @@ export async function deleteContract(contractId: string): Promise<void> {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || err.message || 'Failed to delete contract');
   }
+  emitDashboardRefresh(DASHBOARD_TOPICS.vendor);
 }
 
 export async function fetchAuditLogs(params?: {

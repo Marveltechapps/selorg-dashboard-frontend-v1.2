@@ -6,14 +6,17 @@ import { Input } from '@/components/ui/input';
 import { fetchProductsByQuery, type Product } from '@/api/customerAppAdminApi';
 import { Loader2, Search } from 'lucide-react';
 import { ImageWithFallback } from '@/components/figma/ImageWithFallback';
+import { SortableList } from '@/components/ui/sortable-list';
 
 export interface ProductPickerProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   maxHeight?: string;
+  /** When true, show drag handles to reorder selected products (order is preserved in the array). */
+  showOrderControls?: boolean;
 }
 
-export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: ProductPickerProps) {
+export function ProductPicker({ selectedIds, onChange, maxHeight = '240px', showOrderControls = false }: ProductPickerProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -34,10 +37,11 @@ export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: Pr
   }, [products, search]);
 
   const toggle = (id: string) => {
-    const set = new Set(selectedIds);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    onChange(Array.from(set));
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((x) => x !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
   };
 
   if (loading) {
@@ -95,6 +99,20 @@ export function ProductPicker({ selectedIds, onChange, maxHeight = '240px' }: Pr
       </div>
       {selectedIds.length > 0 && (
         <p className="text-xs text-[#71717a]">{selectedIds.length} product(s) selected.</p>
+      )}
+      {showOrderControls && selectedIds.length > 1 && (
+        <div className="mt-2 space-y-1">
+          <p className="text-xs font-medium text-[#18181b]">Order on landing page (drag)</p>
+          <SortableList
+            items={selectedIds.map((id) => ({
+              id,
+              name: products.find((p) => p._id === id)?.name ?? id,
+            }))}
+            keyFn={(it) => it.id}
+            renderItem={(it) => <span className="text-sm truncate">{it.name}</span>}
+            onReorder={(reordered) => onChange(reordered.map((x) => x.id))}
+          />
+        </div>
       )}
     </div>
   );

@@ -36,6 +36,7 @@ import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
 
 import * as vendorManagementApi from '../../../api/vendor/vendorManagement.api';
+import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 
 // Types
 interface Vendor {
@@ -181,6 +182,11 @@ export function VendorOnboarding() {
   useEffect(() => {
     loadVendors();
   }, [loadVendors]);
+
+  useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
+    void loadVendors();
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<VendorStage | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -390,6 +396,14 @@ export function VendorOnboarding() {
   const [inviteForm, setInviteForm] = useState({
     email: '',
     name: '',
+    vendorCode: '',
+    phone: '',
+    gstin: '',
+    paymentTerms: '30 days' as '30 days' | '45 days' | '60 days',
+    line1: '',
+    city: '',
+    state: '',
+    zipCode: '',
     type: '',
     message: ''
   });
@@ -528,23 +542,62 @@ export function VendorOnboarding() {
   // Event handlers
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteForm.email || !inviteForm.name) {
-      toast.error('Please provide vendor name and email');
+    if (
+      !inviteForm.email?.trim() ||
+      !inviteForm.name?.trim() ||
+      !inviteForm.phone?.trim() ||
+      !inviteForm.gstin?.trim() ||
+      !inviteForm.line1?.trim() ||
+      !inviteForm.city?.trim() ||
+      !inviteForm.state?.trim() ||
+      !inviteForm.zipCode?.trim()
+    ) {
+      toast.error('Please complete name, email, phone, GSTIN, and full address');
       return;
     }
 
+    const code = inviteForm.vendorCode.trim() || `VND-${Date.now().toString().slice(-6)}`;
+
     try {
       const payload = {
-        name: inviteForm.name,
-        code: `VND-${Date.now().toString().slice(-6)}`,
+        vendorName: inviteForm.name.trim(),
+        vendorCode: code,
+        taxInfo: { gstin: inviteForm.gstin.trim() },
+        paymentTerms: inviteForm.paymentTerms,
+        currencyCode: 'INR',
+        address: {
+          line1: inviteForm.line1.trim(),
+          line2: null,
+          line3: null,
+          city: inviteForm.city.trim(),
+          state: inviteForm.state.trim(),
+          country: 'India',
+          zipCode: inviteForm.zipCode.trim(),
+        },
+        contact: {
+          name: inviteForm.name.trim(),
+          email: inviteForm.email.trim().toLowerCase(),
+          phone: inviteForm.phone.trim(),
+        },
         status: 'pending',
-        contact: { name: inviteForm.name, email: inviteForm.email, phone: '' },
-        address: { line1: '', line2: '', city: '', state: '', pincode: '' },
-        metadata: { vendorType: inviteForm.type || 'Third-party', category: 'Uncategorized' }
+        metadata: { vendorType: inviteForm.type || 'Third-party', category: 'Uncategorized', inviteMessage: inviteForm.message },
       };
       await vendorManagementApi.createVendor(payload);
       setActiveModal(null);
-      setInviteForm({ email: '', name: '', type: '', message: '' });
+      setInviteForm({
+        email: '',
+        name: '',
+        vendorCode: '',
+        phone: '',
+        gstin: '',
+        paymentTerms: '30 days',
+        line1: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        type: '',
+        message: '',
+      });
       toast.success(`Invite sent to ${inviteForm.email}`);
       await loadVendors();
     } catch (err: any) {
@@ -1343,6 +1396,112 @@ export function VendorOnboarding() {
                     placeholder="Vendor Name"
                     className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                    VENDOR CODE
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteForm.vendorCode}
+                    onChange={(e) => setInviteForm({ ...inviteForm, vendorCode: e.target.value })}
+                    placeholder="Leave blank to auto-generate"
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                    PHONE <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={inviteForm.phone}
+                    onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                    placeholder="+91..."
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                    GSTIN <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteForm.gstin}
+                    onChange={(e) => setInviteForm({ ...inviteForm, gstin: e.target.value })}
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                    PAYMENT TERMS <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <select
+                    value={inviteForm.paymentTerms}
+                    onChange={(e) =>
+                      setInviteForm({
+                        ...inviteForm,
+                        paymentTerms: e.target.value as '30 days' | '45 days' | '60 days',
+                      })
+                    }
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                  >
+                    <option value="30 days">30 days</option>
+                    <option value="45 days">45 days</option>
+                    <option value="60 days">60 days</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                    ADDRESS LINE 1 <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteForm.line1}
+                    onChange={(e) => setInviteForm({ ...inviteForm, line1: e.target.value })}
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                      CITY <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={inviteForm.city}
+                      onChange={(e) => setInviteForm({ ...inviteForm, city: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                      STATE <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={inviteForm.state}
+                      onChange={(e) => setInviteForm({ ...inviteForm, state: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                      PIN <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={inviteForm.zipCode}
+                      onChange={(e) => setInviteForm({ ...inviteForm, zipCode: e.target.value })}
+                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">

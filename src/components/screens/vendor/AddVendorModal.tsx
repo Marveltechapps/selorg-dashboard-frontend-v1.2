@@ -1,287 +1,427 @@
-import React, { useState } from 'react';
-import { X, Plus, Trash2, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
+
+export const VENDOR_PAYMENT_TERMS = ['30 days', '45 days', '60 days'] as const;
+
+/** Procurement list / filters — optional on create, shown on edit when present. */
+export const VENDOR_CATEGORY_OPTIONS = [
+  'Vegetables',
+  'Fruits',
+  'Spices',
+  'Dairy / Perishables',
+  'Packaged Goods',
+  'Fresh Produce',
+  'Packaging',
+] as const;
+
+export interface VendorCreatePayload {
+  vendorCode: string;
+  vendorName: string;
+  taxInfo: { gstin: string };
+  paymentTerms: (typeof VENDOR_PAYMENT_TERMS)[number];
+  address: {
+    line1: string;
+    line2: string | null;
+    line3: string | null;
+    city: string;
+    state: string;
+    country: string;
+    zipCode: string;
+  };
+  contact: {
+    name: string;
+    phone: string;
+    email: string;
+  };
+  currencyCode: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type AddVendorModalMode = 'add' | 'edit';
 
 interface AddVendorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (formData: any) => void;
+  mode?: AddVendorModalMode;
+  /** Required when mode is `edit` */
+  editVendorId?: string | null;
+  /** Hydrates the form when opening edit (from GET vendor by id). */
+  initialPayload?: VendorCreatePayload | null;
+  onSubmit?: (payload: VendorCreatePayload) => void | Promise<void>;
+  onEditSubmit?: (vendorId: string, payload: VendorCreatePayload) => void | Promise<void>;
 }
 
-interface CategoryLimit {
-  category: string;
-  min: string;
-  max: string;
-  unit: string;
-}
-
-const ALL_CATEGORIES = [
-  'Fruits', 'Vegetables', 'Atta', 'Rice', 'Oil', 'Dals', 'Dairy', 'Bread', 
-  'Eggs', 'Masalas', 'Whole Spices', 'Salt', 'Sugar', 'Jaggery', 
-  'Dry Fruits', 'Seeds', 'Grains Pulses', 'Millets', 'Tea', 'Coffee', 
-  'Breakfast', 'Spreads'
-];
-
-export function AddVendorModal({ isOpen, onClose, onSubmit }: AddVendorModalProps) {
-  const [currentStep, setCurrentStep] = useState<'basic' | 'contact' | 'bank' | 'documents' | 'categories' | 'limits' | 'categoryLimits'>('basic');
-  
-  // Form data states
+export function AddVendorModal({
+  isOpen,
+  onClose,
+  mode = 'add',
+  editVendorId = null,
+  initialPayload = null,
+  onSubmit,
+  onEditSubmit,
+}: AddVendorModalProps) {
+  const [vendorCode, setVendorCode] = useState('');
   const [vendorName, setVendorName] = useState('');
-  const [vendorType, setVendorType] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [productType, setProductType] = useState('both');
-  const [tier, setTier] = useState('');
-  const [description, setDescription] = useState('');
-  
-  const [contactPerson, setContactPerson] = useState('');
-  const [phonePrimary, setPhonePrimary] = useState('');
-  const [phoneAlternate, setPhoneAlternate] = useState('');
-  const [email, setEmail] = useState('');
-  const [fullAddress, setFullAddress] = useState('');
+  const [gstin, setGstin] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState<(typeof VENDOR_PAYMENT_TERMS)[number]>('30 days');
+  const [currencyCode, setCurrencyCode] = useState('INR');
+  const [category, setCategory] = useState('');
+  const [recordStatus, setRecordStatus] = useState<string | undefined>(undefined);
+
+  const [line1, setLine1] = useState('');
+  const [line2, setLine2] = useState('');
+  const [line3, setLine3] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('Tamil Nadu');
-  const [postalCode, setPostalCode] = useState('');
-  
-  const [gstNumber, setGstNumber] = useState('');
-  const [panNumber, setPanNumber] = useState('');
-  const [bankAccount, setBankAccount] = useState('');
-  const [bankName, setBankName] = useState('');
-  const [ifscCode, setIfscCode] = useState('');
-  const [accountHolder, setAccountHolder] = useState('');
-  const [accountType, setAccountType] = useState('');
-  
-  // Purchase Limits states
-  const [minQuantity, setMinQuantity] = useState('100');
-  const [maxQuantity, setMaxQuantity] = useState('500');
-  const [unit, setUnit] = useState('kg');
-  
-  // Category-specific limits
-  const [categoryLimits, setCategoryLimits] = useState<CategoryLimit[]>([]);
+  const [state, setState] = useState('');
+  const [country, setCountry] = useState('India');
+  const [zipCode, setZipCode] = useState('');
 
-  const toggleCategory = (category: string) => {
-    setSelectedCategories(prev =>
-      prev.includes(category)
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
+  const [contactName, setContactName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const reset = () => {
+    setVendorCode('');
+    setVendorName('');
+    setGstin('');
+    setPaymentTerms('30 days');
+    setCurrencyCode('INR');
+    setCategory('');
+    setRecordStatus(undefined);
+    setLine1('');
+    setLine2('');
+    setLine3('');
+    setCity('');
+    setState('');
+    setCountry('India');
+    setZipCode('');
+    setContactName('');
+    setPhone('');
+    setEmail('');
+  };
+
+  const applyPayload = (p: VendorCreatePayload) => {
+    setVendorCode(p.vendorCode || '');
+    setVendorName(p.vendorName || '');
+    setGstin(p.taxInfo?.gstin || '');
+    const t = p.paymentTerms;
+    setPaymentTerms(
+      (VENDOR_PAYMENT_TERMS as readonly string[]).includes(t) ? t : '30 days',
     );
+    setCurrencyCode((p.currencyCode || 'INR').toUpperCase().slice(0, 3));
+    const cat =
+      typeof p.metadata?.category === 'string' && p.metadata.category !== '—'
+        ? p.metadata.category
+        : '';
+    setCategory(cat);
+    setRecordStatus(p.status);
+    setLine1(p.address?.line1 || '');
+    setLine2(p.address?.line2 || '');
+    setLine3(p.address?.line3 || '');
+    setCity(p.address?.city || '');
+    setState(p.address?.state || '');
+    setCountry(p.address?.country || 'India');
+    setZipCode(p.address?.zipCode || '');
+    setContactName(p.contact?.name || '');
+    setPhone(p.contact?.phone || '');
+    setEmail(p.contact?.email || '');
   };
 
-  const addCategoryLimit = () => {
-    setCategoryLimits([...categoryLimits, { category: '', min: '', max: '', unit: 'kg' }]);
-  };
-
-  const removeCategoryLimit = (index: number) => {
-    setCategoryLimits(categoryLimits.filter((_, i) => i !== index));
-  };
-
-  const updateCategoryLimit = (index: number, field: keyof CategoryLimit, value: string) => {
-    const updated = [...categoryLimits];
-    updated[index][field] = value;
-    setCategoryLimits(updated);
-  };
-
-  const handleNext = () => {
-    const stepOrder: Array<'basic' | 'contact' | 'bank' | 'documents' | 'categories' | 'limits' | 'categoryLimits'> = [
-      'basic', 'contact', 'bank', 'documents', 'categories', 'limits', 'categoryLimits'
-    ];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    if (currentIndex < stepOrder.length - 1) {
-      setCurrentStep(stepOrder[currentIndex + 1]);
+  useEffect(() => {
+    if (!isOpen) return;
+    if (mode === 'edit' && initialPayload) {
+      applyPayload(initialPayload);
+    } else if (mode === 'add') {
+      reset();
     }
+  }, [isOpen, mode, initialPayload]); // eslint-disable-line react-hooks/exhaustive-deps -- hydrate on open / new initialPayload only
+
+  const handleClose = () => {
+    reset();
+    onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // If not on the last section, go to next section
-    if (currentStep !== 'categoryLimits') {
-      handleNext();
-      return;
-    }
-    
-    // Only submit when on the last section
-    const formData = {
-      vendorName,
-      vendorType,
-      selectedCategories,
-      productType,
-      tier,
-      description,
-      contactPerson,
-      phonePrimary,
-      phoneAlternate,
-      email,
-      fullAddress,
-      city,
-      state,
-      postalCode,
-      gstNumber,
-      panNumber,
-      bankAccount,
-      bankName,
-      ifscCode,
-      accountHolder,
-      accountType,
-      purchaseLimits: {
-        min: minQuantity,
-        max: maxQuantity,
-        unit
+
+    const metadata: Record<string, unknown> = {};
+    if (category.trim()) metadata.category = category.trim();
+
+    const payload: VendorCreatePayload = {
+      vendorCode: vendorCode.trim(),
+      vendorName: vendorName.trim(),
+      taxInfo: { gstin: gstin.trim() },
+      paymentTerms,
+      address: {
+        line1: line1.trim(),
+        line2: line2.trim() || null,
+        line3: line3.trim() || null,
+        city: city.trim(),
+        state: state.trim(),
+        country: country.trim() || 'India',
+        zipCode: zipCode.trim(),
       },
-      categoryLimits
+      contact: {
+        name: contactName.trim(),
+        phone: phone.trim(),
+        email: email.trim().toLowerCase(),
+      },
+      currencyCode: (currencyCode.trim().toUpperCase() || 'INR').slice(0, 3),
     };
-    
-    onSubmit(formData);
+
+    if (Object.keys(metadata).length) payload.metadata = metadata;
+    if (mode === 'edit' && recordStatus !== undefined && recordStatus !== '') {
+      payload.status = recordStatus;
+    } else if (mode === 'add') {
+      payload.status = 'pending';
+    }
+
+    try {
+      setSubmitting(true);
+      if (mode === 'edit') {
+        if (!editVendorId || !onEditSubmit) return;
+        await onEditSubmit(editVendorId, payload);
+      } else {
+        if (!onSubmit) return;
+        await onSubmit(payload);
+        reset();
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
 
-  const steps = [
-    { id: 'basic', label: 'Basic Info' },
-    { id: 'contact', label: 'Contact & Address' },
-    { id: 'bank', label: 'Bank & Financial' },
-    { id: 'documents', label: 'Documents' },
-    { id: 'categories', label: 'Categories' },
-    { id: 'limits', label: 'Purchase Limits' },
-    { id: 'categoryLimits', label: 'Category Limits' }
-  ];
+  const title = mode === 'edit' ? 'Edit vendor' : 'Add Vendor';
+  const subtitle =
+    mode === 'edit'
+      ? 'Update the same fields as when adding a vendor. All * fields are stored on the vendor record.'
+      : 'All fields marked * are stored on the vendor record.';
+  const submitLabel = submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create vendor';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div 
-        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col" 
+    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="p-6 border-b border-[#E5E7EB]">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-[#1F2937]">Add New Vendor</h2>
-              <p className="text-sm text-[#6B7280] mt-1">Fill in vendor details to get started</p>
-            </div>
-            <button 
-              onClick={onClose}
-              className="text-[#6B7280] hover:text-[#1F2937] p-1 hover:bg-[#F3F4F6] rounded"
-            >
-              <X size={20} />
-            </button>
+        <div className="p-6 border-b border-[#E5E7EB] flex justify-between items-start">
+          <div>
+            <h2 className="text-xl font-bold text-[#1F2937]">{title}</h2>
+            <p className="text-sm text-[#6B7280] mt-1">{subtitle}</p>
           </div>
-
-          {/* Step Navigation */}
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {steps.map((step, index) => (
-              <button
-                key={step.id}
-                onClick={() => setCurrentStep(step.id as any)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-                  currentStep === step.id 
-                    ? 'bg-[#4F46E5] text-white' 
-                    : 'bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB]'
-                }`}
-              >
-                {index + 1}. {step.label}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="text-[#6B7280] hover:text-[#1F2937] p-1 hover:bg-[#F3F4F6] rounded"
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6">
-            {/* SECTION A: Basic Information */}
-            {currentStep === 'basic' && (
-              <div className="space-y-4">
-                <div>
+          <div className="p-6 space-y-6">
+            <section className="space-y-4">
+              <h3 className="text-sm font-bold text-[#374151] uppercase tracking-wide">Vendor</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-1">
                   <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Vendor Name <span className="text-[#EF4444]">*</span>
+                    Vendor code <span className="text-[#EF4444]">*</span>
                   </label>
                   <input
-                    type="text"
+                    value={vendorCode}
+                    onChange={(e) => setVendorCode(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    required
+                    maxLength={64}
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                    Currency <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    value={currencyCode}
+                    onChange={(e) => setCurrencyCode(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    required
+                    maxLength={3}
+                    minLength={3}
+                    title="ISO 4217 code, e.g. INR"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                    Vendor name <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
                     value={vendorName}
                     onChange={(e) => setVendorName(e.target.value)}
-                    placeholder="Enter vendor name"
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    required
+                    maxLength={100}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                    Category <span className="text-[#6B7280] font-normal">(optional)</span>
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                  >
+                    <option value="">— None —</option>
+                    {VENDOR_CATEGORY_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                    GSTIN / tax ID <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    value={gstin}
+                    onChange={(e) => setGstin(e.target.value)}
                     className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
                     required
                   />
                 </div>
-
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Vendor Type <span className="text-[#EF4444]">*</span>
+                    Payment terms <span className="text-[#EF4444]">*</span>
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {['Farmer', 'Distributor', 'Aggregator', 'Third-party'].map((type) => (
-                      <label key={type} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="vendorType"
-                          value={type}
-                          checked={vendorType === type}
-                          onChange={(e) => setVendorType(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                          required
-                        />
-                        <span className="text-sm text-[#1F2937]">{type}</span>
-                      </label>
+                  <select
+                    value={paymentTerms}
+                    onChange={(e) => setPaymentTerms(e.target.value as (typeof VENDOR_PAYMENT_TERMS)[number])}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    required
+                  >
+                    {VENDOR_PAYMENT_TERMS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Vendor Tier <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <div className="flex gap-3">
-                    {['Preferred', 'Standard', 'New'].map((t) => (
-                      <label key={t} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="tier"
-                          value={t}
-                          checked={tier === t}
-                          onChange={(e) => setTier(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                          required
-                        />
-                        <span className="text-sm text-[#1F2937]">{t}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Enter vendor description..."
-                    rows={3}
-                    maxLength={500}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                  />
-                  <div className="text-xs text-[#6B7280] text-right mt-1">{description.length}/500</div>
+                  </select>
                 </div>
               </div>
-            )}
+            </section>
 
-            {/* SECTION B: Contact & Address */}
-            {currentStep === 'contact' && (
+            <section className="space-y-4">
+              <h3 className="text-sm font-bold text-[#374151] uppercase tracking-wide">Address</h3>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                    Line 1 <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    value={line1}
+                    onChange={(e) => setLine1(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
+                    <label className="block text-sm font-bold text-[#1F2937] mb-2">Line 2</label>
+                    <input
+                      value={line2}
+                      onChange={(e) => setLine2(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-[#1F2937] mb-2">Line 3</label>
+                    <input
+                      value={line3}
+                      onChange={(e) => setLine3(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="col-span-2">
                     <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Contact Person <span className="text-[#EF4444]">*</span>
+                      City <span className="text-[#EF4444]">*</span>
                     </label>
                     <input
-                      type="text"
-                      value={contactPerson}
-                      onChange={(e) => setContactPerson(e.target.value)}
-                      placeholder="Full name"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
                       className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
                       required
                     />
                   </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                      State <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                      required
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                      Country <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                      required
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                      ZIP / PIN <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      value={zipCode}
+                      onChange={(e) => setZipCode(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
 
+            <section className="space-y-4">
+              <h3 className="text-sm font-bold text-[#374151] uppercase tracking-wide">Contact</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                    Contact name <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <input
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
+                      Phone <span className="text-[#EF4444]">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                      required
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-bold text-[#1F2937] mb-2">
                       Email <span className="text-[#EF4444]">*</span>
@@ -290,509 +430,30 @@ export function AddVendorModal({ isOpen, onClose, onSubmit }: AddVendorModalProp
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="vendor@example.com"
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Primary Phone <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={phonePrimary}
-                      onChange={(e) => setPhonePrimary(e.target.value)}
-                      placeholder="+91-9876543210"
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Alternate Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={phoneAlternate}
-                      onChange={(e) => setPhoneAlternate(e.target.value)}
-                      placeholder="+91-9876543211"
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Full Address <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <textarea
-                    value={fullAddress}
-                    onChange={(e) => setFullAddress(e.target.value)}
-                    placeholder="Street address, building, landmark..."
-                    rows={2}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      City <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="Chennai"
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      State <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <select
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    >
-                      <option value="Tamil Nadu">Tamil Nadu</option>
-                      <option value="Karnataka">Karnataka</option>
-                      <option value="Kerala">Kerala</option>
-                      <option value="Andhra Pradesh">Andhra Pradesh</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Postal Code <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={postalCode}
-                      onChange={(e) => setPostalCode(e.target.value)}
-                      placeholder="600001"
-                      maxLength={6}
                       className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
                       required
                     />
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* SECTION C: Bank & Financial */}
-            {currentStep === 'bank' && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      GST Number <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={gstNumber}
-                      onChange={(e) => setGstNumber(e.target.value)}
-                      placeholder="33AABCU6034K2Z5"
-                      maxLength={15}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      PAN Number
-                    </label>
-                    <input
-                      type="text"
-                      value={panNumber}
-                      onChange={(e) => setPanNumber(e.target.value)}
-                      placeholder="ABCDE1234F"
-                      maxLength={10}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Bank Name <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <select
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    >
-                      <option value="">Select bank</option>
-                      <option value="ICICI Bank">ICICI Bank</option>
-                      <option value="HDFC Bank">HDFC Bank</option>
-                      <option value="SBI">State Bank of India</option>
-                      <option value="Axis Bank">Axis Bank</option>
-                      <option value="Kotak Mahindra">Kotak Mahindra</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Account Type <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="accountType"
-                          value="Savings"
-                          checked={accountType === 'Savings'}
-                          onChange={(e) => setAccountType(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                          required
-                        />
-                        <span className="text-sm text-[#1F2937]">Savings</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="accountType"
-                          value="Current"
-                          checked={accountType === 'Current'}
-                          onChange={(e) => setAccountType(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                        />
-                        <span className="text-sm text-[#1F2937]">Current</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      Bank Account Number <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={bankAccount}
-                      onChange={(e) => setBankAccount(e.target.value)}
-                      placeholder="1234567890123456"
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                      IFSC Code <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={ifscCode}
-                      onChange={(e) => setIfscCode(e.target.value)}
-                      placeholder="ICIC0000001"
-                      maxLength={11}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Account Holder Name <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={accountHolder}
-                    onChange={(e) => setAccountHolder(e.target.value)}
-                    placeholder="As per bank records"
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* SECTION D: Documents */}
-            {currentStep === 'documents' && (
-              <div className="space-y-4">
-                <p className="text-sm text-[#6B7280] mb-4">Upload required vendor documents (optional during initial setup)</p>
-                
-                {['FSSAI License', 'GST Certificate', 'Business License', 'ISO Certificate', 'Insurance Certificate'].map((doc) => (
-                  <div key={doc} className="border-2 border-dashed border-[#D1D5DB] rounded-lg p-4 hover:border-[#4F46E5] transition-colors">
-                    <label className="block text-sm font-bold text-[#1F2937] mb-2">{doc}</label>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className="w-full text-sm text-[#6B7280]"
-                    />
-                    <p className="text-xs text-[#6B7280] mt-1">PDF, JPG, PNG (Max 5MB)</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* SECTION E: Categories & Products */}
-            {currentStep === 'categories' && (
-              <div className="space-y-4">
-                <div className="bg-[#F0F7FF] border border-[#BFDBFE] rounded-lg p-4 mb-4">
-                  <h4 className="text-sm font-bold text-[#1E40AF] mb-2">Select Categories</h4>
-                  <p className="text-xs text-[#1E40AF]">Choose one or more categories that this vendor can supply</p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {ALL_CATEGORIES.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => toggleCategory(category)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                        selectedCategories.includes(category)
-                          ? 'bg-[#4F46E5] text-white shadow-md'
-                          : 'bg-[#F3F4F6] text-[#6B7280] hover:bg-[#E5E7EB] border border-[#E5E7EB]'
-                      }`}
-                    >
-                      {selectedCategories.includes(category) && '✓ '}
-                      {category}
-                    </button>
-                  ))}
-                </div>
-
-                {selectedCategories.length > 0 && (
-                  <div className="mt-6 p-4 bg-[#F9FAFB] rounded-lg">
-                    <label className="block text-sm font-bold text-[#1F2937] mb-3">
-                      Product Types <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="productType"
-                          value="raw"
-                          checked={productType === 'raw'}
-                          onChange={(e) => setProductType(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                        />
-                        <span className="text-sm text-[#1F2937]">Raw products (unprocessed)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="productType"
-                          value="finished"
-                          checked={productType === 'finished'}
-                          onChange={(e) => setProductType(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                        />
-                        <span className="text-sm text-[#1F2937]">Finished products (processed)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="productType"
-                          value="both"
-                          checked={productType === 'both'}
-                          onChange={(e) => setProductType(e.target.value)}
-                          className="w-4 h-4 text-[#4F46E5]"
-                        />
-                        <span className="text-sm text-[#1F2937]">Both raw and finished</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                <p className="text-xs text-[#6B7280] italic">
-                  Selected {selectedCategories.length} of {ALL_CATEGORIES.length} categories
-                </p>
-              </div>
-            )}
-
-            {/* SECTION F: Purchase Limits */}
-            {currentStep === 'limits' && (
-              <div className="space-y-6">
-                <div className="bg-[#F0F7FF] border border-[#BFDBFE] rounded-lg p-4">
-                  <h4 className="text-sm font-bold text-[#1E40AF] mb-2">Purchase Limits</h4>
-                  <p className="text-xs text-[#1E40AF]">Set global daily purchase constraints for this vendor</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Minimum Quantity Per Day <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="number"
-                      value={minQuantity}
-                      onChange={(e) => setMinQuantity(e.target.value)}
-                      placeholder="50"
-                      min="0"
-                      className="flex-1 px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                    <select
-                      value={unit}
-                      onChange={(e) => setUnit(e.target.value)}
-                      className="w-32 px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]"
-                    >
-                      <option value="kg">kg</option>
-                      <option value="L">Litre (L)</option>
-                      <option value="pcs">Pieces</option>
-                      <option value="boxes">Boxes</option>
-                    </select>
-                  </div>
-                  <p className="text-xs text-[#6B7280] italic mt-1">Vendor can supply minimum {minQuantity} {unit} per day</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#1F2937] mb-2">
-                    Maximum Quantity Per Day <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="number"
-                      value={maxQuantity}
-                      onChange={(e) => setMaxQuantity(e.target.value)}
-                      placeholder="500"
-                      min="0"
-                      className="flex-1 px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                      required
-                    />
-                    <select
-                      value={unit}
-                      onChange={(e) => setUnit(e.target.value)}
-                      className="w-32 px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]"
-                    >
-                      <option value="kg">kg</option>
-                      <option value="L">Litre (L)</option>
-                      <option value="pcs">Pieces</option>
-                      <option value="boxes">Boxes</option>
-                    </select>
-                  </div>
-                  <p className="text-xs text-[#6B7280] italic mt-1">Vendor can supply maximum {maxQuantity} {unit} per day</p>
-                </div>
-              </div>
-            )}
-
-            {/* SECTION G: Category-Specific Limits */}
-            {currentStep === 'categoryLimits' && (
-              <div className="space-y-4">
-                <div className="bg-[#FEF3C7] border border-[#FDE68A] rounded-lg p-4">
-                  <h4 className="text-sm font-bold text-[#92400E] mb-2">Category-Specific Limits (Optional)</h4>
-                  <p className="text-xs text-[#92400E]">Set different limits for specific categories. Leave empty to use global limits.</p>
-                </div>
-
-                {categoryLimits.length === 0 ? (
-                  <div className="text-center py-8 border-2 border-dashed border-[#E5E7EB] rounded-lg">
-                    <p className="text-sm text-[#9CA3AF] mb-3">No category limits added</p>
-                    <button
-                      type="button"
-                      onClick={addCategoryLimit}
-                      className="px-4 py-2 bg-[#4F46E5] text-white rounded-lg text-sm font-medium hover:bg-[#4338CA] flex items-center gap-2 mx-auto"
-                    >
-                      <Plus size={16} />
-                      Add Category Limit
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {categoryLimits.map((limit, index) => (
-                      <div key={index} className="p-4 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg">
-                        <div className="grid grid-cols-4 gap-3">
-                          <select
-                            value={limit.category}
-                            onChange={(e) => updateCategoryLimit(index, 'category', e.target.value)}
-                            className="px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]"
-                          >
-                            <option value="">Select category</option>
-                            {selectedCategories.map((cat) => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                          </select>
-
-                          <input
-                            type="number"
-                            value={limit.min}
-                            onChange={(e) => updateCategoryLimit(index, 'min', e.target.value)}
-                            placeholder="Min"
-                            className="px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]"
-                          />
-
-                          <input
-                            type="number"
-                            value={limit.max}
-                            onChange={(e) => updateCategoryLimit(index, 'max', e.target.value)}
-                            placeholder="Max"
-                            className="px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]"
-                          />
-
-                          <div className="flex gap-2">
-                            <select
-                              value={limit.unit}
-                              onChange={(e) => updateCategoryLimit(index, 'unit', e.target.value)}
-                              className="flex-1 px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5]"
-                            >
-                              <option value="kg">kg</option>
-                              <option value="L">L</option>
-                              <option value="pcs">pcs</option>
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => removeCategoryLimit(index)}
-                              className="p-2 text-[#EF4444] hover:bg-[#FEE2E2] rounded"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={addCategoryLimit}
-                      className="w-full px-4 py-2 border-2 border-dashed border-[#4F46E5] text-[#4F46E5] rounded-lg text-sm font-medium hover:bg-[#F0F7FF] flex items-center justify-center gap-2"
-                    >
-                      <Plus size={16} />
-                      Add Another Category Limit
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            </section>
           </div>
 
-          {/* Footer */}
-          <div className="p-6 border-t border-[#E5E7EB] bg-[#F9FAFB] flex justify-between items-center">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" className="w-4 h-4 text-[#4F46E5] rounded" />
-              <span className="text-sm text-[#6B7280]">Save as draft</span>
-            </label>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2 border border-[#D1D5DB] rounded-lg text-sm font-bold text-[#1F2937] hover:bg-[#F3F4F6] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-2 bg-[#4F46E5] text-white rounded-lg text-sm font-bold hover:bg-[#4338CA] transition-colors"
-              >
-                {currentStep === 'categoryLimits' ? 'Save Vendor' : 'Next'}
-              </button>
-            </div>
+          <div className="p-6 border-t border-[#E5E7EB] bg-[#F9FAFB] flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="px-6 py-2 border border-[#D1D5DB] rounded-lg text-sm font-bold text-[#1F2937] hover:bg-[#F3F4F6]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-6 py-2 bg-[#4F46E5] text-white rounded-lg text-sm font-bold hover:bg-[#4338CA] disabled:opacity-50"
+            >
+              {submitLabel}
+            </button>
           </div>
         </form>
       </div>

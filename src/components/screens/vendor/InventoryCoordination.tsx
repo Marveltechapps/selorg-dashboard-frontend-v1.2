@@ -39,6 +39,7 @@ import {
 
 import * as vendorInventoryApi from '../../../api/vendor/vendorInventory.api';
 import { apiDownloadCsv } from '../../../api/apiClient';
+import { getVendors, getVendorSummary } from '../../../api/vendor/vendorManagement.api';
 
 // Types
 type VarianceStatus = 'Matched' | 'Discrepancy' | 'Excess';
@@ -112,330 +113,18 @@ interface KPI {
   subMetrics: { label: string; value: string }[];
 }
 
-// Mock Data
-const mockStockItems: StockItem[] = [
-  {
-    id: '1',
-    product: 'Tomatoes',
-    batchId: '#441',
-    warehouse: 'Warehouse A',
-    systemQty: 100,
-    physicalQty: 95,
-    unit: 'kg',
-    variance: -5,
-    variancePercent: -5,
-    status: 'Discrepancy',
-  },
-  {
-    id: '2',
-    product: 'Milk 1L',
-    batchId: '#992',
-    warehouse: 'Warehouse B',
-    systemQty: 200,
-    physicalQty: 200,
-    unit: 'L',
-    variance: 0,
-    variancePercent: 0,
-    status: 'Matched',
-  },
-  {
-    id: '3',
-    product: 'Onions',
-    batchId: '#512',
-    warehouse: 'Dark Store 1',
-    systemQty: 50,
-    physicalQty: 60,
-    unit: 'kg',
-    variance: 10,
-    variancePercent: 20,
-    status: 'Excess',
-  },
-  {
-    id: '4',
-    product: 'Eggs',
-    batchId: '#704',
-    warehouse: 'Warehouse C',
-    systemQty: 500,
-    physicalQty: 485,
-    unit: 'pcs',
-    variance: -15,
-    variancePercent: -3,
-    status: 'Discrepancy',
-  },
-  {
-    id: '5',
-    product: 'Paneer',
-    batchId: '#801',
-    warehouse: 'Warehouse A',
-    systemQty: 30,
-    physicalQty: 30,
-    unit: 'kg',
-    variance: 0,
-    variancePercent: 0,
-    status: 'Matched',
-  },
-];
-
-const mockAgingAlerts: AgingAlert[] = [
-  {
-    id: '1',
-    product: 'Org. Tomatoes',
-    batchId: '#441',
-    vendor: 'Fresh Farms',
-    expiryDate: 'Dec 21, 2024',
-    daysToExpiry: 2,
-    priority: 'Critical',
-    quantity: 95,
-    unit: 'kg',
-    value: 4275,
-  },
-  {
-    id: '2',
-    product: 'Milk 1L',
-    batchId: '#992',
-    vendor: 'Dairy Delights',
-    expiryDate: 'Dec 24, 2024',
-    daysToExpiry: 5,
-    priority: 'High',
-    quantity: 200,
-    unit: 'L',
-    value: 8000,
-  },
-  {
-    id: '3',
-    product: 'Yogurt 500g',
-    batchId: '#805',
-    vendor: 'Happy Dairy',
-    expiryDate: 'Dec 26, 2024',
-    daysToExpiry: 7,
-    priority: 'Medium',
-    quantity: 150,
-    unit: 'kg',
-    value: 6750,
-  },
-  {
-    id: '4',
-    product: 'Cheese 200g',
-    batchId: '#612',
-    vendor: 'Milk House',
-    expiryDate: 'Jan 5, 2025',
-    daysToExpiry: 15,
-    priority: 'Low',
-    quantity: 80,
-    unit: 'kg',
-    value: 4800,
-  },
-];
-
-const mockAgingInventory: AgingInventory[] = [
-  {
-    id: '1',
-    product: 'Tomatoes',
-    batchId: '#441',
-    warehouse: 'Warehouse A',
-    quantity: 95,
-    unit: 'kg',
-    daysInStock: 8,
-    expiryDate: 'Dec 21',
-    daysToExpiry: 2,
-    status: 'Critical',
-  },
-  {
-    id: '2',
-    product: 'Milk 1L',
-    batchId: '#992',
-    warehouse: 'Warehouse B',
-    quantity: 200,
-    unit: 'L',
-    daysInStock: 12,
-    expiryDate: 'Dec 24',
-    daysToExpiry: 5,
-    status: 'Warning',
-  },
-  {
-    id: '3',
-    product: 'Yogurt',
-    batchId: '#805',
-    warehouse: 'Dark Store 1',
-    quantity: 150,
-    unit: 'kg',
-    daysInStock: 25,
-    expiryDate: 'Dec 26',
-    daysToExpiry: 7,
-    status: 'Warning',
-  },
-  {
-    id: '4',
-    product: 'Paneer',
-    batchId: '#801',
-    warehouse: 'Warehouse A',
-    quantity: 30,
-    unit: 'kg',
-    daysInStock: 2,
-    expiryDate: 'Jan 10',
-    daysToExpiry: 20,
-    status: 'Safe',
-  },
-  {
-    id: '5',
-    product: 'Cheese',
-    batchId: '#612',
-    warehouse: 'Warehouse C',
-    quantity: 80,
-    unit: 'kg',
-    daysInStock: 35,
-    expiryDate: 'Jan 5',
-    daysToExpiry: 15,
-    status: 'Safe',
-  },
-];
-
-const mockStockouts: Stockout[] = [
-  {
-    id: '1',
-    sku: 'SKU-2024',
-    product: 'Org. Tomatoes',
-    vendor: 'Fresh Farms',
-    lastStock: 'Dec 16',
-    daysOut: 3,
-    affectedStores: 5,
-    impact: 120000,
-    severity: 'Critical',
-    reorderInitiated: false,
-    alerted: false,
-  },
-  {
-    id: '2',
-    sku: 'SKU-2015',
-    product: 'Milk 1L',
-    vendor: 'Dairy Delights',
-    lastStock: 'Dec 17',
-    daysOut: 2,
-    affectedStores: 3,
-    impact: 80000,
-    severity: 'High',
-    reorderInitiated: false,
-    alerted: false,
-  },
-  {
-    id: '3',
-    sku: 'SKU-1998',
-    product: 'Onions',
-    vendor: 'Global Spices',
-    lastStock: 'Dec 14',
-    daysOut: 5,
-    affectedStores: 8,
-    impact: 250000,
-    severity: 'Critical',
-    reorderInitiated: false,
-    alerted: false,
-  },
-];
-
-const mockKPIs: KPI[] = [
-  {
-    id: '1',
-    label: 'On-Time Delivery',
-    value: '94.2%',
-    trend: '+2.1%',
-    trendValue: 'vs last month',
-    trendDirection: 'up',
-    status: 'good',
-    color: '#10B981',
-    bgColor: '#F0FDF4',
-    subMetrics: [
-      { label: 'On-time', value: '943 / 1000 deliveries' },
-      { label: 'Late', value: '57 deliveries' },
-    ],
-  },
-  {
-    id: '2',
-    label: 'Stock Accuracy',
-    value: '87.5%',
-    trend: '-3.2%',
-    trendValue: 'vs last month',
-    trendDirection: 'down',
-    status: 'warning',
-    color: '#F59E0B',
-    bgColor: '#FEF3C7',
-    subMetrics: [
-      { label: 'Matched', value: '875 SKUs' },
-      { label: 'Discrepancies', value: '125 SKUs' },
-    ],
-  },
-  {
-    id: '3',
-    label: 'Avg Days in Stock',
-    value: '12.3 days',
-    trend: '-1.5 days',
-    trendValue: 'vs last month',
-    trendDirection: 'up',
-    status: 'good',
-    color: '#0EA5E9',
-    bgColor: '#F0F9FF',
-    subMetrics: [
-      { label: 'Target', value: '<15 days' },
-      { label: '% within target', value: '92%' },
-    ],
-  },
-  {
-    id: '4',
-    label: 'Stockout Frequency',
-    value: '2.1%',
-    trend: '+0.8%',
-    trendValue: 'vs last month',
-    trendDirection: 'down',
-    status: 'critical',
-    color: '#EF4444',
-    bgColor: '#FEF2F2',
-    subMetrics: [
-      { label: 'Stockouts this month', value: '21' },
-      { label: 'Target', value: '<1%' },
-    ],
-  },
-  {
-    id: '5',
-    label: 'Inventory Turnover',
-    value: '8.4x/year',
-    trend: '+1.2x',
-    trendValue: 'vs last year',
-    trendDirection: 'up',
-    status: 'good',
-    color: '#7C3AED',
-    bgColor: '#F5F3FF',
-    subMetrics: [
-      { label: 'Monthly turnover', value: '0.7x' },
-      { label: 'Industry avg', value: '6x' },
-    ],
-  },
-  {
-    id: '6',
-    label: 'Shrinkage Rate',
-    value: '0.8%',
-    trend: 'Stable',
-    trendValue: 'vs last month',
-    trendDirection: 'stable',
-    status: 'warning',
-    color: '#F59E0B',
-    bgColor: '#FEF3C7',
-    subMetrics: [
-      { label: 'Theft/Loss', value: '0.5%' },
-      { label: 'Damage', value: '0.3%' },
-    ],
-  },
-];
-
 export function InventoryCoordination() {
   const [activeTab, setActiveTab] = useState<'reconciliation' | 'aging' | 'stockouts' | 'kpis'>('reconciliation');
   const [selectedStock, setSelectedStock] = useState<StockItem | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<AgingAlert | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [stockItems, setStockItems] = useState<StockItem[]>(mockStockItems);
-  const [agingAlerts, setAgingAlerts] = useState<AgingAlert[]>(mockAgingAlerts);
-  const [agingInventory, setAgingInventory] = useState<AgingInventory[]>(mockAgingInventory);
-  const [stockouts, setStockouts] = useState<Stockout[]>(mockStockouts);
-  const [kpis, setKpis] = useState<KPI[]>(mockKPIs);
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [agingAlerts, setAgingAlerts] = useState<AgingAlert[]>([]);
+  const [agingInventory, setAgingInventory] = useState<AgingInventory[]>([]);
+  const [stockouts, setStockouts] = useState<Stockout[]>([]);
+  const [kpis, setKpis] = useState<KPI[]>([]);
+  const [hubSummary, setHubSummary] = useState<Record<string, unknown> | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   // processing states for async actions
   const [processingReorders, setProcessingReorders] = useState<string[]>([]);
@@ -443,11 +132,51 @@ export function InventoryCoordination() {
 
   // API integration/loading state
   const [vendorId, setVendorId] = useState<string | null>(null);
+  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingStock, setLoadingStock] = useState(false);
   const [loadingAlerts, setLoadingAlerts] = useState(false);
 
-  // Load remote data when a vendorId is available. Falls back to mock data when vendorId is not set.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await getVendors({ page: 1, pageSize: 1 });
+        const raw = res as Record<string, unknown>;
+        const items = raw.data ?? raw.items ?? raw.vendors ?? raw;
+        const arr = Array.isArray(items) ? items : [];
+        const first = arr[0] as { id?: string; _id?: string } | undefined;
+        const id = first?.id ?? first?._id;
+        if (mounted && id) setVendorId(String(id));
+      } catch (e) {
+        console.error(e);
+        toast.error('Could not load vendors for inventory');
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!vendorId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const s = await getVendorSummary();
+        if (!mounted) return;
+        const payload = (s as { data?: Record<string, unknown> })?.data ?? (s as Record<string, unknown>);
+        setHubSummary(payload && typeof payload === 'object' ? payload : null);
+      } catch {
+        if (mounted) setHubSummary(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [vendorId]);
+
+  // Load remote data when a vendorId is available.
   useEffect(() => {
     if (!vendorId) return;
     let mounted = true;
@@ -471,7 +200,7 @@ export function InventoryCoordination() {
       // stock list
       try {
         setLoadingStock(true);
-        const stockResp = await vendorInventoryApi.listVendorStock(vendorId, { page: 1, size: 50 });
+        const stockResp = await vendorInventoryApi.listVendorStock(vendorId);
         if (!mounted) return;
         // API may return { total, page, size, items } or { data: [...] }
         const items = stockResp.items || stockResp.data || stockResp;
@@ -522,15 +251,7 @@ export function InventoryCoordination() {
     return () => {
       mounted = false;
     };
-  }, [vendorId]);
-  // simulate an API call with a success rate and delay to demonstrate optimistic UI + error handling
-  const simulateApiCall = (successRate = 0.92, delay = 900) =>
-    new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        if (Math.random() < successRate) resolve();
-        else reject(new Error('Network error'));
-      }, delay);
-    });
+  }, [vendorId, inventoryRefreshKey]);
 
   const downloadItemDetails = (item: StockItem) => {
     try {
@@ -559,13 +280,16 @@ export function InventoryCoordination() {
     try {
       const today = new Date().toISOString().split('T')[0];
       const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const totalSkus = kpis.find((k) => k.id === 'totalSkus')?.value;
+      const delivery = hubSummary?.deliveryTimeliness;
       const csvData: (string | number)[][] = [
-        ['Full Fulfillment Report', `Date: ${today}`, `Time: ${timestamp}`],
+        ['Inventory & fulfillment snapshot', `Date: ${today}`, `Time: ${timestamp}`],
         [''],
-        ['Vendor', 'On-Time %', 'SKUs'],
-        ['Fresh Farms Inc.', '98%', 450],
-        ['Dairy Delights', '96%', 320],
-        ['Global Spices', '94%', 280],
+        ['Delivery timeliness %', delivery != null && delivery !== '' ? String(delivery) : '—'],
+        ['Total SKUs', totalSkus != null && totalSkus !== '' ? String(totalSkus) : '—'],
+        ['Stockout rows', String(stockouts.length)],
+        ['Aging alerts', String(agingAlerts.length)],
+        ['Low-stock KPI', kpis.find((k) => k.id === 'lowStock')?.value ?? '—'],
       ];
       exportToCSV(csvData, `fulfillment-report-${today}-${timestamp.replace(/:/g, '-')}`);
       toast.success('Report downloaded successfully');
@@ -601,47 +325,19 @@ export function InventoryCoordination() {
   // Sync stock function
   const handleSync = () => {
     if (!vendorId) {
-      // fallback to demo behaviour when vendorId not set
-      setSyncing(true);
-      toast.success('Syncing inventory...');
-      setTimeout(() => {
-        setSyncing(false);
-        const now = new Date();
-        toast.success(`Synced at ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`);
-      }, 2000);
+      toast.error('Wait for vendor data to load, then try again');
       return;
     }
 
-    // trigger real inventory sync job and poll for status
     (async () => {
       try {
         setSyncing(true);
-        const job = await vendorInventoryApi.triggerInventorySync(vendorId, {
-          source: 'ui_manual',
-          initiatedBy: 'ui',
-        });
-        toast.success('Sync job started');
-        // poll job status until completed/failed
-        const pollInterval = 1500;
-        let finalStatus = null;
-        for (;;) {
-          const status = await vendorInventoryApi.getJobStatus(job.jobId || job.jobId);
-          if (status?.status === 'succeeded' || status?.status === 'failed' || status?.status === 'cancelled') {
-            finalStatus = status;
-            break;
-          }
-          await new Promise((r) => setTimeout(r, pollInterval));
-        }
-        if (finalStatus?.status === 'succeeded') {
-          toast.success('Inventory sync completed');
-          // refresh data
-          setVendorId((v) => (v ? v : v));
-        } else {
-          toast.error('Inventory sync failed');
-        }
+        await vendorInventoryApi.triggerInventorySync(vendorId);
+        toast.success('Inventory sync completed');
+        setInventoryRefreshKey((k) => k + 1);
       } catch (err) {
         console.error('Sync error', err);
-        toast.error('Failed to start inventory sync');
+        toast.error('Failed to sync inventory');
       } finally {
         setSyncing(false);
       }
@@ -730,99 +426,54 @@ export function InventoryCoordination() {
       })
     );
 
-    // call simulated API and rollback on failure
-    simulateApiCall(0.94, 900)
-      .then(() => {
+    (async () => {
+      if (!vendorId) {
+        toast.error('No vendor context');
+        setAdjusting(false);
+        return;
+      }
+      try {
+        await vendorInventoryApi.reconcileInventory(vendorId, {
+          items: [
+            {
+              sku: String(selectedStock.batchId || selectedStock.id),
+              expectedQty: selectedStock.systemQty,
+              reportedQty: Number(newPhysicalCount),
+            },
+          ],
+        });
         toast.success(`Inventory adjusted for ${selectedStock.product}`);
         setShowAdjustModal(false);
         setAdjustmentReason('');
         setAdjustmentNotes('');
-      })
-      .catch((err) => {
-        // rollback
+        setInventoryRefreshKey((k) => k + 1);
+      } catch (err: unknown) {
         if (beforeClone) {
           setStockItems((prev) => prev.map((it) => (it.id === beforeClone.id ? beforeClone : it)));
           setSelectedStock(beforeClone);
         }
-        toast.error(`Adjustment failed: ${err?.message || 'Please try again'}`);
-      })
-      .finally(() => {
+        const msg = err instanceof Error ? err.message : 'Please try again';
+        toast.error(`Adjustment failed: ${msg}`);
+      } finally {
         setAdjusting(false);
-      });
+      }
+    })();
   };
 
-  const handleReorder = (id: string) => {
-    if (processingReorders.includes(id)) return;
-    setProcessingReorders((prev) => [...prev, id]);
-    // optimistic update
-    setStockouts((prev) => prev.map((s) => (s.id === id ? { ...s, reorderInitiated: true } : s)));
-
-    simulateApiCall()
-      .then(() => {
-        setProcessingReorders((prev) => prev.filter((x) => x !== id));
-        toast.success('Reorder placed');
-      })
-      .catch(() => {
-        // rollback optimistic update
-        setProcessingReorders((prev) => prev.filter((x) => x !== id));
-        setStockouts((prev) => prev.map((s) => (s.id === id ? { ...s, reorderInitiated: false } : s)));
-        toast.error('Failed to place reorder. Please try again.');
-      });
+  const handleReorder = (_id: string) => {
+    toast.info('Reorder is not available from the API yet.');
   };
 
-  const handleAlertVendor = (id: string) => {
-    if (processingAlerts.includes(id)) return;
-    setProcessingAlerts((prev) => [...prev, id]);
-    setStockouts((prev) => prev.map((s) => (s.id === id ? { ...s, alerted: true } : s)));
-
-    simulateApiCall()
-      .then(() => {
-        setProcessingAlerts((prev) => prev.filter((x) => x !== id));
-        toast.success('Vendor alerted');
-      })
-      .catch(() => {
-        setProcessingAlerts((prev) => prev.filter((x) => x !== id));
-        setStockouts((prev) => prev.map((s) => (s.id === id ? { ...s, alerted: false } : s)));
-        toast.error('Failed to alert vendor. Please try again.');
-      });
+  const handleAlertVendor = (_id: string) => {
+    toast.info('Vendor alert is not available from the API yet.');
   };
 
   const handleBulkReorder = () => {
-    const ids = stockouts.map((s) => s.id);
-    setProcessingReorders(ids);
-    // optimistic for all
-    setStockouts((prev) => prev.map((s) => ({ ...s, reorderInitiated: true })));
-
-    simulateApiCall(0.95, 1200)
-      .then(() => {
-        setProcessingReorders([]);
-        toast.success('Bulk reorder initiated');
-        setShowStockoutModal(false);
-      })
-      .catch(() => {
-        // rollback everything
-        setProcessingReorders([]);
-        setStockouts((prev) => prev.map((s) => ({ ...s, reorderInitiated: false })));
-        toast.error('Bulk reorder failed. Try again.');
-      });
+    toast.info('Bulk reorder is not available from the API yet.');
   };
 
   const handleAlertAllVendors = () => {
-    const ids = stockouts.map((s) => s.id);
-    setProcessingAlerts(ids);
-    setStockouts((prev) => prev.map((s) => ({ ...s, alerted: true })));
-
-    simulateApiCall(0.95, 1200)
-      .then(() => {
-        setProcessingAlerts([]);
-        toast.success('Vendors alerted');
-        setShowStockoutModal(false);
-      })
-      .catch(() => {
-        setProcessingAlerts([]);
-        setStockouts((prev) => prev.map((s) => ({ ...s, alerted: false })));
-        toast.error('Failed to alert vendors. Try again.');
-      });
+    toast.info('Bulk vendor alert is not available from the API yet.');
   };
 
   const handleAgingReturn = (item: AgingInventory) => {
@@ -831,32 +482,8 @@ export function InventoryCoordination() {
     setShowReturnLiquidationModal(true);
   };
 
-  const handleAgingLiquidate = (item: AgingInventory) => {
-    // optimistic liquidation: mark status and zero qty, remove alerts if present
-    const before = agingInventory.find((a) => a.id === item.id);
-    const beforeClone = before ? { ...before } : null;
-
-    setAgingInventory((prev) => prev.map((a) => (a.id === item.id ? { ...a, status: 'Liquidated', quantity: 0 } : a)));
-    setAgingAlerts((prev) => prev.filter((al) => al.id !== item.id));
-
-    simulateApiCall(0.96, 800)
-      .then(() => {
-        toast.success(`${item.product} scheduled for liquidation`);
-      })
-      .catch((err) => {
-        // rollback on failure
-        if (beforeClone) {
-          setAgingInventory((prev) => prev.map((a) => (a.id === beforeClone.id ? beforeClone : a)));
-        }
-        // re-create alert if it existed before
-        if (beforeClone) {
-          setAgingAlerts((prev) => {
-            const exists = prev.find((p) => p.id === beforeClone.id);
-            return exists ? prev : [...prev, createAgingAlertFromInventory(beforeClone)];
-          });
-        }
-        toast.error(`Liquidation failed: ${err?.message || 'Please try again'}`);
-      });
+  const handleAgingLiquidate = (_item: AgingInventory) => {
+    toast.info('Liquidation is not available from the API yet.');
   };
 
   // initiate return flow from modal or row
@@ -866,29 +493,8 @@ export function InventoryCoordination() {
       toast.error('No alert selected for return');
       return;
     }
-    const id = alertToUse.id;
-    // take snapshot for rollback
-    const beforeInv = agingInventory.find((a) => a.id === id);
-    const beforeInvClone = beforeInv ? { ...beforeInv } : null;
-    const beforeAlerts = agingAlerts.slice();
-
-    // optimistic: mark inventory as 'Return Initiated' and remove alert
-    setAgingInventory((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'Return Initiated' } : a)));
-    setAgingAlerts((prev) => prev.filter((al) => al.id !== id));
-
-    simulateApiCall(0.95, 800)
-      .then(() => {
-        toast.success('Return initiated to vendor');
-        setShowReturnLiquidationModal(false);
-      })
-      .catch((err) => {
-        // rollback
-        if (beforeInvClone) {
-          setAgingInventory((prev) => prev.map((a) => (a.id === beforeInvClone.id ? beforeInvClone : a)));
-        }
-        setAgingAlerts(beforeAlerts);
-        toast.error(`Return failed: ${err?.message || 'Please try again'}`);
-      });
+    toast.info('Return initiation is not available from the API yet.');
+    setShowReturnLiquidationModal(false);
   };
 
   // helper used by modal 'Create Liquidation' to act on selectedAlert
@@ -906,6 +512,19 @@ export function InventoryCoordination() {
     handleAgingLiquidate(inv);
     setShowReturnLiquidationModal(false);
   };
+
+  const totalSkusKpi = kpis.find((k) => k.id === 'totalSkus');
+  const stockoutKpi = kpis.find((k) => k.id === 'stockouts');
+  const lowStockKpi = kpis.find((k) => k.id === 'lowStock');
+  const deliveryPctRaw = hubSummary?.deliveryTimeliness;
+  const deliveryPct =
+    deliveryPctRaw != null && deliveryPctRaw !== ''
+      ? Number(deliveryPctRaw)
+      : null;
+  const deliveryBar =
+    deliveryPct != null && !Number.isNaN(deliveryPct)
+      ? `${Math.min(100, Math.max(0, deliveryPct))}%`
+      : '0%';
 
   return (
     <div className="space-y-6">
@@ -940,25 +559,50 @@ export function InventoryCoordination() {
                 <div className="flex items-center gap-3">
                   <CheckCircle className="w-6 h-6 text-[#10B981]" />
                   <div>
-                    <p className="text-sm font-bold text-[#1F2937]">Full Fulfillment</p>
-                    <p className="text-xs text-[#6B7280]">1,240 SKUs</p>
+                    <p className="text-sm font-bold text-[#1F2937]">Hub delivery &amp; SKU coverage</p>
+                    <p className="text-xs text-[#6B7280]">
+                      Total SKUs: {totalSkusKpi?.value ?? '—'}
+                      {lowStockKpi ? ` · Low stock: ${lowStockKpi.value}` : ''}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-[#10B981]">95%</p>
-                  <p className="text-xs text-[#10B981]">On Schedule</p>
+                  <p className="text-lg font-bold text-[#10B981]">
+                    {deliveryPct != null && !Number.isNaN(deliveryPct) ? `${deliveryPct}%` : '—'}
+                  </p>
+                  <p className="text-xs text-[#10B981]">Delivery timeliness (hub)</p>
                 </div>
               </div>
               
               <div className="w-full bg-[#D1FAE5] rounded-full h-2 mb-3">
-                <div className="bg-[#10B981] h-2 rounded-full" style={{ width: '95%' }} />
+                <div className="bg-[#10B981] h-2 rounded-full" style={{ width: deliveryBar }} />
               </div>
               
               <div className="grid grid-cols-2 gap-2 text-xs text-[#6B7280]">
-                <div>Vendors on schedule: <span className="font-bold text-[#1F2937]">12</span></div>
-                <div>Partial fulfillment: <span className="font-bold text-[#1F2937]">1</span></div>
-                <div>Late shipments: <span className="font-bold text-[#1F2937]">0</span></div>
-                <div>On-time rate: <span className="font-bold text-[#10B981]">95%</span></div>
+                <div>
+                  Active vendors (hub):{' '}
+                  <span className="font-bold text-[#1F2937]">
+                    {hubSummary?.totalVendors != null ? String(hubSummary.totalVendors) : '—'}
+                  </span>
+                </div>
+                <div>
+                  Open POs:{' '}
+                  <span className="font-bold text-[#1F2937]">
+                    {hubSummary?.openPOs != null ? String(hubSummary.openPOs) : '—'}
+                  </span>
+                </div>
+                <div>
+                  Critical alerts:{' '}
+                  <span className="font-bold text-[#1F2937]">
+                    {hubSummary?.criticalAlerts != null ? String(hubSummary.criticalAlerts) : '—'}
+                  </span>
+                </div>
+                <div>
+                  SLA compliance:{' '}
+                  <span className="font-bold text-[#10B981]">
+                    {hubSummary?.slaCompliance != null ? `${hubSummary.slaCompliance}%` : '—'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -971,23 +615,30 @@ export function InventoryCoordination() {
                 <div className="flex items-center gap-3">
                   <AlertTriangle className="w-6 h-6 text-[#EF4444] animate-pulse" />
                   <div>
-                    <p className="text-sm font-bold text-[#1F2937]">Stockouts (Vendor Fault)</p>
-                    <p className="text-xs text-[#6B7280]">12 SKUs</p>
+                    <p className="text-sm font-bold text-[#1F2937]">Stockouts</p>
+                    <p className="text-xs text-[#6B7280]">
+                      {stockoutKpi?.value ?? stockouts.length} SKU
+                      {Number(stockoutKpi?.value ?? stockouts.length) === 1 ? '' : 's'} (API)
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="inline-block px-3 py-1 bg-[#EF4444] text-white text-xs font-bold rounded-full">
-                    Action Needed
+                    {stockouts.length > 0 ? 'Review' : 'OK'}
                   </span>
-                  <p className="text-xs text-[#EF4444] mt-1">Immediate Action</p>
+                  <p className="text-xs text-[#EF4444] mt-1">
+                    {stockouts.length > 0 ? 'Needs attention' : 'No open stockouts'}
+                  </p>
                 </div>
               </div>
               
               <div className="grid grid-cols-2 gap-2 text-xs text-[#6B7280]">
-                <div>Affected vendors: <span className="font-bold text-[#1F2937]">3</span></div>
-                <div>Critical stockouts: <span className="font-bold text-[#EF4444]">5</span></div>
-                <div>High-priority SKUs: <span className="font-bold text-[#1F2937]">7</span></div>
-                <div>Lost sales: <span className="font-bold text-[#EF4444]">₹2.5L</span></div>
+                <div>
+                  Listed rows: <span className="font-bold text-[#1F2937]">{stockouts.length}</span>
+                </div>
+                <div>
+                  Aging alerts: <span className="font-bold text-[#1F2937]">{agingAlerts.length}</span>
+                </div>
               </div>
             </div>
           </div>

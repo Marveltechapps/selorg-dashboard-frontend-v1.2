@@ -35,6 +35,7 @@ import { EmptyState } from '../../ui/ux-components';
 import { exportToPDF } from '../../../utils/pdfExport';
 import {
   fetchGRNList,
+  fetchShipments,
   approveGRN,
   rejectGRN,
   updateGRNItem,
@@ -98,6 +99,38 @@ interface RTV {
   vendor: string;
   createdDate: string;
   items: string[];
+}
+
+function mapShipmentRecord(raw: Record<string, unknown>): Shipment {
+  const id = String(raw._id ?? raw.id ?? '');
+  const tracking = String(raw.trackingNumber ?? raw.shipmentId ?? '—');
+  const statusRaw = String(raw.status ?? 'IN_TRANSIT').toUpperCase();
+  let status: Shipment['status'] = 'In Transit';
+  if (statusRaw.includes('STOP')) status = 'Stopped';
+  else if (statusRaw.includes('ARRIV')) status = 'Arriving';
+  else if (statusRaw.includes('ALERT')) status = 'Alert';
+  const eta =
+    raw.estimatedArrival != null && raw.estimatedArrival !== ''
+      ? new Date(String(raw.estimatedArrival)).toLocaleString()
+      : '—';
+  const lat = typeof raw.lat === 'number' ? raw.lat : Number(raw.lat) || 0;
+  const lng = typeof raw.lng === 'number' ? raw.lng : Number(raw.lng) || 0;
+  const progress =
+    typeof raw.progress === 'number' && !Number.isNaN(raw.progress) ? raw.progress : 0;
+  return {
+    id,
+    shipmentId: tracking,
+    vendor: String(raw.carrier ?? raw.vendorName ?? raw.vendor ?? '—'),
+    currentLocation: String(raw.currentLocation ?? raw.location ?? '—'),
+    eta,
+    status,
+    driver: String(raw.driver ?? '—'),
+    driverPhone: String(raw.driverPhone ?? '—'),
+    truckNumber: String(raw.truckNumber ?? '—'),
+    progress,
+    lat,
+    lng,
+  };
 }
 
 // Status Badge Component
@@ -224,12 +257,28 @@ export function InboundOperations() {
   // Stateful copies so UI updates reflect immediately (in-memory)
   const [grns, setGrns] = useState<GRN[]>([]);
   const [rtvs, setRtvs] = useState<RTV[]>([]);
+  const [shipments, setShipments] = useState<Shipment[]>([]);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const broadcastRef = React.useRef<BroadcastChannel | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [rtvReason, setRtvReason] = useState<string>('');
-  
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showCreateRTVModal, setShowCreateRTVModal] = useState(false);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [showShipmentDetailModal, setShowShipmentDetailModal] = useState(false);
+  const [approvalNotes, setApprovalNotes] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionDescription, setRejectionDescription] = useState('');
+  const [qualityChecks, setQualityChecks] = useState({
+    inspected: false,
+    noDamage: false,
+    quantitiesVerified: false,
+    documentsComplete: false,
+  });
+
   // UI class shared for table action buttons to ensure uniform size/alignment
   const actionBtnBaseClass =
     'px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 min-w-[92px] flex items-center justify-center';
@@ -302,19 +351,24 @@ export function InboundOperations() {
           toast.error('Failed to load GRNs');
         }
       }
+      try {
+        const shipResp = await fetchShipments({ page: 1, limit: 50 });
+        if (!mounted) return;
+        let shipItems = shipResp?.data ?? shipResp?.items ?? shipResp;
+        if (shipItems?.pagination && Array.isArray(shipItems.data)) shipItems = shipItems.data;
+        const sarr = Array.isArray(shipItems) ? shipItems : [];
+        setShipments(sarr.map((s: Record<string, unknown>) => mapShipmentRecord(s)));
+      } catch (err) {
+        console.error('Failed to load shipments', err);
+        if (mounted) {
+          setShipments([]);
+          toast.error('Failed to load shipments');
+        }
+      }
     })();
     return () => { mounted = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  
-  
-  // Modal states
-  const [showApproveModal, setShowApproveModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
-  const [showCreateRTVModal, setShowCreateRTVModal] = useState(false);
-  const [showAdjustModal, setShowAdjustModal] = useState(false);
-  const [showShipmentDetailModal, setShowShipmentDetailModal] = useState(false);
 
   // PDF Export function
   const downloadGRNPDF = (grn: GRN) => {
@@ -423,40 +477,55 @@ export function InboundOperations() {
   // Utility & action handlers (simulate backend behavior / downloads)
   const handleRefresh = async () => {
     try {
-      const resp = await fetchGRNList({ page: 1, limit: 25 });
+      const [resp, shipResp] = await Promise.all([
+        fetchGRNList({ page: 1, limit: 25 }),
+        fetchShipments({ page: 1, limit: 50 }),
+      ]);
       let items = resp && (resp.data || resp.items) ? resp.data || resp.items : resp;
       if (!items) items = [];
       if (items.pagination && Array.isArray(items.data)) items = items.data;
-      if (Array.isArray(items) && items.length > 0) {
-        const mappedItems = items.map((item: any) => ({
-          id: item.id || item._id || item.grnNumber || `grn-${Date.now()}-${Math.random()}`,
-          grnNumber: item.grnNumber || item.grn_number || item.id || 'N/A',
-          shipmentId: item.shipmentId || item.shipment_id || item.shipment || 'N/A',
-          vendor: item.vendor || item.vendorName || 'N/A',
-          warehouse: item.warehouse || item.warehouseName || 'N/A',
-          date: item.date || item.createdAt || new Date().toLocaleDateString(),
-          status: item.status === 'approved' ? 'Approved' : item.status === 'pending' ? 'Pending Approval' : item.status === 'rejected' ? 'Rejected' : (item.status || 'Pending Approval') as GRNStatus,
-          exceptionType: item.exceptionType || item.exception_type || 'No Issue' as ExceptionType,
-          exceptionDetails: item.exceptionDetails || item.exception_details,
-          lineItems: Array.isArray(item.lineItems) ? item.lineItems : Array.isArray(item.items) ? item.items : [],
-          notes: item.notes,
-          qualityChecked: item.qualityChecked || item.quality_checked,
-          documentsComplete: item.documentsComplete || item.documents_complete,
-        }));
-        const filteredItems = mappedItems.filter((g: GRN) => !archivedGrnIds.has(g.id));
-        setGrns(filteredItems);
-        saveSnapshot(filteredItems, rtvs);
-        toast.success('Data refreshed from server');
-      } else {
-        setGrns([...mockGRNs]);
-        setRtvs([...mockRTVs]);
-        toast.success('Data refreshed');
-      }
+      const mappedItems = (Array.isArray(items) ? items : []).map((item: Record<string, unknown>) => ({
+        id: String(item.id ?? item._id ?? item.grnNumber ?? `grn-${Date.now()}`),
+        grnNumber: String(item.grnNumber ?? item.grn_number ?? item.id ?? 'N/A'),
+        shipmentId: String(item.shipmentId ?? item.shipment_id ?? item.shipment ?? 'N/A'),
+        vendor: String(item.vendor ?? item.vendorName ?? 'N/A'),
+        warehouse: String(item.warehouse ?? item.warehouseName ?? 'N/A'),
+        date: item.date
+          ? String(item.date)
+          : item.createdAt
+            ? new Date(String(item.createdAt)).toLocaleDateString()
+            : new Date().toLocaleDateString(),
+        status: (item.status === 'approved'
+          ? 'Approved'
+          : item.status === 'pending'
+            ? 'Pending Approval'
+            : item.status === 'rejected'
+              ? 'Rejected'
+              : (item.status as string) || 'Pending Approval') as GRNStatus,
+        exceptionType: (item.exceptionType ?? item.exception_type ?? 'No Issue') as ExceptionType,
+        exceptionDetails: item.exceptionDetails ?? item.exception_details as string | undefined,
+        lineItems: Array.isArray(item.lineItems)
+          ? item.lineItems
+          : Array.isArray(item.items)
+            ? item.items
+            : [],
+        notes: item.notes as string | undefined,
+        qualityChecked: item.qualityChecked ?? item.quality_checked as boolean | undefined,
+        documentsComplete: item.documentsComplete ?? item.documents_complete as boolean | undefined,
+      })) as GRN[];
+      const filteredItems = mappedItems.filter((g: GRN) => !archivedGrnIds.has(g.id));
+      setGrns(filteredItems);
+      saveSnapshot(filteredItems, rtvs);
+
+      let shipItems = shipResp?.data ?? shipResp?.items ?? shipResp;
+      if (shipItems?.pagination && Array.isArray(shipItems.data)) shipItems = shipItems.data;
+      const sarr = Array.isArray(shipItems) ? shipItems : [];
+      setShipments(sarr.map((s: Record<string, unknown>) => mapShipmentRecord(s)));
+
+      toast.success('Data refreshed from server');
     } catch (err) {
       console.error('Refresh error', err);
-      setGrns([...mockGRNs]);
-      setRtvs([...mockRTVs]);
-      toast.info('Using default data');
+      toast.error('Failed to refresh inbound data');
     }
   };
 
@@ -616,24 +685,15 @@ export function InboundOperations() {
     };
   }, []);
 
-  // Form states
-  const [approvalNotes, setApprovalNotes] = useState('');
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [rejectionDescription, setRejectionDescription] = useState('');
-  const [qualityChecks, setQualityChecks] = useState({
-    inspected: false,
-    noDamage: false,
-    quantitiesVerified: false,
-    documentsComplete: false,
-  });
-
   // Calculate dashboard metrics (derived from state)
-  const totalGRNsToday = grns.filter(g => g.date === 'Dec 19, 2024').length;
+  const todayLabel = new Date().toLocaleDateString();
+  const totalGRNsToday = grns.filter((g) => g.date === todayLabel).length;
   const pendingApproval = grns.filter(g => g.status === 'Pending Approval').length;
   const approvedGRNs = grns.filter(g => g.status === 'Approved').length;
   const rejectedGRNs = grns.filter(g => g.status === 'Rejected').length;
-  const inTransit = mockShipments.length + 12; // 14 total
+  const inTransit = shipments.filter((s) => s.status === 'In Transit').length;
   const exceptions = grns.filter(g => g.exceptionType !== 'No Issue').length;
+  const shipmentsWithCoords = shipments.filter((s) => s.lat !== 0 || s.lng !== 0);
 
   // Get action buttons based on status
   // Helper: check if an RTV already exists for a GRN
@@ -1201,17 +1261,16 @@ export function InboundOperations() {
               </button>
             </div>
             <div className="h-[500px] bg-[#F9FAFB] rounded-lg overflow-hidden border-2 border-[#E5E7EB] relative">
-              {mockShipments.length > 0 ? (
+              {shipments.length > 0 ? (
                 <>
-                  {/* Google Maps iframe - Note: Replace API key with your own valid Google Maps API key */}
-                  {/* To get a valid API key: https://console.cloud.google.com/google/maps-apis */}
-                  {/* Set VITE_GOOGLE_MAPS_API_KEY in your .env file */}
-                  {import.meta.env.VITE_GOOGLE_MAPS_API_KEY && 
+                  {/* Google Maps iframe - requires coordinates on shipment records and VITE_GOOGLE_MAPS_API_KEY */}
+                  {import.meta.env.VITE_GOOGLE_MAPS_API_KEY &&
                    import.meta.env.VITE_GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE' &&
-                   import.meta.env.VITE_GOOGLE_MAPS_API_KEY.trim() !== '' ? (
+                   import.meta.env.VITE_GOOGLE_MAPS_API_KEY.trim() !== '' &&
+                   shipmentsWithCoords.length > 0 ? (
                     <div className="relative w-full h-full">
                       <iframe
-                        src={`https://www.google.com/maps/embed/v1/view?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&center=${mockShipments[0].lat},${mockShipments[0].lng}&zoom=11&markers=color:red%7Clabel:S%7C${mockShipments.map(s => `${s.lat},${s.lng}`).join('%7C')}`}
+                        src={`https://www.google.com/maps/embed/v1/view?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&center=${shipmentsWithCoords[0].lat},${shipmentsWithCoords[0].lng}&zoom=11&markers=color:red%7Clabel:S%7C${shipmentsWithCoords.map(s => `${s.lat},${s.lng}`).join('%7C')}`}
                         width="100%"
                         height="100%"
                         style={{ border: 0 }}
@@ -1239,9 +1298,9 @@ export function InboundOperations() {
                         <p className="text-xs text-[#9CA3AF] mb-3">3. Get your API key from: <a href="https://console.cloud.google.com/google/maps-apis" target="_blank" rel="noopener noreferrer" className="text-[#4F46E5] hover:underline">Google Cloud Console</a></p>
                         <p className="text-xs text-red-600 font-medium">Note: The map requires a valid Google Maps API key with Maps Embed API enabled</p>
                         <div className="mt-4 p-3 bg-white rounded-lg border border-[#E5E7EB] text-left">
-                          <p className="text-xs font-bold text-[#1F2937] mb-2">Active Shipments ({mockShipments.length})</p>
+                          <p className="text-xs font-bold text-[#1F2937] mb-2">Active Shipments ({shipments.length})</p>
                           <div className="space-y-2">
-                            {mockShipments.map((shipment) => (
+                            {shipments.map((shipment) => (
                               <div key={shipment.id} className="flex items-center gap-2 text-xs">
                                 <div
                                   className={`w-2 h-2 rounded-full ${
@@ -1261,11 +1320,11 @@ export function InboundOperations() {
                     </div>
                   )}
                   {/* Shipment markers overlay */}
-                  {import.meta.env.VITE_GOOGLE_MAPS_API_KEY && import.meta.env.VITE_GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE' && (
+                  {import.meta.env.VITE_GOOGLE_MAPS_API_KEY && import.meta.env.VITE_GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE' && shipmentsWithCoords.length > 0 && (
                     <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-[#E5E7EB]">
                       <p className="text-xs font-bold text-[#1F2937] mb-2">Active Shipments</p>
                       <div className="space-y-1">
-                        {mockShipments.map((shipment) => (
+                        {shipmentsWithCoords.map((shipment) => (
                           <div key={shipment.id} className="flex items-center gap-2 text-xs">
                             <div
                               className={`w-2 h-2 rounded-full ${
@@ -1301,7 +1360,7 @@ export function InboundOperations() {
               <p className="text-xs text-[#6B7280]">{inTransit} in transit</p>
             </div>
             <div className="h-[500px] overflow-y-auto">
-              {mockShipments.map((shipment) => (
+              {shipments.map((shipment) => (
                 <div 
                   key={shipment.id}
                   onClick={() => {
@@ -1334,10 +1393,6 @@ export function InboundOperations() {
                   </div>
                 </div>
               ))}
-              {/* Placeholder for remaining shipments */}
-              <div className="px-6 py-4 text-center text-sm text-[#9CA3AF]">
-                + {inTransit - mockShipments.length} more shipments
-              </div>
             </div>
           </div>
         </div>

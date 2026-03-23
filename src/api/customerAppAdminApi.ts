@@ -34,7 +34,8 @@ export interface Category {
   updatedAt?: string;
 }
 
-export interface BannerContentItem {
+/** Blocks inside a tappable inline banner’s sub-page (no further nesting). */
+export type BannerLeafContentItem = {
   _id?: string;
   type: 'banner' | 'video' | 'image' | 'text' | 'products';
   order?: number;
@@ -42,11 +43,24 @@ export interface BannerContentItem {
   videoUrl?: string;
   text?: string;
   productIds?: string[];
+  link?: string;
+  isNavigable?: boolean;
+};
+
+export interface BannerContentItem extends BannerLeafContentItem {
+  /** Sub-page header when opening this tappable block */
+  blockTitle?: string;
+  /** Same layout as main landing: hero = imageUrl, then these blocks */
+  nestedContentItems?: BannerLeafContentItem[];
 }
 
 export interface Banner {
   _id: string;
+  /** Banner type: placement lane (Hero/Large/Info → top; Small/Mid/Category → in-feed). */
   slot: string;
+  presentationMode?: 'single' | 'carousel';
+  /** When false, home banner is display-only */
+  isNavigable?: boolean;
   imageUrl: string;
   link?: string;
   redirectType?: string | null;
@@ -263,6 +277,12 @@ export interface HomeSectionDefinitionItem {
   taglineText?: string;
   categoryIds?: string[];
   bannerId?: string;
+  /** Ordered banner Mongo IDs (Main / Sub). Preferred over bannerId. */
+  bannerIds?: string[];
+  /** single = one picker; multiple = N pickers */
+  bannerSelectionMode?: 'single' | 'multiple';
+  /** Banner Main / Sub: multi-slide carousel vs single static image */
+  useCarousel?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -278,7 +298,19 @@ export async function fetchSectionDefinitions(): Promise<HomeSectionDefinitionIt
   const res = await apiRequest<ListResponse<HomeSectionDefinitionItem>>(`${PREFIX}/section-definitions`);
   return res.data ?? [];
 }
-export async function createSectionDefinition(body: { key?: string; label?: string; order?: number; type?: string; collectionId?: string; taglineText?: string; categoryIds?: string[]; bannerId?: string }): Promise<HomeSectionDefinitionItem> {
+export async function createSectionDefinition(body: {
+  key?: string;
+  label?: string;
+  order?: number;
+  type?: string;
+  collectionId?: string;
+  taglineText?: string;
+  categoryIds?: string[];
+  bannerId?: string;
+  bannerIds?: string[];
+  bannerSelectionMode?: 'single' | 'multiple';
+  useCarousel?: boolean;
+}): Promise<HomeSectionDefinitionItem> {
   const res = await apiRequest<OneResponse<HomeSectionDefinitionItem>>(`${PREFIX}/section-definitions`, {
     method: 'POST',
     body: JSON.stringify(body),
@@ -289,7 +321,20 @@ export async function fetchCollectionsForHome(): Promise<CollectionOption[]> {
   const res = await apiRequest<CollectionOption[] | { data?: CollectionOption[] }>(`/customer/admin/cms/collections`);
   return Array.isArray(res) ? res : (res as { data?: CollectionOption[] })?.data ?? [];
 }
-export async function updateSectionDefinition(id: string, body: { label?: string; order?: number; collectionId?: string; taglineText?: string; categoryIds?: string[]; bannerId?: string }): Promise<HomeSectionDefinitionItem> {
+export async function updateSectionDefinition(
+  id: string,
+  body: {
+    label?: string;
+    order?: number;
+    collectionId?: string;
+    taglineText?: string;
+    categoryIds?: string[];
+    bannerId?: string;
+    bannerIds?: string[];
+    bannerSelectionMode?: 'single' | 'multiple';
+    useCarousel?: boolean;
+  }
+): Promise<HomeSectionDefinitionItem> {
   const res = await apiRequest<OneResponse<HomeSectionDefinitionItem>>(`${PREFIX}/section-definitions/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),

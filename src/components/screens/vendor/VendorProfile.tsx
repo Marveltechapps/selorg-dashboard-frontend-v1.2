@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, Star, Package, CheckCircle, FileText, MessageSquare, TrendingUp, AlertTriangle, Clock,
-  X, MoreVertical, Edit, BarChart3, Pause, Phone, MapPin, CreditCard,
+  X, MoreVertical, Edit, BarChart3, Pause, PlayCircle, Phone, MapPin, CreditCard,
   XCircle, Download, Eye, Copy, Trash2, Save, Loader2
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -27,37 +27,20 @@ export function VendorProfileOverview({
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [qcChecks, setQcChecks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Mock performance chart data
-  const performanceData = Array.from({ length: 30 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (29 - i));
-    return {
-      date: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-      sla: Math.min(100, Math.round(72 + Math.random() * 18 + i * 0.3)),
-      qc: Math.min(100, Math.round(78 + Math.random() * 15 + i * 0.2)),
-    };
-  });
-
-  // Mock documents
-  const documents = [
-    { name: 'GST Certificate', uploadDate: '2024-01-15', expiryDate: '2025-01-14', status: 'valid' },
-    { name: 'FSSAI License', uploadDate: '2024-02-10', expiryDate: '2025-02-09', status: 'valid' },
-    { name: 'Trade License', uploadDate: '2023-11-01', expiryDate: '2026-03-25', status: 'expiring' },
-    { name: 'Bank Details', uploadDate: '2024-01-15', expiryDate: '—', status: 'valid' },
-  ];
+  const [performanceData, setPerformanceData] = useState<{ date: string; sla: number; qc: number }[]>([]);
+  const [documents, setDocuments] = useState<
+    { name: string; uploadDate: string; expiryDate: string; status: string }[]
+  >([]);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [posResp, qcResp] = await Promise.all([
-          vendorApi.getVendorPurchaseOrders
-            ? vendorApi.getVendorPurchaseOrders(vendorId)
-            : Promise.resolve([]),
-          vendorApi.getVendorQCChecks
-            ? vendorApi.getVendorQCChecks(vendorId)
-            : Promise.resolve([])
+        const [posResp, qcResp, perfResp, certResp] = await Promise.all([
+          vendorApi.getVendorPurchaseOrders(vendorId),
+          vendorApi.getVendorQCChecks(vendorId),
+          vendorApi.getVendorPerformance(vendorId).catch(() => null),
+          vendorApi.listVendorCertificates(vendorId).catch(() => []),
         ]);
         const pos = Array.isArray(posResp) ? posResp
           : Array.isArray(posResp?.data) ? posResp.data : [];
@@ -65,6 +48,62 @@ export function VendorProfileOverview({
           : Array.isArray(qcResp?.data) ? qcResp.data : [];
         setPurchaseOrders(pos);
         setQcChecks(qcs);
+
+        const perf =
+          perfResp && typeof perfResp === 'object' && 'data' in perfResp && (perfResp as { data: unknown }).data
+            ? ((perfResp as { data: Record<string, unknown> }).data as Record<string, unknown>)
+            : (perfResp as Record<string, unknown> | null);
+        const ts = perf && Array.isArray((perf as { timeseries?: unknown[] }).timeseries)
+          ? (perf as { timeseries: { date?: string; sla?: number; qc?: number }[] }).timeseries
+          : [];
+        if (ts.length > 0) {
+          setPerformanceData(
+            ts.map((row) => ({
+              date: String(row.date ?? ''),
+              sla: Number(row.sla ?? 0),
+              qc: Number(row.qc ?? 0),
+            }))
+          );
+        } else if (perf) {
+          const sla = Number((perf as { deliveryTimelinessPct?: number }).deliveryTimelinessPct ?? 0);
+          const qc = Number(
+            (perf as { productQualityPct?: number }).productQualityPct ??
+              (perf as { compliancePct?: number }).compliancePct ??
+              0
+          );
+          const label = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+          setPerformanceData([{ date: label, sla, qc }]);
+        } else {
+          setPerformanceData([]);
+        }
+
+        const rawCerts = Array.isArray(certResp) ? certResp : (certResp as { data?: unknown[] })?.data ?? [];
+        const certs = Array.isArray(rawCerts) ? rawCerts : [];
+        setDocuments(
+          certs.map((c: Record<string, unknown>) => {
+            const exp = c.expiresAt ?? c.validUntil;
+            const expStr =
+              exp != null && exp !== ''
+                ? new Date(String(exp)).toLocaleDateString('en-IN')
+                : '—';
+            const st = String(c.status ?? 'pending').toLowerCase();
+            const status =
+              st === 'valid' || st === 'verified'
+                ? 'valid'
+                : st === 'expired'
+                  ? 'expired'
+                  : 'expiring';
+            return {
+              name: String(c.name ?? c.type ?? 'Certificate'),
+              uploadDate:
+                c.createdAt != null
+                  ? new Date(String(c.createdAt)).toLocaleDateString('en-IN')
+                  : '—',
+              expiryDate: expStr,
+              status,
+            };
+          })
+        );
       } catch (err) {
         console.error('Failed to load vendor profile data:', err);
       } finally {
@@ -176,10 +215,35 @@ export function VendorProfileOverview({
         {/* Stats row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
           {[
-            { label: 'On-Time Delivery', value: '—', icon: <Clock size={15} />, color: 'text-green-600' },
-            { label: 'QC Pass Rate',     value: '—', icon: <CheckCircle size={15} />, color: 'text-blue-600' },
-            { label: 'Open POs',         value: String(purchaseOrders.filter(p => !['fulfilled','completed','cancelled'].includes((p.status||'').toLowerCase())).length), icon: <Package size={15} />, color: 'text-indigo-600' },
-            { label: 'Member Since',     value: '2024', icon: <Star size={15} />, color: 'text-amber-500' },
+            {
+              label: 'On-Time Delivery',
+              value:
+                performanceData.length > 0
+                  ? `${performanceData[performanceData.length - 1].sla}%`
+                  : '—',
+              icon: <Clock size={15} />,
+              color: 'text-green-600',
+            },
+            {
+              label: 'QC Pass Rate',
+              value:
+                performanceData.length > 0
+                  ? `${performanceData[performanceData.length - 1].qc}%`
+                  : '—',
+              icon: <CheckCircle size={15} />,
+              color: 'text-blue-600',
+            },
+            {
+              label: 'Open POs',
+              value: String(
+                purchaseOrders.filter((p) =>
+                  !['fulfilled', 'completed', 'cancelled'].includes((p.status || '').toLowerCase())
+                ).length
+              ),
+              icon: <Package size={15} />,
+              color: 'text-indigo-600',
+            },
+            { label: 'Member Since', value: '—', icon: <Star size={15} />, color: 'text-amber-500' },
           ].map((stat, i) => (
             <div key={i} className="bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg p-3">
               <div className={`${stat.color} mb-1`}>{stat.icon}</div>
@@ -215,7 +279,10 @@ export function VendorProfileOverview({
             <div className="space-y-6">
               <div>
                 <h3 className="font-bold text-[#212121] mb-1">SLA & Quality Trend</h3>
-                <p className="text-xs text-[#9CA3AF] mb-4">Last 30 days</p>
+                <p className="text-xs text-[#9CA3AF] mb-4">From vendor performance API</p>
+                {performanceData.length === 0 ? (
+                  <p className="text-sm text-[#9CA3AF] py-8 text-center">No performance time series yet</p>
+                ) : (
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={performanceData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
@@ -229,6 +296,8 @@ export function VendorProfileOverview({
                     <Line type="monotone" dataKey="qc"  stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="qc" />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
+                {performanceData.length > 0 && (
                 <div className="flex gap-4 mt-2">
                   <span className="flex items-center gap-1.5 text-xs text-[#757575]">
                     <span className="w-3 h-0.5 bg-green-500 inline-block rounded"></span> SLA Compliance
@@ -237,6 +306,7 @@ export function VendorProfileOverview({
                     <span className="w-3 h-0.5 bg-blue-500 inline-block rounded"></span> QC Pass Rate
                   </span>
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -340,6 +410,9 @@ export function VendorProfileOverview({
           {/* Documents Tab */}
           {activeTab === 'documents' && (
             <div className="space-y-3">
+              {documents.length === 0 ? (
+                <p className="text-sm text-[#9CA3AF] py-8 text-center">No certificates on file</p>
+              ) : null}
               {documents.map((doc, i) => (
                 <div key={i} className="flex items-center justify-between p-3 
                                         bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg">
@@ -380,11 +453,16 @@ interface Vendor {
 
 interface VendorProfileProps {
   vendor: Vendor;
+  /** Full-screen overlay (default) or embedded panel in Vendor List. */
+  variant?: 'overlay' | 'inline';
   onClose: () => void;
   onEdit: () => void;
   onMessage: () => void;
   onViewDocs: () => void;
   onSuspend: () => void;
+  onUnsuspend?: () => void;
+  onDeactivate?: () => void;
+  onActivate?: () => void;
   onReport?: () => void;
 }
 
@@ -400,7 +478,19 @@ function formatAddress(addr: any): { street: string; city: string; state: string
   };
 }
 
-export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, onSuspend, onReport }: VendorProfileProps) {
+export function VendorProfile({
+  vendor,
+  variant = 'overlay',
+  onClose,
+  onEdit,
+  onMessage,
+  onViewDocs,
+  onSuspend,
+  onUnsuspend,
+  onDeactivate,
+  onActivate,
+  onReport,
+}: VendorProfileProps) {
   const [openMenu, setOpenMenu] = useState(false);
   const [showFullAccount, setShowFullAccount] = useState(false);
   const [fullVendor, setFullVendor] = useState<any>(null);
@@ -494,6 +584,14 @@ export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, 
   };
 
   if (loading) {
+    if (variant === 'inline') {
+      return (
+        <div className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border border-[#E5E7EB] bg-white">
+          <Loader2 size={48} className="animate-spin text-[#4F46E5]" />
+          <p className="mt-4 text-[#6B7280]">Loading vendor profile...</p>
+        </div>
+      );
+    }
     return (
       <div className="fixed inset-0 bg-white z-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -504,8 +602,16 @@ export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, 
     );
   }
 
+  const shellClass =
+    variant === 'inline'
+      ? 'relative z-0 flex max-h-[min(80vh,920px)] flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm'
+      : 'fixed inset-0 bg-white z-50 overflow-hidden animate-slide-in-right';
+
+  const scrollBodyClass =
+    variant === 'inline' ? 'min-h-0 flex-1 overflow-y-auto' : 'h-[calc(100vh-64px)] overflow-y-auto';
+
   return (
-    <div className="fixed inset-0 bg-white z-50 overflow-hidden animate-slide-in-right">
+    <div className={shellClass}>
       {/* Header Bar - Fixed */}
       <div className="sticky top-0 h-16 bg-white border-b border-[#E5E7EB] shadow-sm flex items-center justify-between px-6 z-20">
         <div className="flex items-center gap-4">
@@ -552,9 +658,48 @@ export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, 
                     <BarChart3 size={14} /> Performance Report
                   </button>
                   <div className="border-t border-[#E5E7EB] my-1" />
-                  <button onClick={() => { onSuspend(); setOpenMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-[#FEF3C7] flex items-center gap-2 text-[#92400E]">
-                    <Pause size={14} /> Suspend Vendor
-                  </button>
+                  {vendor.status === 'Suspended' && onUnsuspend ? (
+                    <button
+                      onClick={() => {
+                        onUnsuspend();
+                        setOpenMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-[#D1FAE5] flex items-center gap-2 text-[#065F46]"
+                    >
+                      <PlayCircle size={14} /> Lift Suspension
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        onSuspend();
+                        setOpenMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-[#FEF3C7] flex items-center gap-2 text-[#92400E]"
+                    >
+                      <Pause size={14} /> Suspend
+                    </button>
+                  )}
+                  {vendor.status === 'Inactive' && onActivate ? (
+                    <button
+                      onClick={() => {
+                        onActivate();
+                        setOpenMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-[#D1FAE5] flex items-center gap-2 text-[#065F46]"
+                    >
+                      <CheckCircle size={14} /> Activate
+                    </button>
+                  ) : onDeactivate ? (
+                    <button
+                      onClick={() => {
+                        onDeactivate();
+                        setOpenMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-[#FEE2E2] flex items-center gap-2 text-[#B91C1C]"
+                    >
+                      <XCircle size={14} /> Deactivate
+                    </button>
+                  ) : null}
                 </div>
               </>
             )}
@@ -569,7 +714,7 @@ export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, 
       </div>
 
       {/* Scrollable Content */}
-      <div className="h-[calc(100vh-64px)] overflow-y-auto">
+      <div className={scrollBodyClass}>
         {/* Vendor Hero Card */}
         <div className="bg-gradient-to-b from-[#F9FAFB] to-white border-b border-[#E5E7EB] p-6">
           <div className="max-w-7xl mx-auto flex gap-6">
@@ -956,7 +1101,7 @@ export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, 
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const content = `Document: ${doc.name}\nStatus: ${doc.status}\nValid Until: ${doc.valid_until || 'N/A'}\nDays Left: ${doc.days_left || 'N/A'}\n\nThis is a sample document for demonstration purposes.\nIn a production environment, this would be the actual document content.`;
+                          const content = `Document: ${doc.name}\nStatus: ${doc.status}\nValid Until: ${doc.valid_until || 'N/A'}\nDays Left: ${doc.days_left || 'N/A'}`;
                           const htmlContent = createPDFViewHTML(doc.name, content);
                           const blob = new Blob([htmlContent], { type: 'text/html' });
                           const url = URL.createObjectURL(blob);
@@ -975,7 +1120,7 @@ export function VendorProfile({ vendor, onClose, onEdit, onMessage, onViewDocs, 
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const content = `Document: ${doc.name}\nStatus: ${doc.status}\nValid Until: ${doc.valid_until || 'N/A'}\nDays Left: ${doc.days_left || 'N/A'}\n\nThis is a sample document for demonstration purposes.`;
+                          const content = `Document: ${doc.name}\nStatus: ${doc.status}\nValid Until: ${doc.valid_until || 'N/A'}\nDays Left: ${doc.days_left || 'N/A'}`;
                           const pdfBlob = createPDFBlob(content, doc.name);
                           const url = URL.createObjectURL(pdfBlob);
                           const a = document.createElement('a');

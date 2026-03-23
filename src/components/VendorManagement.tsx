@@ -30,7 +30,7 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
             {activeTab === 'overview' && <VendorOverview searchQuery={vendorSearchQuery} />}
-            {activeTab === 'vendor-list' && <VendorList />}
+            {activeTab === 'vendor-list' && <VendorList onNavigateTab={setActiveTab} />}
             {activeTab === 'onboarding' && <VendorOnboarding />}
             {activeTab === 'po' && <PurchaseOrders />}
             {activeTab === 'inbound' && <InboundOperations />}

@@ -1,5 +1,10 @@
 import { API_ENDPOINTS } from '../../../config/api';
 import { apiRequest } from '../../../api/apiClient';
+import { DASHBOARD_TOPICS, emitDashboardRefresh } from '../../../lib/dashboardRefreshBus';
+
+function notifyFinancePayablesMutated() {
+  emitDashboardRefresh(DASHBOARD_TOPICS.financePayables);
+}
 
 export interface VendorInvoice {
   id: string;
@@ -179,11 +184,13 @@ export async function bulkApproveInvoices(ids: string[]): Promise<{ approvedCoun
   if (!payload) {
     throw new Error('Failed to bulk approve invoices');
   }
-  return {
+  const out = {
     approvedCount: Number(payload.approvedCount ?? 0),
     totalRequested: Number(payload.totalRequested ?? ids.length),
     data: Array.isArray(payload.data) ? payload.data.map((i: Record<string, unknown>) => mapInvoice(i)) : [],
   };
+  notifyFinancePayablesMutated();
+  return out;
 }
 
 export async function approveInvoice(id: string): Promise<VendorInvoice> {
@@ -194,6 +201,7 @@ export async function approveInvoice(id: string): Promise<VendorInvoice> {
   if (!raw) {
     throw new Error('Failed to approve invoice');
   }
+  notifyFinancePayablesMutated();
   return mapInvoice(raw);
 }
 
@@ -206,6 +214,7 @@ export async function rejectInvoice(id: string, reason: string): Promise<VendorI
   if (!raw) {
     throw new Error('Failed to reject invoice');
   }
+  notifyFinancePayablesMutated();
   return mapInvoice(raw);
 }
 
@@ -217,6 +226,7 @@ export async function markInvoicePaid(id: string): Promise<VendorInvoice> {
   if (!raw) {
     throw new Error('Failed to mark invoice as paid');
   }
+  notifyFinancePayablesMutated();
   return mapInvoice(raw);
 }
 
@@ -248,6 +258,7 @@ export async function uploadInvoice(data: UploadInvoicePayload): Promise<VendorI
     throw new Error('Failed to upload invoice');
   }
   const vendor = data.vendorName ? { vendorName: data.vendorName } : {};
+  notifyFinancePayablesMutated();
   return mapInvoice({ ...raw, ...vendor });
 }
 
@@ -260,8 +271,10 @@ export async function createPayment(request: NewPaymentRequest): Promise<{ succe
   if (!data) {
     throw new Error('Failed to create payment');
   }
-  return {
+  const out = {
     success: Boolean(data.success ?? true),
     paymentId: String(data.paymentId ?? ''),
   };
+  notifyFinancePayablesMutated();
+  return out;
 }
