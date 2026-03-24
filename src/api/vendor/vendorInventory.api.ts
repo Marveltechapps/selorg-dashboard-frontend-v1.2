@@ -65,13 +65,14 @@ export const vendorInventoryApi = {
   /**
    * Reconcile inventory
    */
-  async reconcileInventory(vendorId: string) {
+  async reconcileInventory(vendorId: string, payload?: unknown) {
     const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.reconcile(vendorId)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${getAuthToken() || ''}`,
       },
+      body: payload !== undefined ? JSON.stringify(payload) : undefined,
     });
 
     if (!response.ok) {
@@ -159,7 +160,10 @@ export const vendorInventoryApi = {
     }
 
     const data = await response.json();
-    return { items: Array.isArray(data) ? data : (data.items ?? data.data ?? []), ...data };
+    return {
+      items: Array.isArray(data) ? data : (data.items ?? data.data ?? data.alerts ?? []),
+      ...data,
+    };
   },
 
   /**

@@ -34,9 +34,11 @@ import { exportToPDF } from '../../../utils/pdfExport';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
+import { API_CONFIG } from '../../../config/api';
 
 import * as vendorManagementApi from '../../../api/vendor/vendorManagement.api';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
+import { getAuthToken } from '../../../contexts/AuthContext';
 
 // Types
 interface Vendor {
@@ -554,7 +556,9 @@ export function VendorOnboarding() {
       const newVendor = await vendorManagementApi.createVendor({
         name: inviteForm.name,
         code: `VND-INV-${Date.now().toString().slice(-6)}`,
-        status: 'invited',
+        // Backend only allows incomplete payloads for `draft`.
+        // We create as draft, then `send-invite-email` flips it to `invited`.
+        status: 'draft',
         contact: {
           name: inviteForm.name,
           email: inviteForm.email,
@@ -574,17 +578,9 @@ export function VendorOnboarding() {
       const newVendorId = (newVendor as any)._id || (newVendor as any).id;
 
       // Step 2: Send invite email
-      const authToken =
-        localStorage.getItem('token') ||
-        localStorage.getItem('authToken') ||
-        localStorage.getItem('accessToken') ||
-        sessionStorage.getItem('token') ||
-        '';
+      const authToken = getAuthToken() || '';
 
-      const baseUrl =
-        (vendorManagementApi as any).API_BASE_URL ||
-        (vendorManagementApi as any).BASE_URL ||
-        'http://localhost:5001/api/v1';
+      const baseUrl = API_CONFIG.baseURL;
 
       const emailRes = await fetch(`${baseUrl}/vendor/vendors/send-invite-email`, {
         method: 'POST',
@@ -615,7 +611,6 @@ export function VendorOnboarding() {
       await loadVendors();
 
       if (emailData.previewUrl) {
-        console.log('📧 Email preview:', emailData.previewUrl);
         toast.success(`Invite created! Check console for email preview URL.`);
       } else {
         toast.success(
@@ -742,7 +737,7 @@ export function VendorOnboarding() {
 
   // Get action buttons based on vendor stage
   const getActionButtons = (vendor: Vendor) => {
-    const buttons: JSX.Element[] = [];
+    const buttons: React.ReactElement[] = [];
 
     // Review button - for review_pending or docs_verification
     if (vendor.stage === 'review_pending' || vendor.stage === 'docs_verification') {
@@ -1352,7 +1347,7 @@ export function VendorOnboarding() {
 
       {/* Modals */}
       <Dialog open={!!activeModal} onOpenChange={(open) => !open && setActiveModal(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" aria-describedby="vendor-onboarding-modal-description">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {activeModal === 'invite' && "Invite New Vendor"}
@@ -1371,7 +1366,7 @@ export function VendorOnboarding() {
               {activeModal === 'flagVendor' && "Flag Vendor"}
               {activeModal === 'editInfo' && "Edit Vendor Information"}
             </DialogTitle>
-            <DialogDescription id="vendor-onboarding-modal-description">
+            <DialogDescription>
               {activeModal === 'invite' && "Enter the details of the vendor you want to invite to the platform."}
               {activeModal === 'approve' && `Review the details before approving ${modalVendor?.name}.`}
               {activeModal === 'reject' && `Please provide a reason for rejecting ${modalVendor?.name}.`}

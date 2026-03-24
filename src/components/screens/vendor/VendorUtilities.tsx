@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
-import { EmptyState } from '../../ui/ux-components';
+import { EmptyState, TableSkeleton } from '../../ui/ux-components';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { toast } from 'sonner';
 import {
@@ -392,7 +392,9 @@ export function VendorUtilities() {
             <div className="border-t border-[#E0E0E0] pt-4">
               <h4 className="text-sm font-medium text-[#212121] mb-3">Upload History</h4>
               {uploadHistoryLoading ? (
-                <div className="text-center py-6 text-sm text-[#757575]">Loading...</div>
+                  <div className="p-6">
+                    <TableSkeleton rows={4} columns={4} />
+                  </div>
               ) : uploadHistoryError ? (
                 <div className="text-center py-6 text-sm text-[#EF4444]">{uploadHistoryError}</div>
               ) : uploadHistory.length === 0 ? (
@@ -494,7 +496,9 @@ export function VendorUtilities() {
             </div>
 
             {contractsLoading ? (
-              <div className="text-center py-12 text-sm text-[#757575]">Loading contracts...</div>
+              <div className="p-6">
+                <TableSkeleton rows={6} columns={8} />
+              </div>
             ) : contractsError ? (
               <div className="text-center py-12 text-sm text-[#EF4444]">{contractsError}</div>
             ) : filteredContracts.length === 0 ? (
@@ -720,7 +724,9 @@ export function VendorUtilities() {
             </div>
 
             {auditLogsLoading ? (
-              <div className="text-center py-12 text-sm text-[#757575]">Loading audit logs...</div>
+              <div className="p-6">
+                <TableSkeleton rows={8} columns={6} />
+              </div>
             ) : auditLogsError ? (
               <div className="text-center py-12 text-sm text-[#EF4444]">{auditLogsError}</div>
             ) : filteredAuditLogs.length === 0 ? (

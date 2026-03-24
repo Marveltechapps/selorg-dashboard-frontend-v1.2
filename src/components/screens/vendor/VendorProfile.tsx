@@ -871,7 +871,7 @@ export function VendorProfile({
                 <div className="flex items-center gap-2 mt-1">
                   <p className="text-sm font-mono text-[#1F2937]">{profileData.financial.gst_number}</p>
                   {profileData.financial.gst_verified && (
-                    <CheckCircle size={16} className="text-[#10B981]" title="Verified" />
+                    <CheckCircle size={16} className="text-[#10B981]" aria-label="Verified" />
                   )}
                 </div>
               </div>

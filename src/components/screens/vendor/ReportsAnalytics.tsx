@@ -158,7 +158,7 @@ export function ReportsAnalytics() {
           
           // Sales Overview
           ['=== SALES OVERVIEW ==='],
-          salesOverview ? [
+          ...(salesOverview ? [
             ['Total Revenue', formatCurrency(salesOverview.totalRevenue)],
             ['Revenue Growth', `${formatPercentage(salesOverview.revenueGrowth)}`],
             ['Total Orders', salesOverview.totalOrders],
@@ -167,7 +167,7 @@ export function ReportsAnalytics() {
             ['Avg Order Growth', `${formatPercentage(salesOverview.avgOrderGrowth)}`],
             ['Total Products', salesOverview.totalProducts],
             ['Products Growth', `${formatPercentage(salesOverview.productsGrowth)}`],
-          ] : [['No sales overview data']],
+          ] : [['No sales overview data']]),
           [''],
           
           // Sales Data (Revenue Trend)
@@ -240,14 +240,14 @@ export function ReportsAnalytics() {
           
           // Financial Summary
           ['=== FINANCIAL SUMMARY ==='],
-          financialSummary ? [
+          ...(financialSummary ? [
             ['Gross Revenue', formatCurrency(financialSummary.grossRevenue)],
             ['Platform Fee', formatCurrency(financialSummary.platformFee)],
             ['Delivery Charges', formatCurrency(financialSummary.deliveryCharges)],
             ['Refunds', formatCurrency(financialSummary.refunds)],
             ['Net Revenue', formatCurrency(financialSummary.netRevenue)],
             ['Profit Margin', `${financialSummary.profitMargin.toFixed(1)}%`],
-          ] : [['No financial summary data']],
+          ] : [['No financial summary data']]),
           [''],
           
           // Hourly Sales

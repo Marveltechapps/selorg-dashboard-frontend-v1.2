@@ -102,10 +102,42 @@ function mapPayablesInvoiceToFinance(inv: {
   };
 }
 
-// Payment history and category data - empty until backend provides endpoints
-const getEmptyPaymentHistory = () => [];
-const getEmptyPaymentByCategory = () => [];
-const getEmptyVendorPayments = () => [];
+type PaymentHistoryEntry = {
+  month: string;
+  paid: number;
+  pending: number;
+  disputed: number;
+};
+
+type PaymentByCategoryEntry = {
+  name: string;
+  value: number;
+  color: string;
+};
+
+type VendorPaymentSummary = {
+  vendorId: string;
+  vendorName: string;
+  totalPaid: number;
+  pendingAmount: number;
+  invoiceCount: number;
+  avgPaymentDays: number;
+  creditRating: string;
+  lastPayment: string;
+};
+
+// Payment history and category data - empty until backend provides endpoints.
+const getEmptyPaymentHistory = (): PaymentHistoryEntry[] => [];
+const getEmptyPaymentByCategory = (): PaymentByCategoryEntry[] => [];
+const getEmptyVendorPayments = (): VendorPaymentSummary[] => [];
+
+function saveInvoicesToStorage(invoices: ReturnType<typeof mapPayablesInvoiceToFinance>[]) {
+  try {
+    localStorage.setItem('selorg_vendor_finance_invoices', JSON.stringify(invoices));
+  } catch {
+    // Local storage may not be available (private mode / restricted environments).
+  }
+}
 
 export function VendorFinance() {
   const [summary, setSummary] = useState<ReturnType<typeof mapPayablesToFinanceSummary> | null>(null);
@@ -513,7 +545,8 @@ export function VendorFinance() {
       category: 'Other',
       poReference: `PO-${Date.now()}`,
       description: `Uploaded invoice - ${uploadForm.file.name}`,
-      attachments: 1
+      attachments: 1,
+      transactionId: `upload-${Date.now()}`
     };
     
     // Add to invoices and save

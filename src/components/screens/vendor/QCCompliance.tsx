@@ -157,22 +157,39 @@ export function QCCompliance() {
         } else if (resp?.pagination && resp?.data) {
           items = Array.isArray(resp.data) ? resp.data : [];
         }
-        const transformedChecks = items.map((item: any) => ({
-          id: item._id?.toString() || item.id,
-          checkId: item.checkId || item.id || `QC-${(item._id?.toString() || '').substring(0, 8)}`,
-          batchId: item.batchId || 'N/A',
-          product: item.product || 'Unknown',
-          vendor: item.vendor || item.vendorId || 'Unknown',
-          checkType: item.checkType || 'Visual',
-          result: item.result || (item.status === 'approved' || item.status === 'passed' ? 'Pass' : item.status === 'rejected' || item.status === 'failed' ? 'Fail' : 'Pending'),
-          inspector: item.inspector || item.inspectorId || 'N/A',
-          date: item.date || item.createdAt,
-          actualReading: item.actualReading,
-          requirement: item.requirement,
-          severity: item.severity,
-          status: item.status === 'approved' || item.status === 'passed' ? 'Approved' : item.status === 'rejected' || item.status === 'failed' ? 'Rejected' : item.status === 'appealed' ? 'Appealed' : 'Pending',
-          stage: item.stage || 'Review',
-        }));
+        const transformedChecks: QCCheck[] = items.map((item: any) => {
+          const status =
+            item.status === 'approved' || item.status === 'passed'
+              ? 'Approved'
+              : item.status === 'rejected' || item.status === 'failed'
+                ? 'Rejected'
+                : item.status === 'appealed'
+                  ? 'Appealed'
+                  : 'Pending';
+
+          return {
+            id: item._id?.toString() || item.id,
+            checkId: item.checkId || item.id || `QC-${(item._id?.toString() || '').substring(0, 8)}`,
+            batchId: item.batchId || 'N/A',
+            product: item.product || 'Unknown',
+            vendor: item.vendor || item.vendorId || 'Unknown',
+            checkType: item.checkType || 'Visual',
+            result:
+              item.result ||
+              (item.status === 'approved' || item.status === 'passed'
+                ? 'Pass'
+                : item.status === 'rejected' || item.status === 'failed'
+                  ? 'Fail'
+                  : 'Pending'),
+            inspector: item.inspector || item.inspectorId || 'N/A',
+            date: item.date || item.createdAt,
+            actualReading: item.actualReading,
+            requirement: item.requirement,
+            severity: item.severity,
+            status: status as QCCheck['status'],
+            stage: (item.stage || 'Review') as QCCheck['stage'],
+          };
+        });
         setChecks(transformedChecks);
 
         if (useVendorScope && rawVendorId) {
@@ -346,22 +363,39 @@ export function QCCompliance() {
         items = Array.isArray(resp.data) ? resp.data : [];
       }
       // Transform items to match QCCheck interface
-      const transformedChecks = items.map((item: any) => ({
-        id: item._id?.toString() || item.id,
-        checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
-        batchId: item.batchId || 'N/A',
-        product: item.product || 'Unknown',
-        vendor: item.vendor || item.vendorId || 'Unknown',
-        checkType: item.checkType || 'Visual',
-        result: item.result || (item.status === 'approved' || item.status === 'passed' ? 'Pass' : item.status === 'rejected' || item.status === 'failed' ? 'Fail' : 'Pending'),
-        inspector: item.inspector || item.inspectorId || 'N/A',
-        date: item.date || item.createdAt,
-        actualReading: item.actualReading,
-        requirement: item.requirement,
-        severity: item.severity,
-        status: item.status === 'approved' || item.status === 'passed' ? 'Approved' : item.status === 'rejected' || item.status === 'failed' ? 'Rejected' : item.status === 'appealed' ? 'Appealed' : 'Pending',
-        stage: item.stage || 'Review',
-      }));
+      const transformedChecks: QCCheck[] = items.map((item: any) => {
+        const status =
+          item.status === 'approved' || item.status === 'passed'
+            ? 'Approved'
+            : item.status === 'rejected' || item.status === 'failed'
+              ? 'Rejected'
+              : item.status === 'appealed'
+                ? 'Appealed'
+                : 'Pending';
+
+        return {
+          id: item._id?.toString() || item.id,
+          checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
+          batchId: item.batchId || 'N/A',
+          product: item.product || 'Unknown',
+          vendor: item.vendor || item.vendorId || 'Unknown',
+          checkType: item.checkType || 'Visual',
+          result:
+            item.result ||
+            (item.status === 'approved' || item.status === 'passed'
+              ? 'Pass'
+              : item.status === 'rejected' || item.status === 'failed'
+                ? 'Fail'
+                : 'Pending'),
+          inspector: item.inspector || item.inspectorId || 'N/A',
+          date: item.date || item.createdAt,
+          actualReading: item.actualReading,
+          requirement: item.requirement,
+          severity: item.severity,
+          status: status as QCCheck['status'],
+          stage: (item.stage || 'Review') as QCCheck['stage'],
+        };
+      });
       setChecks(transformedChecks);
     } catch (err) {
       // rollback
@@ -419,22 +453,39 @@ export function QCCompliance() {
         items = Array.isArray(resp.data) ? resp.data : [];
       }
       // Transform items to match QCCheck interface
-      const transformedChecks = items.map((item: any) => ({
-        id: item._id?.toString() || item.id,
-        checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
-        batchId: item.batchId || 'N/A',
-        product: item.product || 'Unknown',
-        vendor: item.vendor || item.vendorId || 'Unknown',
-        checkType: item.checkType || 'Visual',
-        result: item.result || (item.status === 'approved' || item.status === 'passed' ? 'Pass' : item.status === 'rejected' || item.status === 'failed' ? 'Fail' : 'Pending'),
-        inspector: item.inspector || item.inspectorId || 'N/A',
-        date: item.date || item.createdAt,
-        actualReading: item.actualReading,
-        requirement: item.requirement,
-        severity: item.severity,
-        status: item.status === 'approved' || item.status === 'passed' ? 'Approved' : item.status === 'rejected' || item.status === 'failed' ? 'Rejected' : item.status === 'appealed' ? 'Appealed' : 'Pending',
-        stage: item.stage || 'Review',
-      }));
+      const transformedChecks: QCCheck[] = items.map((item: any) => {
+        const status =
+          item.status === 'approved' || item.status === 'passed'
+            ? 'Approved'
+            : item.status === 'rejected' || item.status === 'failed'
+              ? 'Rejected'
+              : item.status === 'appealed'
+                ? 'Appealed'
+                : 'Pending';
+
+        return {
+          id: item._id?.toString() || item.id,
+          checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
+          batchId: item.batchId || 'N/A',
+          product: item.product || 'Unknown',
+          vendor: item.vendor || item.vendorId || 'Unknown',
+          checkType: item.checkType || 'Visual',
+          result:
+            item.result ||
+            (item.status === 'approved' || item.status === 'passed'
+              ? 'Pass'
+              : item.status === 'rejected' || item.status === 'failed'
+                ? 'Fail'
+                : 'Pending'),
+          inspector: item.inspector || item.inspectorId || 'N/A',
+          date: item.date || item.createdAt,
+          actualReading: item.actualReading,
+          requirement: item.requirement,
+          severity: item.severity,
+          status: status as QCCheck['status'],
+          stage: (item.stage || 'Review') as QCCheck['stage'],
+        };
+      });
       setChecks(transformedChecks);
     } catch (err) {
       setChecks(prev => prev.map(c => (c.id === id && previous ? previous : c)));
@@ -488,22 +539,39 @@ export function QCCompliance() {
         items = Array.isArray(resp.data) ? resp.data : [];
       }
       // Transform items to match QCCheck interface
-      const transformedChecks = items.map((item: any) => ({
-        id: item._id?.toString() || item.id,
-        checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
-        batchId: item.batchId || 'N/A',
-        product: item.product || 'Unknown',
-        vendor: item.vendor || item.vendorId || 'Unknown',
-        checkType: item.checkType || 'Visual',
-        result: item.result || (item.status === 'approved' || item.status === 'passed' ? 'Pass' : item.status === 'rejected' || item.status === 'failed' ? 'Fail' : 'Pending'),
-        inspector: item.inspector || item.inspectorId || 'N/A',
-        date: item.date || item.createdAt,
-        actualReading: item.actualReading,
-        requirement: item.requirement,
-        severity: item.severity,
-        status: item.status === 'approved' || item.status === 'passed' ? 'Approved' : item.status === 'rejected' || item.status === 'failed' ? 'Rejected' : item.status === 'appealed' ? 'Appealed' : 'Pending',
-        stage: item.stage || 'Review',
-      }));
+      const transformedChecks: QCCheck[] = items.map((item: any) => {
+        const status =
+          item.status === 'approved' || item.status === 'passed'
+            ? 'Approved'
+            : item.status === 'rejected' || item.status === 'failed'
+              ? 'Rejected'
+              : item.status === 'appealed'
+                ? 'Appealed'
+                : 'Pending';
+
+        return {
+          id: item._id?.toString() || item.id,
+          checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
+          batchId: item.batchId || 'N/A',
+          product: item.product || 'Unknown',
+          vendor: item.vendor || item.vendorId || 'Unknown',
+          checkType: item.checkType || 'Visual',
+          result:
+            item.result ||
+            (item.status === 'approved' || item.status === 'passed'
+              ? 'Pass'
+              : item.status === 'rejected' || item.status === 'failed'
+                ? 'Fail'
+                : 'Pending'),
+          inspector: item.inspector || item.inspectorId || 'N/A',
+          date: item.date || item.createdAt,
+          actualReading: item.actualReading,
+          requirement: item.requirement,
+          severity: item.severity,
+          status: status as QCCheck['status'],
+          stage: (item.stage || 'Review') as QCCheck['stage'],
+        };
+      });
       setChecks(transformedChecks);
     } catch (err) {
       setChecks(prev => prev.map(c => (c.id === id && previous ? previous : c)));
@@ -536,12 +604,10 @@ export function QCCompliance() {
       })
     );
     try {
-      console.log('Updating QC check:', { id, action });
       const updateResult = await vendorManagementApi.updateQCCheck(id, {
         status: action === 'approve' ? 'approved' : 'rejected',
         result: action === 'approve' ? 'Pass' : 'Fail',
       });
-      console.log('QC check update result:', updateResult);
       toast.success(`Report ${action === 'approve' ? 'approved' : 'rejected'}`);
       // close menu
       setOpenReportMenuId(null);
@@ -551,13 +617,11 @@ export function QCCompliance() {
       }
       // Wait a bit to ensure backend has saved, then reload checks to get updated data
       await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('Reloading QC checks after update...');
       const rawVendorId = '';
       const useVendorScope = rawVendorId && isValidMongoId(rawVendorId);
       const resp = useVendorScope
         ? await vendorManagementApi.listVendorQCChecks(rawVendorId)
         : await vendorManagementApi.listQCChecks({ page: 1, perPage: 25 });
-      console.log('Reloaded QC checks response:', resp);
       // Handle different response structures
       let items: any[] = [];
       if (Array.isArray(resp)) {
@@ -575,10 +639,9 @@ export function QCCompliance() {
         const itemId = item._id?.toString() || item.id;
         return itemId === id;
       });
-      console.log('Updated item found in reload:', updatedItem);
       
       // Transform items to match QCCheck interface
-      let transformedChecks = items.map((item: any) => {
+      const transformedChecks: QCCheck[] = items.map((item: any) => {
         const itemId = item._id?.toString() || item.id;
         // Map backend status to frontend status
         let frontendStatus = 'Pending';
@@ -596,7 +659,6 @@ export function QCCompliance() {
           batchId: item.batchId || 'N/A',
           product: item.product || 'Unknown',
           vendor: item.vendor || item.vendorId || 'Unknown',
-          vendorId: item.vendorId || vendorId || '', // Preserve vendorId for persistence
           checkType: item.checkType || 'Visual',
           result: item.result || (item.status === 'approved' || item.status === 'passed' ? 'Pass' : item.status === 'rejected' || item.status === 'failed' ? 'Fail' : 'Pending'),
           inspector: item.inspector || item.inspectorId || 'N/A',
@@ -604,8 +666,8 @@ export function QCCompliance() {
           actualReading: item.actualReading,
           requirement: item.requirement,
           severity: item.severity,
-          status: frontendStatus,
-          stage: item.stage || 'Review',
+          status: frontendStatus as QCCheck['status'],
+          stage: (item.stage || 'Review') as QCCheck['stage'],
         };
       });
       
@@ -615,14 +677,14 @@ export function QCCompliance() {
       
       if (transformedChecks.length > 0) {
         // Merge API data with current state, preserving optimistic update
-        const mergedChecks = transformedChecks.map(apiCheck => {
+        const mergedChecks: QCCheck[] = transformedChecks.map(apiCheck => {
           if (apiCheck.id === id && currentCheck) {
             // Prefer optimistic update if it exists
             return {
               ...apiCheck,
               status: currentCheck.status,
               result: currentCheck.result,
-              stage: currentCheck.stage || apiCheck.stage,
+              stage: (currentCheck.stage || apiCheck.stage) as QCCheck['stage'],
             };
           }
           return apiCheck;
@@ -638,14 +700,13 @@ export function QCCompliance() {
         setChecks(mergedChecks);
       } else {
         // Backend returned empty - keep optimistic update and ensure it persists
-        console.log('Backend returned empty, keeping optimistic update');
-        const updatedChecks = currentChecks.map(c => {
+        const updatedChecks: QCCheck[] = currentChecks.map(c => {
           if (c.id === id) {
             return {
               ...c,
-              status: action === 'approve' ? 'Approved' : 'Rejected',
-              result: action === 'approve' ? 'Pass' : 'Fail',
-              stage: 'Reported',
+              status: (action === 'approve' ? 'Approved' : 'Rejected') as QCCheck['status'],
+              result: (action === 'approve' ? 'Pass' : 'Fail') as QCCheck['result'],
+              stage: 'Reported' as QCCheck['stage'],
             };
           }
           return c;
@@ -751,7 +812,6 @@ export function QCCompliance() {
         id: response.data?._id?.toString() || response.data?.id || id,
         auditId: response.data?.auditId || response.data?._id?.toString() || id,
         vendor: vendorName,
-        vendorId: vendorId, // Ensure vendorId is included
         date: response.data?.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
         auditType: response.data?.auditType || 'Routine',
         result: response.data?.result || 'Pending',
@@ -772,7 +832,6 @@ export function QCCompliance() {
           id: a._id?.toString() || a.id,
           auditId: a.auditId || a.id,
           vendor: a.vendor || a.vendorName || a.vendorId || 'N/A',
-          vendorId: a.vendorId || vendorIdForReload || '', // Preserve vendorId
           date: a.date || new Date(a.createdAt || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
           auditType: a.auditType || 'Routine',
           result: a.result || 'Pending',
@@ -815,10 +874,9 @@ export function QCCompliance() {
     setLoadingFor(certId, true);
     const currentCertificates = certificates;
     // Optimistic update - save immediately
-    setCertificates(prev => {
-      const updated = prev.map(c => c.id === certId ? { ...c, status: 'Valid' } : c);
-      return updated;
-    });
+    setCertificates(prev =>
+      prev.map(c => (c.id === certId ? { ...c, status: 'Valid' as CertificateStatus } : c))
+    );
     try {
       await vendorManagementApi.updateCertificate(certId, {
         status: 'valid',
@@ -832,20 +890,28 @@ export function QCCompliance() {
           const certResp = await vendorManagementApi.listVendorCertificates(vendorId);
           const certs = Array.isArray(certResp) ? certResp : (certResp.items || certResp.data || []);
           if (certs.length > 0) {
-            const transformedCerts = certs.map((c: any) => ({
+            const transformedCerts: Certificate[] = certs.map((c: any) => ({
               id: c._id?.toString() || c.id,
               certificateType: c.type || c.certificateType || 'Unknown',
               vendor: c.vendor || c.vendorName || c.vendorId || 'Unknown',
               issuedDate: c.issuedAt ? new Date(c.issuedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A',
               expiryDate: c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A',
-              status: c.status === 'valid' ? 'Valid' : c.status === 'expired' ? 'Expired' : c.status === 'pending_renewal' ? 'Pending Renewal' : c.status === 'expiring_soon' ? 'Expiring Soon' : 'Valid',
+              status: (c.status === 'valid'
+                ? 'Valid'
+                : c.status === 'expired'
+                  ? 'Expired'
+                  : c.status === 'pending_renewal'
+                    ? 'Pending Renewal'
+                    : c.status === 'expiring_soon'
+                      ? 'Expiring Soon'
+                      : 'Valid') as CertificateStatus,
               daysToExpiry: c.expiresAt ? Math.ceil((new Date(c.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
               licenseNumber: c.licenseNumber || c.metadata?.licenseNumber,
             }));
             
             // Merge with current state to preserve optimistic update
             const currentCert = currentCertificates.find(c => c.id === certId);
-            const mergedCerts = transformedCerts.map(apiCert => {
+            const mergedCerts: Certificate[] = transformedCerts.map(apiCert => {
               if (apiCert.id === certId && currentCert && currentCert.status === 'Valid') {
                 return currentCert; // Prefer optimistic update
               }
@@ -862,19 +928,18 @@ export function QCCompliance() {
             setCertificates(mergedCerts);
           } else {
             // Backend returned empty - keep optimistic update
-            console.log('Backend returned empty certificates, keeping optimistic update');
-            const updated = currentCertificates.map(c => c.id === certId ? { ...c, status: 'Valid' } : c);
+            const updated: Certificate[] = currentCertificates.map(c => (c.id === certId ? { ...c, status: 'Valid' as CertificateStatus } : c));
             setCertificates(updated);
           }
         } else {
           console.warn('No vendorId found, keeping optimistic update');
-          const updated = currentCertificates.map(c => c.id === certId ? { ...c, status: 'Valid' } : c);
+          const updated: Certificate[] = currentCertificates.map(c => (c.id === certId ? { ...c, status: 'Valid' as CertificateStatus } : c));
           setCertificates(updated);
         }
       } catch (reloadErr) {
         console.error('Failed to reload certificates after verification:', reloadErr);
         // Keep the optimistic update
-        const updated = currentCertificates.map(c => c.id === certId ? { ...c, status: 'Valid' } : c);
+        const updated: Certificate[] = currentCertificates.map(c => (c.id === certId ? { ...c, status: 'Valid' as CertificateStatus } : c));
         setCertificates(updated);
       }
     } catch (err: any) {
@@ -899,10 +964,13 @@ export function QCCompliance() {
     const newExpiryDateStr = newExpiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     
     // Optimistic update - save immediately
-    setCertificates(prev => {
-      const updated = prev.map(c => c.id === certId ? { ...c, status: 'Pending Renewal', expiryDate: newExpiryDateStr } : c);
-      return updated;
-    });
+    setCertificates(prev =>
+      prev.map(c =>
+        c.id === certId
+          ? { ...c, status: 'Pending Renewal' as CertificateStatus, expiryDate: newExpiryDateStr }
+          : c
+      )
+    );
     try {
       
       await vendorManagementApi.updateCertificate(certId, {
@@ -918,19 +986,27 @@ export function QCCompliance() {
           const certResp = await vendorManagementApi.listVendorCertificates(vendorId);
           const certs = Array.isArray(certResp) ? certResp : (certResp.items || certResp.data || []);
           if (certs.length > 0) {
-            const transformedCerts = certs.map((c: any) => ({
+            const transformedCerts: Certificate[] = certs.map((c: any) => ({
               id: c._id?.toString() || c.id,
               certificateType: c.type || c.certificateType || 'Unknown',
               vendor: c.vendor || c.vendorName || c.vendorId || 'Unknown',
               issuedDate: c.issuedAt ? new Date(c.issuedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A',
               expiryDate: c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A',
-              status: c.status === 'valid' ? 'Valid' : c.status === 'expired' ? 'Expired' : c.status === 'pending_renewal' ? 'Pending Renewal' : c.status === 'expiring_soon' ? 'Expiring Soon' : 'Valid',
+              status: (c.status === 'valid'
+                ? 'Valid'
+                : c.status === 'expired'
+                  ? 'Expired'
+                  : c.status === 'pending_renewal'
+                    ? 'Pending Renewal'
+                    : c.status === 'expiring_soon'
+                      ? 'Expiring Soon'
+                      : 'Valid') as CertificateStatus,
               daysToExpiry: c.expiresAt ? Math.ceil((new Date(c.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
               licenseNumber: c.licenseNumber || c.metadata?.licenseNumber,
             }));
             // Merge with current state to preserve optimistic update
             const currentCert = currentCertificates.find(c => c.id === certId);
-            const mergedCerts = transformedCerts.map(apiCert => {
+            const mergedCerts: Certificate[] = transformedCerts.map(apiCert => {
               if (apiCert.id === certId && currentCert && currentCert.status === 'Pending Renewal') {
                 return currentCert; // Prefer optimistic update
               }
@@ -947,19 +1023,24 @@ export function QCCompliance() {
             setCertificates(mergedCerts);
           } else {
             // Backend returned empty - keep optimistic update
-            console.log('Backend returned empty certificates, keeping optimistic update');
-            const updated = currentCertificates.map(c => c.id === certId ? { ...c, status: 'Pending Renewal', expiryDate: newExpiryDateStr } : c);
+            const updated: Certificate[] = currentCertificates.map(c =>
+              c.id === certId ? { ...c, status: 'Pending Renewal' as CertificateStatus, expiryDate: newExpiryDateStr } : c
+            );
             setCertificates(updated);
           }
         } else {
           console.warn('No vendorId found, keeping optimistic update');
-          const updated = currentCertificates.map(c => c.id === certId ? { ...c, status: 'Pending Renewal', expiryDate: newExpiryDateStr } : c);
+          const updated: Certificate[] = currentCertificates.map(c =>
+            c.id === certId ? { ...c, status: 'Pending Renewal' as CertificateStatus, expiryDate: newExpiryDateStr } : c
+          );
           setCertificates(updated);
         }
       } catch (reloadErr) {
         console.error('Failed to reload certificates after renewal:', reloadErr);
         // Keep the optimistic update
-        const updated = currentCertificates.map(c => c.id === certId ? { ...c, status: 'Pending Renewal', expiryDate: newExpiryDateStr } : c);
+        const updated: Certificate[] = currentCertificates.map(c =>
+          c.id === certId ? { ...c, status: 'Pending Renewal' as CertificateStatus, expiryDate: newExpiryDateStr } : c
+        );
         setCertificates(updated);
       }
     } catch (err: any) {
@@ -2321,7 +2402,7 @@ export function QCCompliance() {
                           const tempResp = await vendorManagementApi.getTemperatureCompliance({ vendorId });
                           const tempData = Array.isArray(tempResp.data) ? tempResp.data : (Array.isArray(tempResp) ? tempResp : []);
                           if (tempData.length > 0) {
-                            const transformedTemps = tempData.map((t: any) => ({
+                            const transformedTemps: TemperatureCompliance[] = tempData.map((t: any) => ({
                               id: t._id?.toString() || t.id,
                               shipmentId: t.shipmentId || 'N/A',
                               product: t.product || t.productName || 'Unknown',
@@ -2331,11 +2412,11 @@ export function QCCompliance() {
                               minTemp: t.minTemp || 0,
                               maxTemp: t.maxTemp || 0,
                               compliant: t.compliant !== undefined ? t.compliant : true,
-                            }));
+                            })) as TemperatureCompliance[];
                             
                             // Merge with current state to preserve optimistic update
                             const currentTemp = currentTemps.find(t => t.id === selectedTemp.id);
-                            const mergedTemps = transformedTemps.map(apiTemp => {
+                            const mergedTemps: TemperatureCompliance[] = transformedTemps.map(apiTemp => {
                               if (apiTemp.id === selectedTemp.id && currentTemp && currentTemp.compliant === true) {
                                 return currentTemp; // Prefer optimistic update
                               }
@@ -2352,7 +2433,6 @@ export function QCCompliance() {
                             setTemps(mergedTemps);
                           } else {
                             // Backend returned empty - keep optimistic update
-                            console.log('Backend returned empty temperature data, keeping optimistic update');
                             const updated = currentTemps.map(t => t.id === selectedTemp.id ? { ...t, compliant: true } : t);
                             setTemps(updated);
                           }
@@ -2405,7 +2485,7 @@ export function QCCompliance() {
                           const tempResp = await vendorManagementApi.getTemperatureCompliance({ vendorId });
                           const tempData = Array.isArray(tempResp.data) ? tempResp.data : (Array.isArray(tempResp) ? tempResp : []);
                           if (tempData.length > 0) {
-                            const transformedTemps = tempData.map((t: any) => ({
+                            const transformedTemps: TemperatureCompliance[] = tempData.map((t: any) => ({
                               id: t._id?.toString() || t.id,
                               shipmentId: t.shipmentId || 'N/A',
                               product: t.product || t.productName || 'Unknown',
@@ -2415,11 +2495,11 @@ export function QCCompliance() {
                               minTemp: t.minTemp || 0,
                               maxTemp: t.maxTemp || 0,
                               compliant: t.compliant !== undefined ? t.compliant : true,
-                            }));
+                            })) as TemperatureCompliance[];
                             
                             // Merge with current state to preserve optimistic update
                             const currentTemp = currentTemps.find(t => t.id === selectedTemp.id);
-                            const mergedTemps = transformedTemps.map(apiTemp => {
+                            const mergedTemps: TemperatureCompliance[] = transformedTemps.map(apiTemp => {
                               if (apiTemp.id === selectedTemp.id && currentTemp && currentTemp.compliant === false) {
                                 return currentTemp; // Prefer optimistic update
                               }
@@ -2436,7 +2516,6 @@ export function QCCompliance() {
                             setTemps(mergedTemps);
                           } else {
                             // Backend returned empty - keep optimistic update
-                            console.log('Backend returned empty temperature data, keeping optimistic update');
                             const updated = currentTemps.map(t => t.id === selectedTemp.id ? { ...t, compliant: false } : t);
                             setTemps(updated);
                           }

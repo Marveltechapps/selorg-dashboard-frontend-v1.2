@@ -15,6 +15,8 @@ import VendorSignup from './pages/VendorSignup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationHandler } from './components/NotificationHandler';
 import { useDynamicFavicon } from './hooks/useDynamicFavicon';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { NotFoundPage } from './pages/NotFoundPage';
 
 const VALID_DASHBOARDS = ['darkstore', 'production', 'merch', 'rider', 'finance', 'vendor', 'warehouse', 'admin'] as const;
 
@@ -94,8 +96,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <NotificationHandler />
-        <Routes>
-          <Route path="/login" element={<LoginRoute />} />
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
 
           {/* Public vendor self-onboarding (invite token required) */}
           <Route path="/vendor-signup" element={<VendorSignup />} />
@@ -220,8 +223,9 @@ function App() {
           <Route path="/dashboard/:type/:screen" element={<RedirectLegacyDashboard />} />
           
           <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </ErrorBoundary>
         
         <Toaster />
       </BrowserRouter>

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '../../ui/page-header';
 import { exportToCSV, exportToCSVForExcel } from '../../../utils/csvExport';
 import { exportToPDF } from '../../../utils/pdfExport';
-import { EmptyState } from '../../ui/ux-components';
+import { CardSkeleton, EmptyState, ErrorState, TableSkeleton } from '../../ui/ux-components';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 import { VendorProfileOverview } from './VendorProfile';
@@ -256,7 +256,8 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
     const trend = summary?.slaTrend;
     if (!Array.isArray(trend) || trend.length === 0) return [];
     return trend.map((p) => {
-      const d = new Date(p.date + 'T12:00:00Z');
+      // Parse as "local date" (no Z suffix) to avoid timezone drift in labels.
+      const d = new Date(`${p.date}T00:00:00`);
       const label = Number.isNaN(d.getTime())
         ? p.date
         : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
@@ -506,73 +507,79 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="Active Vendors"
-          value={metricValue(s?.activeVendors ?? undefined)}
-          subValue={
-            !summaryLoading && !summaryError && s?.pendingVendors != null
-              ? `${s.pendingVendors} pending`
-              : undefined
-          }
-          icon={<Users size={18} />}
-          color="indigo"
-        />
-        <MetricCard
-          label="SLA Compliance (GRN)"
-          value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.slaCompliance ?? undefined)}
-          icon={<Clock size={18} />}
-          color="green"
-        />
-        <MetricCard
-          label="Open POs"
-          value={metricValue(s?.openPOs ?? undefined)}
-          subValue={
-            !summaryLoading && !summaryError ? formatCurrencyINR(s?.openPOValue ?? undefined) : undefined
-          }
-          icon={<Truck size={18} />}
-          color="blue"
-        />
-        <MetricCard
-          label="Critical Alerts"
-          value={metricValue(s?.criticalAlerts ?? undefined)}
-          icon={<AlertTriangle size={18} />}
-          color="red"
-        />
-      </div>
+      {summaryLoading ? (
+        <CardSkeleton count={8} columns={4} />
+      ) : (
+        <div className={summaryLoading ? 'hidden' : ''}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              label="Active Vendors"
+              value={metricValue(s?.activeVendors ?? undefined)}
+              subValue={
+                !summaryLoading && !summaryError && s?.pendingVendors != null
+                  ? `${s.pendingVendors} pending`
+                  : undefined
+              }
+              icon={<Users size={18} />}
+              color="indigo"
+            />
+            <MetricCard
+              label="SLA Compliance (GRN)"
+              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.slaCompliance ?? undefined)}
+              icon={<Clock size={18} />}
+              color="green"
+            />
+            <MetricCard
+              label="Open POs"
+              value={metricValue(s?.openPOs ?? undefined)}
+              subValue={
+                !summaryLoading && !summaryError ? formatCurrencyINR(s?.openPOValue ?? undefined) : undefined
+              }
+              icon={<Truck size={18} />}
+              color="blue"
+            />
+            <MetricCard
+              label="Critical Alerts"
+              value={metricValue(s?.criticalAlerts ?? undefined)}
+              icon={<AlertTriangle size={18} />}
+              color="red"
+            />
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="On-Time Delivery"
-          value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.deliveryTimeliness ?? undefined)}
-          icon={<Truck size={18} />}
-          color="green"
-        />
-        <MetricCard
-          label="QC Pass Rate"
-          value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.productQuality ?? undefined)}
-          icon={<CheckCircle size={18} />}
-          color="blue"
-        />
-        <MetricCard
-          label="Rejection Rate"
-          value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.rejectionRate ?? undefined)}
-          icon={<AlertTriangle size={18} />}
-          color="orange"
-        />
-        <MetricCard
-          label="Avg PO Response"
-          value={
-            summaryLoading || summaryError
-              ? '—'
-              : s?.avgPOResponseHours == null
-                ? '—'
-                : `${s.avgPOResponseHours} hrs`
-          }
-          icon={<Clock size={18} />}
-          color="purple"
-        />
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              label="On-Time Delivery"
+              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.deliveryTimeliness ?? undefined)}
+              icon={<Truck size={18} />}
+              color="green"
+            />
+            <MetricCard
+              label="QC Pass Rate"
+              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.productQuality ?? undefined)}
+              icon={<CheckCircle size={18} />}
+              color="blue"
+            />
+            <MetricCard
+              label="Rejection Rate"
+              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.rejectionRate ?? undefined)}
+              icon={<AlertTriangle size={18} />}
+              color="orange"
+            />
+            <MetricCard
+              label="Avg PO Response"
+              value={
+                summaryLoading || summaryError
+                  ? '—'
+                  : s?.avgPOResponseHours == null
+                    ? '—'
+                    : `${s.avgPOResponseHours} hrs`
+              }
+              icon={<Clock size={18} />}
+              color="purple"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
@@ -583,7 +590,14 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
             </p>
           </div>
         </div>
-        {slaChartData.length === 0 ? (
+        {summaryError ? (
+          <ErrorState
+            title="Could not load chart data"
+            description="Fix the error and refresh, or check your connection and API configuration."
+          />
+        ) : summaryLoading ? (
+          <div className="h-[200px] rounded-xl bg-slate-50 border border-slate-200 animate-pulse" />
+        ) : slaChartData.length === 0 ? (
           <EmptyState
             title="No shipment trend data"
             description="There are no completed shipments with both delivered and estimated arrival times in the last 30 days."
@@ -758,7 +772,9 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                 {loading ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-[#757575] text-sm">
-                      Loading vendors…
+                      <div className="max-w-3xl mx-auto">
+                        <TableSkeleton rows={5} columns={5} />
+                      </div>
                     </td>
                   </tr>
                 ) : loadError ? (

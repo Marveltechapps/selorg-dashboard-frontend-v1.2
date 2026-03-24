@@ -464,7 +464,6 @@ export const vendorManagementApi = {
    * Update QC check (approve/reject/appeal)
    */
   async updateQCCheck(qcId: string, payload: { status?: string; result?: string; notes?: string }) {
-    console.log('API: updateQCCheck called with:', { qcId, payload });
     const response = await fetch(`${API_CONFIG.baseURL}/vendor/qc/${qcId}`, {
       method: 'PATCH',
       headers: {
@@ -487,7 +486,6 @@ export const vendorManagementApi = {
     }
 
     const result = await response.json();
-    console.log('API: updateQCCheck success:', result);
     notifyVendorDataMutated();
     // Handle both { success: true, data: {...} } and direct object responses
     return result.data || result;

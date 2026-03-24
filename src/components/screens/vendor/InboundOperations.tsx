@@ -443,7 +443,9 @@ export function InboundOperations() {
           const { grns: incomingGrns, rtvs: incomingRtvs, archivedGrnIds: incomingArchived } = msg.payload;
           // Merge simple strategy: replace entirely with latest snapshot
           if (Array.isArray(incomingGrns) && Array.isArray(incomingRtvs)) {
-            const archivedIds = incomingArchived ? new Set(incomingArchived) : new Set<string>();
+            const archivedIds = new Set<string>(
+              Array.isArray(incomingArchived) ? incomingArchived.map(String) : []
+            );
             setArchivedGrnIds(archivedIds);
             const filteredGrns = incomingGrns.filter((g: GRN) => !archivedIds.has(g.id));
             setGrns(filteredGrns);
@@ -531,18 +533,27 @@ export function InboundOperations() {
 
   const handleAcceptExcess = async (grn: GRN) => {
     setActionLoading((s) => ({ ...s, [`accept-${grn.id}`]: true }));
-    const newGrns = grns.map((g) =>
+    const newGrns: GRN[] = grns.map((g) =>
       g.id === grn.id
         ? {
             ...g,
-            exceptionType: 'No Issue',
+            exceptionType: 'No Issue' as ExceptionType,
             exceptionDetails: undefined,
             notes: g.notes ? `${g.notes} | Excess accepted` : 'Excess accepted',
           }
         : g
-    );
+    ) as GRN[];
     setGrns(newGrns);
-    setSelectedGRN((s) => (s && s.id === grn.id ? { ...s, exceptionType: 'No Issue', exceptionDetails: undefined, notes: s.notes ? `${s.notes} | Excess accepted` : 'Excess accepted' } : s));
+    setSelectedGRN((s) =>
+      s && s.id === grn.id
+        ? {
+            ...s,
+            exceptionType: 'No Issue' as ExceptionType,
+            exceptionDetails: undefined,
+            notes: s.notes ? `${s.notes} | Excess accepted` : 'Excess accepted',
+          }
+        : s
+    );
     saveSnapshot(newGrns, rtvs);
     try {
       // Try to update via API if available
@@ -574,7 +585,9 @@ export function InboundOperations() {
     downloadTextFile(`label-${rtv.rtvNumber}.txt`, labelContent);
     // optimistic update with loading indicator
     setActionLoading((s) => ({ ...s, [`label-${rtv.id}`]: true }));
-    const newRtvs = rtvs.map((r) => (r.id === rtv.id ? { ...r, status: 'In Transit' } : r));
+    const newRtvs: RTV[] = rtvs.map((r) =>
+      r.id === rtv.id ? { ...r, status: 'In Transit' as RTVStatus } : r
+    );
     setRtvs(newRtvs);
     saveSnapshot(grns, newRtvs);
     setTimeout(() => {
@@ -586,9 +599,11 @@ export function InboundOperations() {
   const handleTrackReturn = (rtv: RTV) => {
     // Start a richer tracking flow: set status, persist and open live tracker UI
     setActionLoading((s) => ({ ...s, [`track-${rtv.id}`]: true }));
-    const newRtvs = rtvs.map((r) => (r.id === rtv.id ? { ...r, status: 'In Transit' } : r));
+    const newRtvs: RTV[] = rtvs.map((r) =>
+      r.id === rtv.id ? { ...r, status: 'In Transit' as RTVStatus } : r
+    );
     setRtvs(newRtvs);
-    setSelectedRTV({ ...rtv, status: 'In Transit' });
+    setSelectedRTV({ ...rtv, status: 'In Transit' as RTVStatus });
     saveSnapshot(grns, newRtvs);
     setTimeout(() => {
       setActionLoading((s) => ({ ...s, [`track-${rtv.id}`]: false }));
@@ -1901,13 +1916,29 @@ export function InboundOperations() {
               if (!selectedGRN) return;
               setActionLoading((s) => ({ ...s, [`approve-${selectedGRN.id}`]: true }));
               // Optimistic UI update
-              const optimistic = grns.map((g) =>
+              const optimistic: GRN[] = grns.map((g) =>
                 g.id === selectedGRN.id
-                  ? { ...g, status: 'Approved', qualityChecked: qualityChecks.inspected, documentsComplete: qualityChecks.documentsComplete, notes: approvalNotes || g.notes }
+                  ? {
+                      ...g,
+                      status: 'Approved' as GRNStatus,
+                      qualityChecked: qualityChecks.inspected,
+                      documentsComplete: qualityChecks.documentsComplete,
+                      notes: approvalNotes || g.notes,
+                    }
                   : g
               );
               setGrns(optimistic);
-              setSelectedGRN((s) => (s ? { ...s, status: 'Approved', qualityChecked: qualityChecks.inspected, documentsComplete: qualityChecks.documentsComplete, notes: approvalNotes || s.notes } : s));
+              setSelectedGRN((s) =>
+                s
+                  ? {
+                      ...s,
+                      status: 'Approved' as GRNStatus,
+                      qualityChecked: qualityChecks.inspected,
+                      documentsComplete: qualityChecks.documentsComplete,
+                      notes: approvalNotes || s.notes,
+                    }
+                  : s
+              );
               try {
                 const body = {
                   notes: approvalNotes || '',
@@ -1918,8 +1949,10 @@ export function InboundOperations() {
                   const resp = await approveGRN(selectedGRN.id, body);
                   const updated = resp && (resp.data || resp) ? resp.data || resp : null;
                   if (updated) {
-                    setGrns((prev) => prev.map((g) => (g.id === selectedGRN.id ? { ...g, ...updated } : g)));
-                    setSelectedGRN((s) => (s ? { ...s, ...updated } : s));
+                    setGrns((prev) =>
+                      prev.map((g) => (g.id === selectedGRN.id ? ({ ...g, ...updated } as GRN) : g))
+                    );
+                    setSelectedGRN((s) => (s ? ({ ...s, ...updated } as GRN) : s));
                   }
                 } catch (apiErr) {
                   // API call failed, but keep optimistic update
@@ -2131,21 +2164,37 @@ export function InboundOperations() {
             onClick={async () => {
                 if (!selectedGRN) return;
                 setActionLoading((s) => ({ ...s, [`reject-${selectedGRN.id}`]: true }));
-                const optimistic = grns.map((g) =>
+                const optimistic: GRN[] = grns.map((g) =>
                   g.id === selectedGRN.id
-                    ? { ...g, status: 'Rejected', exceptionType: 'Damaged', exceptionDetails: rejectionDescription || g.exceptionDetails }
+                    ? {
+                        ...g,
+                        status: 'Rejected' as GRNStatus,
+                        exceptionType: 'Damaged' as ExceptionType,
+                        exceptionDetails: rejectionDescription || g.exceptionDetails,
+                      }
                     : g
                 );
                 setGrns(optimistic);
-                setSelectedGRN((s) => (s ? { ...s, status: 'Rejected', exceptionType: 'Damaged', exceptionDetails: rejectionDescription || s.exceptionDetails } : s));
+                setSelectedGRN((s) =>
+                  s
+                    ? {
+                        ...s,
+                        status: 'Rejected' as GRNStatus,
+                        exceptionType: 'Damaged' as ExceptionType,
+                        exceptionDetails: rejectionDescription || s.exceptionDetails,
+                      }
+                    : s
+                );
                 try {
                   const body = { reason: rejectionReason || 'other', description: rejectionDescription || '' };
                   try {
                     const resp = await rejectGRN(selectedGRN.id, body);
                     const updated = resp && (resp.data || resp) ? resp.data || resp : null;
                     if (updated) {
-                      setGrns((prev) => prev.map((g) => (g.id === selectedGRN.id ? { ...g, ...updated } : g)));
-                      setSelectedGRN((s) => (s ? { ...s, ...updated } : s));
+                      setGrns((prev) =>
+                        prev.map((g) => (g.id === selectedGRN.id ? ({ ...g, ...updated } as GRN) : g))
+                      );
+                      setSelectedGRN((s) => (s ? ({ ...s, ...updated } as GRN) : s));
                     }
                   } catch (apiErr) {
                     // API call failed, but keep optimistic update

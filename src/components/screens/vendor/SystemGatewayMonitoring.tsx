@@ -43,6 +43,10 @@ interface Service {
   latency: number;
   requests: number;
   trend: number;
+  endpoint?: string;
+  responseTime?: number;
+  lastChecked?: string;
+  uptime?: number;
 }
 
 interface LogEntry {
@@ -51,6 +55,8 @@ interface LogEntry {
   level: LogLevel;
   service: string;
   message: string;
+  time: string;
+  date: string;
 }
 
 import { systemGatewayApi, SystemService, SystemLog } from '../../../api/vendor/systemGateway.api';
@@ -70,16 +76,23 @@ export function SystemGatewayMonitoring() {
         const servicesResp = await systemGatewayApi.getServices();
         if (!mounted) return;
         if (servicesResp.success && servicesResp.data) {
-          setServices(servicesResp.data.map(s => ({
-            id: s.id,
-            name: s.name,
-            type: s.type,
-            status: s.status,
-            endpoint: s.endpoint,
-            responseTime: s.responseTime,
-            lastChecked: s.lastChecked,
-            uptime: s.uptime,
-          })));
+          setServices(
+            servicesResp.data.map(s => ({
+              id: s.id,
+              name: s.name,
+              type: s.type,
+              status: s.status === 'healthy' ? 'operational' : s.status === 'degraded' ? 'slow' : 'down',
+              // Derive UI fields from the gateway response (API doesn't provide explicit latency/requests/trend)
+              lastSync: s.lastChecked ?? '',
+              latency: s.responseTime ?? 0,
+              requests: 0,
+              trend: s.status === 'healthy' ? 1 : s.status === 'degraded' ? 0 : -1,
+              endpoint: s.endpoint,
+              responseTime: s.responseTime,
+              lastChecked: s.lastChecked,
+              uptime: s.uptime,
+            }))
+          );
         }
       } catch (err) {
         console.error('Failed to load services', err);
@@ -101,7 +114,7 @@ export function SystemGatewayMonitoring() {
           setLogs(logsResp.data.map(l => ({
             id: l.id,
             service: l.serviceName,
-            level: l.level,
+            level: l.level === 'info' ? 'INFO' : l.level === 'warning' ? 'WARNING' : 'ERROR',
             message: l.message,
             timestamp: l.timestamp,
             time: l.time || new Date(l.timestamp).toLocaleTimeString('en-US', { hour12: true }),

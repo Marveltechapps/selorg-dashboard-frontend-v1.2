@@ -182,10 +182,13 @@ export function InventoryCoordination() {
     let mounted = true;
 
     async function loadAll() {
+      const vid = vendorId;
+      if (!vid) return;
+
       // KPIs (includes summary data)
       try {
         setLoadingSummary(true);
-        const kpisResp = await vendorInventoryApi.getKPIs(vendorId, {});
+        const kpisResp = await vendorInventoryApi.getKPIs(vid, {});
         if (!mounted) return;
         if (kpisResp.kpis && Array.isArray(kpisResp.kpis)) {
           setKpis(kpisResp.kpis);
@@ -200,7 +203,7 @@ export function InventoryCoordination() {
       // stock list
       try {
         setLoadingStock(true);
-        const stockResp = await vendorInventoryApi.listVendorStock(vendorId);
+        const stockResp = await vendorInventoryApi.listVendorStock(vid);
         if (!mounted) return;
         // API may return { total, page, size, items } or { data: [...] }
         const items = stockResp.items || stockResp.data || stockResp;
@@ -215,7 +218,7 @@ export function InventoryCoordination() {
       // aging alerts
       try {
         setLoadingAlerts(true);
-        const alertsResp = await vendorInventoryApi.getAgingAlerts(vendorId, {});
+        const alertsResp = await vendorInventoryApi.getAgingAlerts(vid);
         if (!mounted) return;
         const alerts = alertsResp.items || alertsResp;
         setAgingAlerts(Array.isArray(alerts) ? alerts : (alerts.items || []));
@@ -227,7 +230,7 @@ export function InventoryCoordination() {
 
       // stockouts
       try {
-        const stockoutsResp = await vendorInventoryApi.getStockouts(vendorId, {});
+        const stockoutsResp = await vendorInventoryApi.getStockouts(vid, {});
         if (!mounted) return;
         const stockouts = stockoutsResp.items || stockoutsResp;
         setStockouts(Array.isArray(stockouts) ? stockouts : (stockouts.items || []));
@@ -237,7 +240,7 @@ export function InventoryCoordination() {
 
       // aging inventory
       try {
-        const agingResp = await vendorInventoryApi.getAgingInventory(vendorId, { daysThreshold: 30 });
+        const agingResp = await vendorInventoryApi.getAgingInventory(vid, { daysThreshold: 30 });
         if (!mounted) return;
         const aging = agingResp.items || agingResp;
         setAgingInventory(Array.isArray(aging) ? aging : (aging.items || []));
@@ -427,13 +430,14 @@ export function InventoryCoordination() {
     );
 
     (async () => {
-      if (!vendorId) {
+      const vid = vendorId;
+      if (!vid) {
         toast.error('No vendor context');
         setAdjusting(false);
         return;
       }
       try {
-        await vendorInventoryApi.reconcileInventory(vendorId, {
+        await vendorInventoryApi.reconcileInventory(vid, {
           items: [
             {
               sku: String(selectedStock.batchId || selectedStock.id),

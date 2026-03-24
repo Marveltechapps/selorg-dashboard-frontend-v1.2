@@ -18,6 +18,7 @@ import {
 import { PerformanceReportModal } from './PerformanceReportModal';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
+import { TableSkeleton } from '../../ui/ux-components';
 interface Vendor {
   id: string;
   code: string;
@@ -1036,7 +1037,6 @@ export function VendorList(props: VendorListProps = {}) {
         
         // If DELETE endpoint doesn't exist (404) or method not allowed (405), use PATCH for soft delete
         if (errorStatus === 404 || errorStatus === 405 || errorMessage.includes('404') || errorMessage.includes('405') || errorMessage.includes('Method not allowed')) {
-          console.log('DELETE endpoint not available (404/405), using PATCH to mark vendor as deleted');
           try {
             await vendorApi.updateVendor(vendorId, {
               status: 'inactive',
@@ -1575,10 +1575,7 @@ export function VendorList(props: VendorListProps = {}) {
       {/* Results Summary */}
       <div className="text-sm text-[#6B7280]">
         {isLoading && isInitialLoad ? (
-          <div className="flex items-center gap-2">
-            <Loader2 size={16} className="animate-spin" />
-            <span>Loading vendors...</span>
-          </div>
+          <div className="h-4 w-56 bg-slate-200 rounded animate-pulse" aria-hidden />
         ) : (
           `Showing ${filteredVendors.length} of ${vendors.length} vendors`
         )}
@@ -1587,9 +1584,8 @@ export function VendorList(props: VendorListProps = {}) {
       {/* Table */}
       <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-sm overflow-hidden">
         {isLoading && isInitialLoad ? (
-          <div className="py-20 text-center">
-            <Loader2 size={48} className="mx-auto mb-4 text-[#4F46E5] animate-spin" />
-            <p className="text-[#6B7280]">Loading vendors...</p>
+          <div className="p-6">
+            <TableSkeleton rows={6} columns={8} />
           </div>
         ) : filteredVendors.length === 0 ? (
           <div className="py-20 text-center">
