@@ -443,9 +443,6 @@ export function GeofenceManager() {
           <TabsTrigger value="analytics">
             <TrendingUp size={14} className="mr-1.5" /> Analytics
           </TabsTrigger>
-          <TabsTrigger value="settings">
-            <Settings size={14} className="mr-1.5" /> Settings
-          </TabsTrigger>
           <TabsTrigger value="history">
             <Clock size={14} className="mr-1.5" /> History
           </TabsTrigger>
@@ -934,108 +931,6 @@ export function GeofenceManager() {
                   </div>
                 ))}
             </div>
-          </div>
-        </TabsContent>
-
-        {/* Settings Tab */}
-        <TabsContent value="settings">
-          <div className="grid grid-cols-2 gap-4">
-            {zones
-              .filter((z) => z.type !== 'no-service')
-              .map((zone) => (
-                <div key={zone.id} className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h4 className="font-bold text-[#18181b]">{zone.name}</h4>
-                      <p className="text-xs text-[#71717a]">{zone.id}</p>
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedZone(zone);
-                        setShowSettingsModal(true);
-                        setSettingsForm({
-                          deliveryFee: zone.settings.deliveryFee,
-                          minOrderValue: zone.settings.minOrderValue,
-                          maxDeliveryRadius: zone.settings.maxDeliveryRadius,
-                          estimatedDeliveryTime: zone.settings.estimatedDeliveryTime,
-                          surgeMultiplier: zone.settings.surgeMultiplier,
-                          maxCapacity: zone.settings.maxCapacity,
-                        });
-                      }}
-                    >
-                      <Edit size={14} className="mr-1" /> Edit
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-[#71717a] block mb-1">Delivery Fee</label>
-                        <Input
-                          type="number"
-                          value={zone.settings.deliveryFee}
-                          className="h-8 text-sm"
-                          readOnly
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-[#71717a] block mb-1">Min Order Value</label>
-                        <Input
-                          type="number"
-                          value={zone.settings.minOrderValue}
-                          className="h-8 text-sm"
-                          readOnly
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-[#71717a] block mb-1">Max Radius (km)</label>
-                        <Input
-                          type="number"
-                          value={zone.settings.maxDeliveryRadius}
-                          className="h-8 text-sm"
-                          readOnly
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-[#71717a] block mb-1">Est. Time (min)</label>
-                        <Input
-                          type="number"
-                          value={zone.settings.estimatedDeliveryTime}
-                          className="h-8 text-sm"
-                          readOnly
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-[#71717a] block mb-1">Surge Multiplier</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          value={zone.settings.surgeMultiplier}
-                          className="h-8 text-sm"
-                          readOnly
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-[#71717a] block mb-1">Max Capacity</label>
-                        <Input
-                          type="number"
-                          value={zone.settings.maxCapacity}
-                          className="h-8 text-sm"
-                          readOnly
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
           </div>
         </TabsContent>
 

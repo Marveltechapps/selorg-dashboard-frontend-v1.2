@@ -34,11 +34,8 @@ import { exportToPDF } from '../../../utils/pdfExport';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
-import { API_CONFIG } from '../../../config/api';
 
 import * as vendorManagementApi from '../../../api/vendor/vendorManagement.api';
-import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
-import { getAuthToken } from '../../../contexts/AuthContext';
 
 // Types
 interface Vendor {
@@ -184,11 +181,6 @@ export function VendorOnboarding() {
   useEffect(() => {
     loadVendors();
   }, [loadVendors]);
-
-  useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
-    void loadVendors();
-  });
-
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<VendorStage | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -396,13 +388,9 @@ export function VendorOnboarding() {
 
   // Form states
   const [inviteForm, setInviteForm] = useState({
-    name: '',
     email: '',
-    phone: '',
+    name: '',
     type: '',
-    category: '',
-    expiryDays: '7',
-    assignedTo: '',
     message: ''
   });
 
@@ -540,86 +528,140 @@ export function VendorOnboarding() {
   // Event handlers
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      toast.error('Vendor name and email are required');
+    if (!inviteForm.email || !inviteForm.name) {
+      toast.error('Please provide vendor name and email');
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteForm.email)) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(inviteForm.email)) {
       toast.error('Please enter a valid email address');
       return;
     }
 
     try {
-      const invitedEmail = inviteForm.email.trim();
+      // Check for existing vendor by email before creating
+      try {
+        const searchRes = await vendorManagementApi.getVendors({
+          search: inviteForm.email.trim()
+        });
+        const list = (searchRes as any)?.data ||
+                     (searchRes as any)?.items ||
+                     (searchRes as any)?.vendors ||
+                     (Array.isArray(searchRes) ? searchRes : []);
+        const duplicate = list.find((v: any) => {
+          const vendorEmail = (
+            v.contact?.email ||
+            v.email ||
+            v.contactEmail || ''
+          ).toLowerCase().trim();
+          return vendorEmail === inviteForm.email.toLowerCase().trim();
+        });
+        if (duplicate) {
+          toast.error(
+            `A vendor with email "${inviteForm.email}" already exists. Check the Vendor List to find them.`,
+            { duration: 6000 }
+          );
+          setActiveModal(null);
+          await loadVendors();
+          return;
+        }
+      } catch (checkErr) {
+        console.warn('Duplicate check failed, proceeding:', checkErr);
+      }
 
-      // Step 1: Create vendor record
-      const newVendor = await vendorManagementApi.createVendor({
+      // Build payload compatible with live backend
+      const uniqueCode = `VND-INV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      const vendorPayload = {
         name: inviteForm.name,
-        code: `VND-INV-${Date.now().toString().slice(-6)}`,
-        // Backend only allows incomplete payloads for `draft`.
-        // We create as draft, then `send-invite-email` flips it to `invited`.
-        status: 'draft',
+        code: uniqueCode,
+        status: 'invited',
         contact: {
           name: inviteForm.name,
-          email: inviteForm.email,
-          phone: inviteForm.phone || '',
+          email: inviteForm.email.trim(),
+          phone: (inviteForm as any).phone || ''
         },
-        address: { line1: '', line2: '', city: '', state: '', pincode: '' },
+        address: {
+          line1: 'Pending vendor submission',
+          line2: '',
+          city: 'Pending',
+          state: 'Tamil Nadu',
+          pincode: '000000',
+          zipCode: '000000'
+        },
+        taxInfo: {
+          gstin: 'PENDING',
+          pan: ''
+        },
+        paymentTerms: '30 days',
         metadata: {
           vendorType: inviteForm.type || 'Third-party',
-          category: inviteForm.category || 'Uncategorized',
-          assignedTo: inviteForm.assignedTo || '',
+          category: (inviteForm as any).category || 'Uncategorized',
+          assignedTo: (inviteForm as any).assignedTo || '',
           inviteMessage: inviteForm.message || '',
-          inviteExpiryDays: parseInt(inviteForm.expiryDays || '7'),
-          stage: 'invited',
-        },
-      });
+          inviteExpiryDays: parseInt((inviteForm as any).expiryDays || '7'),
+          stage: 'invited'
+        }
+      };
 
+      const newVendor = await vendorManagementApi.createVendor(vendorPayload);
       const newVendorId = (newVendor as any)._id || (newVendor as any).id;
 
-      // Step 2: Send invite email
-      const authToken = getAuthToken() || '';
-
-      const baseUrl = API_CONFIG.baseURL;
-
-      const emailRes = await fetch(`${baseUrl}/vendor/vendors/send-invite-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          vendorId: newVendorId,
-          personalMessage: inviteForm.message,
-          expiryDays: parseInt(inviteForm.expiryDays || '7'),
-        }),
-      });
-
-      const emailData = await emailRes.json();
+      // Try to send invite email (non-blocking)
+      try {
+        const authToken =
+          localStorage.getItem('token') ||
+          localStorage.getItem('authToken') ||
+          localStorage.getItem('accessToken') ||
+          sessionStorage.getItem('token') || '';
+        const baseUrl = API_CONFIG?.baseURL ||
+          (import.meta.env.VITE_API_BASE_URL as string) ||
+          'http://localhost:5001/api/v1';
+        const emailRes = await fetch(
+          `${baseUrl}/vendor/vendors/send-invite-email`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+              vendorId: newVendorId,
+              personalMessage: inviteForm.message,
+              expiryDays: parseInt((inviteForm as any).expiryDays || '7')
+            })
+          }
+        );
+        const emailData = await emailRes.json().catch(() => ({}));
+        if (emailData?.previewUrl) {
+          console.log('Email preview:', emailData.previewUrl);
+        }
+      } catch (emailErr) {
+        console.warn('Email send failed (vendor still created):', emailErr);
+      }
 
       setActiveModal(null);
-      setInviteForm({
-        name: '',
-        email: '',
-        phone: '',
-        type: '',
-        category: '',
-        expiryDays: '7',
-        assignedTo: '',
-        message: '',
-      });
+      setInviteForm({ email: '', name: '', type: '', message: '' });
       await loadVendors();
-
-      if (emailData.previewUrl) {
-        toast.success(`Invite created! Check console for email preview URL.`);
-      } else {
-        toast.success(
-          `Invite email sent to ${invitedEmail}. ` +
-            `Vendor is now in the "Invited" pipeline stage.`
-        );
-      }
+      toast.success(
+        `Vendor "${inviteForm.name}" invited and added to pipeline.`
+      );
     } catch (err: any) {
-      toast.error(err?.message || `Failed to send invite to ${inviteForm.email}`);
+      const msg = err?.message || '';
+      const status = err?.status || 0;
+      if (status === 409 ||
+          msg.includes('409') ||
+          msg.includes('already exists') ||
+          msg.includes('duplicate') ||
+          msg.includes('conflict')) {
+        toast.error(
+          `A vendor with email "${inviteForm.email}" already exists. Find them in the Vendor List tab.`,
+          { duration: 8000 }
+        );
+        setActiveModal(null);
+        await loadVendors();
+      } else {
+        toast.error(msg || 'Failed to send invite. Please try again.');
+      }
     }
   };
 
@@ -737,7 +779,7 @@ export function VendorOnboarding() {
 
   // Get action buttons based on vendor stage
   const getActionButtons = (vendor: Vendor) => {
-    const buttons: React.ReactElement[] = [];
+    const buttons: JSX.Element[] = [];
 
     // Review button - for review_pending or docs_verification
     if (vendor.stage === 'review_pending' || vendor.stage === 'docs_verification') {
@@ -1347,7 +1389,7 @@ export function VendorOnboarding() {
 
       {/* Modals */}
       <Dialog open={!!activeModal} onOpenChange={(open) => !open && setActiveModal(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" aria-describedby="vendor-onboarding-modal-description">
           <DialogHeader>
             <DialogTitle>
               {activeModal === 'invite' && "Invite New Vendor"}
@@ -1366,7 +1408,7 @@ export function VendorOnboarding() {
               {activeModal === 'flagVendor' && "Flag Vendor"}
               {activeModal === 'editInfo' && "Edit Vendor Information"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription id="vendor-onboarding-modal-description">
               {activeModal === 'invite' && "Enter the details of the vendor you want to invite to the platform."}
               {activeModal === 'approve' && `Review the details before approving ${modalVendor?.name}.`}
               {activeModal === 'reject' && `Please provide a reason for rejecting ${modalVendor?.name}.`}
@@ -1391,135 +1433,57 @@ export function VendorOnboarding() {
               <div className="space-y-4 py-2">
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    VENDOR NAME <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={inviteForm.name}
-                    onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
-                    placeholder="e.g. FreshMart Suppliers"
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    EMAIL ADDRESS <span className="text-[#EF4444]">*</span>
+                    EMAIL <span className="text-[#EF4444]">*</span>
                   </label>
                   <input
                     type="email"
                     required
                     value={inviteForm.email}
                     onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    placeholder="vendor@company.com"
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5]"
+                    placeholder="vendor@example.com"
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    PHONE NUMBER
+                    NAME <span className="text-[#EF4444]">*</span>
                   </label>
                   <input
-                    type="tel"
-                    value={inviteForm.phone}
-                    onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
-                    placeholder="+91 98765 43210"
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5]"
+                    type="text"
+                    required
+                    value={inviteForm.name}
+                    onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                    placeholder="Vendor Name"
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      VENDOR TYPE
-                    </label>
-                    <select
-                      value={inviteForm.type}
-                      onChange={(e) => setInviteForm({ ...inviteForm, type: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
-                    >
-                      <option value="">Select type</option>
-                      <option>Farmer</option>
-                      <option>Distributor</option>
-                      <option>Aggregator</option>
-                      <option>Third-party</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      CATEGORY
-                    </label>
-                    <select
-                      value={inviteForm.category}
-                      onChange={(e) => setInviteForm({ ...inviteForm, category: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
-                    >
-                      <option value="">Select category</option>
-                      <option>Dairy / Perishables</option>
-                      <option>Grocery / Spices</option>
-                      <option>Fresh Produce</option>
-                      <option>Frozen Foods</option>
-                      <option>Bakery</option>
-                      <option>Beverages</option>
-                      <option>Packaged Goods</option>
-                      <option>Cleaning Supplies</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      INVITE EXPIRY
-                    </label>
-                    <select
-                      value={inviteForm.expiryDays}
-                      onChange={(e) => setInviteForm({ ...inviteForm, expiryDays: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
-                    >
-                      <option value="3">3 days</option>
-                      <option value="7">7 days (recommended)</option>
-                      <option value="14">14 days</option>
-                      <option value="30">30 days</option>
-                    </select>
-                    <p className="text-xs text-[#9CA3AF] mt-1">Link expires after this period</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      ASSIGN TO
-                    </label>
-                    <select
-                      value={inviteForm.assignedTo}
-                      onChange={(e) => setInviteForm({ ...inviteForm, assignedTo: e.target.value })}
-                      className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5]"
-                    >
-                      <option value="">Select team</option>
-                      <option>Vendor Manager</option>
-                      <option>Supply Chain</option>
-                      <option>Admin</option>
-                    </select>
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    PERSONAL MESSAGE
+                    TYPE
+                  </label>
+                  <select
+                    value={inviteForm.type}
+                    onChange={(e) => setInviteForm({ ...inviteForm, type: e.target.value })}
+                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
+                  >
+                    <option value="">Select type</option>
+                    <option value="Farmer">Farmer</option>
+                    <option value="Distributor">Distributor</option>
+                    <option value="Aggregator">Aggregator</option>
+                    <option value="Third-party">Third-party</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
+                    MESSAGE
                   </label>
                   <textarea
                     value={inviteForm.message}
                     onChange={(e) => setInviteForm({ ...inviteForm, message: e.target.value })}
-                    placeholder="Hi, we'd love to have you as our supplier..."
+                    placeholder="Welcome message (optional)"
                     rows={3}
-                    maxLength={300}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5]"
+                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
                   />
-                  <p className="text-xs text-[#9CA3AF] text-right">
-                    {inviteForm.message.length}/300
-                  </p>
                 </div>
               </div>
               <DialogFooter>
@@ -1539,7 +1503,6 @@ export function VendorOnboarding() {
               </DialogFooter>
             </form>
           )}
-
           {/* Modal 2: Nudge Vendor */}
           {activeModal === 'nudge' && modalVendor && (
             <form onSubmit={handleNudge} className="space-y-4">
@@ -1624,24 +1587,6 @@ export function VendorOnboarding() {
                     className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]" defaultChecked />
-                    <span className="text-sm text-[#1F2937]">KYC verification complete</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]" defaultChecked />
-                    <span className="text-sm text-[#1F2937]">Documents verified</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]" defaultChecked />
-                    <span className="text-sm text-[#1F2937]">No red flags or issues</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]" defaultChecked />
-                    <span className="text-sm text-[#1F2937]">Ready to send contract</span>
-                  </label>
-                </div>
               </div>
               <DialogFooter>
                 <button
@@ -1699,15 +1644,6 @@ export function VendorOnboarding() {
                     className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
                   />
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox"
-                    checked={rejectForm.allowResubmit}
-                    onChange={(e) => setRejectForm({ ...rejectForm, allowResubmit: e.target.checked })}
-                    className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]" 
-                  />
-                  <span className="text-sm text-[#1F2937]">Allow vendor to resubmit after 30 days</span>
-                </label>
               </div>
               <DialogFooter>
                 <button
@@ -1723,911 +1659,6 @@ export function VendorOnboarding() {
                   className="px-6 py-2.5 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] transition-colors disabled:opacity-60"
                 >
                   {rejectLoading ? 'Rejecting...' : 'Confirm Rejection'}
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 5: Review Vendor */}
-          {activeModal === 'review' && modalVendor && (
-            <div className="space-y-4 py-2 max-h-[500px] overflow-y-auto">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-3">
-                    Vendor Information
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Name:</span>
-                      <span className="text-[#1F2937] font-medium">{modalVendor.name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Email:</span>
-                      <span className="text-[#1F2937]">{modalVendor.email}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Phone:</span>
-                      <span className="text-[#1F2937]">{modalVendor.phone}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Type:</span>
-                      <span className="text-[#1F2937]">{modalVendor.type}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Stage:</span>
-                      <span 
-                        className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium"
-                        style={{ 
-                          backgroundColor: getStageBadgeStyle(modalVendor.stage).bg,
-                          color: getStageBadgeStyle(modalVendor.stage).text
-                        }}
-                      >
-                        {getStageBadgeStyle(modalVendor.stage).label}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-3">
-                    Documents
-                  </h4>
-                  <div className="space-y-2">
-                    {modalVendor.documents.map((doc, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-[#F9FAFB] rounded">
-                        <div className="flex items-center gap-2">
-                          <FileText size={14} className="text-[#6B7280]" />
-                          <span className="text-sm text-[#1F2937]">{doc.name}</span>
-                        </div>
-                        {doc.status === 'verified' && (
-                          <span className="text-xs text-[#10B981] flex items-center gap-1">
-                            <CheckCircle size={12} />
-                            Verified
-                          </span>
-                        )}
-                        {doc.status === 'pending' && (
-                          <span className="text-xs text-[#F59E0B] flex items-center gap-1">
-                            <Clock size={12} />
-                            Pending
-                          </span>
-                        )}
-                        {doc.status === 'missing' && (
-                          <span className="text-xs text-[#EF4444] flex items-center gap-1">
-                            <XCircle size={12} />
-                            Missing
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  onClick={() => {
-                    setActiveModal('approve');
-                  }}
-                  className="px-6 py-2.5 bg-[#10B981] text-white font-medium rounded-lg hover:bg-[#059669] transition-colors"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => {
-                    setActiveModal('reject');
-                  }}
-                  className="px-6 py-2.5 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] transition-colors"
-                >
-                  Reject
-                </button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {/* Modal 6: Re-Request Docs */}
-          {activeModal === 'reRequestDocs' && modalVendor && (
-            <form onSubmit={handleReRequestDocs} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Select Missing Documents
-                  </label>
-                  <div className="space-y-2">
-                    {['GST Certificate', 'Business License', 'Bank Details', 'Insurance Certificate', 'Certifications', 'References'].map((doc) => (
-                      <label key={doc} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={reRequestDocsForm.documents.includes(doc)}
-                          onChange={(e) => {
-                            const newDocs = e.target.checked
-                              ? [...reRequestDocsForm.documents, doc]
-                              : reRequestDocsForm.documents.filter(d => d !== doc);
-                            setReRequestDocsForm({ ...reRequestDocsForm, documents: newDocs });
-                          }}
-                          className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]"
-                        />
-                        <span className="text-sm text-[#1F2937]">{doc}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    MESSAGE TO VENDOR (OPTIONAL)
-                  </label>
-                  <textarea
-                    value={reRequestDocsForm.message}
-                    onChange={(e) => setReRequestDocsForm({ ...reRequestDocsForm, message: e.target.value })}
-                    placeholder="Add specific instructions for document submission..."
-                    rows={3}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    SUBMISSION DEADLINE <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={reRequestDocsForm.deadline}
-                    onChange={(e) => setReRequestDocsForm({ ...reRequestDocsForm, deadline: e.target.value })}
-                    className="w-full h-10 px-3 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#F97316] text-white font-medium rounded-lg hover:bg-[#EA580C] transition-colors"
-                >
-                  Send Request
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 7: View Contract */}
-          {activeModal === 'viewContract' && modalVendor && (
-            <div className="space-y-4 py-2">
-              <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-6 min-h-[300px] flex items-center justify-center">
-                <div className="text-center">
-                  <File size={48} className="text-[#6B7280] mx-auto mb-3" />
-                  <p className="text-sm text-[#6B7280]">Contract Document</p>
-                  <p className="text-xs text-[#9CA3AF] mt-1">Contract ID: {modalVendor.contractId}</p>
-                </div>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280]">Vendor:</span>
-                  <span className="text-[#1F2937] font-medium">{modalVendor.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280]">Contract Date:</span>
-                  <span className="text-[#1F2937]">{modalVendor.registrationDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280]">Signed:</span>
-                  <span className="text-[#10B981]">
-                    {modalVendor.contractSigned ? 'Yes ✓' : 'Pending'}
-                  </span>
-                </div>
-              </div>
-              <DialogFooter>
-                <button className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors flex items-center gap-2">
-                  <Download size={16} />
-                  Download PDF
-                </button>
-                <button className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors">
-                  Print
-                </button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {/* Modal 8: Assign Tier */}
-          {activeModal === 'assignTier' && modalVendor && (
-            <form onSubmit={handleAssignTier} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div className="space-y-3">
-                  <label className="flex items-start gap-3 p-3 border-2 border-[#E5E7EB] rounded-lg cursor-pointer hover:border-[#4F46E5] transition-colors">
-                    <input
-                      type="radio"
-                      name="tier"
-                      value="Gold"
-                      checked={assignTierForm.tier === 'Gold'}
-                      onChange={(e) => setAssignTierForm({ ...assignTierForm, tier: e.target.value as 'Gold' })}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-[#1F2937]">GOLD TIER</span>
-                        <div className="flex gap-0.5">
-                          <Star size={12} className="text-[#F59E0B] fill-[#F59E0B]" />
-                          <Star size={12} className="text-[#F59E0B] fill-[#F59E0B]" />
-                          <Star size={12} className="text-[#F59E0B] fill-[#F59E0B]" />
-                        </div>
-                      </div>
-                      <p className="text-xs text-[#6B7280]">Premium pricing, priority support, dedicated account manager</p>
-                      <p className="text-xs text-[#6B7280] mt-1">Annual Volume: &gt;₹500k</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-3 border-2 border-[#E5E7EB] rounded-lg cursor-pointer hover:border-[#4F46E5] transition-colors">
-                    <input
-                      type="radio"
-                      name="tier"
-                      value="Silver"
-                      checked={assignTierForm.tier === 'Silver'}
-                      onChange={(e) => setAssignTierForm({ ...assignTierForm, tier: e.target.value as 'Silver' })}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-[#1F2937]">SILVER TIER</span>
-                        <div className="flex gap-0.5">
-                          <Star size={12} className="text-[#9CA3AF] fill-[#9CA3AF]" />
-                          <Star size={12} className="text-[#9CA3AF] fill-[#9CA3AF]" />
-                        </div>
-                      </div>
-                      <p className="text-xs text-[#6B7280]">Standard pricing, regular support, monthly reviews</p>
-                      <p className="text-xs text-[#6B7280] mt-1">Annual Volume: ₹100k-₹500k</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-3 border-2 border-[#E5E7EB] rounded-lg cursor-pointer hover:border-[#4F46E5] transition-colors">
-                    <input
-                      type="radio"
-                      name="tier"
-                      value="Bronze"
-                      checked={assignTierForm.tier === 'Bronze'}
-                      onChange={(e) => setAssignTierForm({ ...assignTierForm, tier: e.target.value as 'Bronze' })}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-[#1F2937]">BRONZE TIER</span>
-                        <Star size={12} className="text-[#CD7F32] fill-[#CD7F32]" />
-                      </div>
-                      <p className="text-xs text-[#6B7280]">Basic pricing, standard support, quarterly reviews</p>
-                      <p className="text-xs text-[#6B7280] mt-1">Annual Volume: &lt;₹100k</p>
-                    </div>
-                  </label>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    NOTES (OPTIONAL)
-                  </label>
-                  <textarea
-                    value={assignTierForm.notes}
-                    onChange={(e) => setAssignTierForm({ ...assignTierForm, notes: e.target.value })}
-                    placeholder="Additional notes about tier assignment..."
-                    rows={3}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#7C3AED] text-white font-medium rounded-lg hover:bg-[#6D28D9] transition-colors"
-                >
-                  Assign Tier
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 9: Add Note */}
-          {activeModal === 'addNote' && modalVendor && (
-            <form onSubmit={handleAddNote} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    NOTE <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <textarea
-                    required
-                    value={addNoteForm.note}
-                    onChange={(e) => setAddNoteForm({ ...addNoteForm, note: e.target.value })}
-                    placeholder="Add internal note (visible to team only)..."
-                    rows={4}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={addNoteForm.visibleToAll}
-                      onChange={(e) => setAddNoteForm({ ...addNoteForm, visibleToAll: e.target.checked })}
-                      className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]"
-                    />
-                    <span className="text-sm text-[#1F2937]">Make visible to all team members</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!addNoteForm.visibleToAll}
-                      onChange={(e) => setAddNoteForm({ ...addNoteForm, visibleToAll: !e.target.checked })}
-                      className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]"
-                    />
-                    <span className="text-sm text-[#1F2937]">Private to me only</span>
-                  </label>
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA] transition-colors"
-                >
-                  Save Note
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 10: Download Documents */}
-          {activeModal === 'downloadDocs' && modalVendor && (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                {modalVendor.documents.map((doc, index) => (
-                  <div key={index} className="flex items-center justify-between py-2.5 px-3 hover:bg-[#F9FAFB] rounded">
-                    <div>
-                      <p className="text-sm text-[#1F2937]">{doc.name}</p>
-                      <p className="text-xs text-[#6B7280]">
-                        {doc.status === 'verified' && 'Verified'}
-                        {doc.status === 'pending' && 'Pending'}
-                        {doc.status === 'missing' && 'Missing'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => modalVendor && downloadDocument(doc, modalVendor)}
-                      className="text-sm font-medium text-[#4F46E5] hover:text-[#4338CA]"
-                    >
-                      Download
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={downloadAllDocuments}
-                  className="px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA] transition-colors"
-                >
-                  Download All
-                </button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {/* Modal 11: Activity Log */}
-          {activeModal === 'activityLog' && modalVendor && (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {modalVendor.activityLog.map((activity, index) => (
-                  <div key={index} className="py-2.5 px-3 hover:bg-[#F9FAFB] rounded">
-                    <p className="text-sm text-[#1F2937]">{activity.action}</p>
-                    <p className="text-xs text-[#6B7280] mt-1">
-                      by {activity.user} • {activity.timestamp}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA] transition-colors"
-                >
-                  Close
-                </button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {/* Modal 12: Schedule Meeting */}
-          {activeModal === 'scheduleMeeting' && modalVendor && (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!scheduleMeetingForm.title || !scheduleMeetingForm.date || !scheduleMeetingForm.time) {
-                toast.error('Please fill in all required fields');
-                return;
-              }
-              
-              const updatedVendors = vendors.map(v => {
-                if (v.id === modalVendor.id) {
-                  const newActivity = {
-                    action: `Meeting scheduled: ${scheduleMeetingForm.title} on ${scheduleMeetingForm.date} at ${scheduleMeetingForm.time}`,
-                    user: 'Admin',
-                    timestamp: new Date().toLocaleString()
-                  };
-                  return {
-                    ...v,
-                    activityLog: [...(v.activityLog || []), newActivity]
-                  };
-                }
-                return v;
-              });
-              
-              setVendors(updatedVendors);
-              
-              if (selectedVendor?.id === modalVendor.id) {
-                const updated = updatedVendors.find(v => v.id === modalVendor.id);
-                if (updated) setSelectedVendor(updated);
-              }
-              
-              setActiveModal(null);
-              setScheduleMeetingForm({ title: '', date: '', time: '', link: '', notes: '' });
-              toast.success('Meeting scheduled successfully!');
-            }} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Meeting Title <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={scheduleMeetingForm.title}
-                    onChange={(e) => setScheduleMeetingForm({ ...scheduleMeetingForm, title: e.target.value })}
-                    placeholder="e.g., Onboarding Discussion"
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      Date <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={scheduleMeetingForm.date}
-                      onChange={(e) => setScheduleMeetingForm({ ...scheduleMeetingForm, date: e.target.value })}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      Time <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="time"
-                      required
-                      value={scheduleMeetingForm.time}
-                      onChange={(e) => setScheduleMeetingForm({ ...scheduleMeetingForm, time: e.target.value })}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Meeting Link (Optional)
-                  </label>
-                  <input
-                    type="url"
-                    value={scheduleMeetingForm.link}
-                    onChange={(e) => setScheduleMeetingForm({ ...scheduleMeetingForm, link: e.target.value })}
-                    placeholder="https://meet.google.com/..."
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Notes
-                  </label>
-                  <textarea
-                    value={scheduleMeetingForm.notes}
-                    onChange={(e) => setScheduleMeetingForm({ ...scheduleMeetingForm, notes: e.target.value })}
-                    placeholder="Add meeting agenda or notes..."
-                    rows={3}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA] transition-colors"
-                >
-                  Schedule Meeting
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 13: Send Message */}
-          {activeModal === 'sendMessage' && modalVendor && (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!sendMessageForm.subject || !sendMessageForm.message) {
-                toast.error('Please fill in all required fields');
-                return;
-              }
-              
-              const updatedVendors = vendors.map(v => {
-                if (v.id === modalVendor.id) {
-                  const newActivity = {
-                    action: `Message sent: ${sendMessageForm.subject}`,
-                    user: 'Admin',
-                    timestamp: new Date().toLocaleString()
-                  };
-                  return {
-                    ...v,
-                    activityLog: [...(v.activityLog || []), newActivity]
-                  };
-                }
-                return v;
-              });
-              
-              setVendors(updatedVendors);
-              
-              if (selectedVendor?.id === modalVendor.id) {
-                const updated = updatedVendors.find(v => v.id === modalVendor.id);
-                if (updated) setSelectedVendor(updated);
-              }
-              
-              setActiveModal(null);
-              setSendMessageForm({ subject: '', message: '', sendCopy: false });
-              toast.success('Message sent successfully!');
-            }} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Subject <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={sendMessageForm.subject}
-                    onChange={(e) => setSendMessageForm({ ...sendMessageForm, subject: e.target.value })}
-                    placeholder="Message subject"
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Message <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <textarea
-                    required
-                    value={sendMessageForm.message}
-                    onChange={(e) => setSendMessageForm({ ...sendMessageForm, message: e.target.value })}
-                    placeholder="Type your message here..."
-                    rows={6}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="sendCopy"
-                    checked={sendMessageForm.sendCopy}
-                    onChange={(e) => setSendMessageForm({ ...sendMessageForm, sendCopy: e.target.checked })}
-                    className="w-4 h-4 text-[#4F46E5] border-[#D1D5DB] rounded focus:ring-[#4F46E5]"
-                  />
-                  <label htmlFor="sendCopy" className="text-sm text-[#1F2937]">
-                    Send me a copy
-                  </label>
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA] transition-colors"
-                >
-                  Send Message
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 14: Flag Vendor */}
-          {activeModal === 'flagVendor' && modalVendor && (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!flagVendorForm.reason || !flagVendorForm.priority || !flagVendorForm.details) {
-                toast.error('Please fill in all required fields');
-                return;
-              }
-              
-              const updatedVendors = vendors.map(v => {
-                if (v.id === modalVendor.id) {
-                  const newActivity = {
-                    action: `Vendor flagged: ${flagVendorForm.reason} (${flagVendorForm.priority} priority) - ${flagVendorForm.details}`,
-                    user: 'Admin',
-                    timestamp: new Date().toLocaleString()
-                  };
-                  return {
-                    ...v,
-                    activityLog: [...(v.activityLog || []), newActivity]
-                  };
-                }
-                return v;
-              });
-              
-              setVendors(updatedVendors);
-              
-              if (selectedVendor?.id === modalVendor.id) {
-                const updated = updatedVendors.find(v => v.id === modalVendor.id);
-                if (updated) setSelectedVendor(updated);
-              }
-              
-              setActiveModal(null);
-              setFlagVendorForm({ reason: '', priority: '', details: '' });
-              toast.success('Vendor flagged for review');
-            }} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Reason <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <select
-                    required
-                    value={flagVendorForm.reason}
-                    onChange={(e) => setFlagVendorForm({ ...flagVendorForm, reason: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  >
-                    <option value="">Select a reason</option>
-                    <option value="quality">Quality Issues</option>
-                    <option value="delivery">Delivery Problems</option>
-                    <option value="compliance">Compliance Violation</option>
-                    <option value="fraud">Suspected Fraud</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Priority <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <div className="flex gap-3">
-                    <label className="flex items-center gap-2">
-                      <input 
-                        type="radio" 
-                        name="priority" 
-                        value="low" 
-                        checked={flagVendorForm.priority === 'low'}
-                        onChange={(e) => setFlagVendorForm({ ...flagVendorForm, priority: e.target.value })}
-                        required 
-                        className="w-4 h-4 text-[#4F46E5]" 
-                      />
-                      <span className="text-sm text-[#1F2937]">Low</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input 
-                        type="radio" 
-                        name="priority" 
-                        value="medium" 
-                        checked={flagVendorForm.priority === 'medium'}
-                        onChange={(e) => setFlagVendorForm({ ...flagVendorForm, priority: e.target.value })}
-                        className="w-4 h-4 text-[#4F46E5]" 
-                      />
-                      <span className="text-sm text-[#1F2937]">Medium</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input 
-                        type="radio" 
-                        name="priority" 
-                        value="high" 
-                        checked={flagVendorForm.priority === 'high'}
-                        onChange={(e) => setFlagVendorForm({ ...flagVendorForm, priority: e.target.value })}
-                        className="w-4 h-4 text-[#4F46E5]" 
-                      />
-                      <span className="text-sm text-[#1F2937]">High</span>
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Details <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <textarea
-                    required
-                    value={flagVendorForm.details}
-                    onChange={(e) => setFlagVendorForm({ ...flagVendorForm, details: e.target.value })}
-                    placeholder="Provide detailed information about the issue..."
-                    rows={4}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm resize-none focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] transition-colors"
-                >
-                  Flag Vendor
-                </button>
-              </DialogFooter>
-            </form>
-          )}
-
-          {/* Modal 15: Edit Vendor Info */}
-          {activeModal === 'editInfo' && modalVendor && (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              // Use form values, fallback to modalVendor if form is empty (shouldn't happen, but safety check)
-              const name = editInfoForm.name.trim() || modalVendor.name;
-              const email = editInfoForm.email.trim() || modalVendor.email;
-              const phone = editInfoForm.phone.trim() || modalVendor.phone;
-              
-              if (!name || !email || !phone) {
-                toast.error('Please fill in all required fields');
-                return;
-              }
-              
-              const updatedVendors = vendors.map(v => {
-                if (v.id === modalVendor.id) {
-                  const updated = {
-                    ...v,
-                    name: name,
-                    email: email,
-                    phone: phone,
-                    category: editInfoForm.category || v.category,
-                    type: (editInfoForm.type || v.type) as Vendor['type'],
-                    activityLog: [
-                      ...(v.activityLog || []),
-                      { 
-                        action: `Vendor information updated: ${name} (${email})`, 
-                        user: 'Admin', 
-                        timestamp: new Date().toLocaleString() 
-                      }
-                    ]
-                  };
-                  return updated;
-                }
-                return v;
-              });
-              
-              setVendors(updatedVendors);
-              
-              // Update selected vendor if it's the same one
-              if (selectedVendor?.id === modalVendor.id) {
-                const updated = updatedVendors.find(v => v.id === modalVendor.id);
-                if (updated) setSelectedVendor(updated);
-              }
-              
-              setActiveModal(null);
-              setEditInfoForm({ name: '', email: '', phone: '', category: '', type: '' });
-              toast.success('Vendor information updated successfully');
-            }} className="space-y-4">
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Vendor Name <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editInfoForm.name || modalVendor.name}
-                    onChange={(e) => setEditInfoForm({ ...editInfoForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      Email <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={editInfoForm.email || modalVendor.email}
-                      onChange={(e) => setEditInfoForm({ ...editInfoForm, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                      Phone <span className="text-[#EF4444]">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={editInfoForm.phone || modalVendor.phone}
-                      onChange={(e) => setEditInfoForm({ ...editInfoForm, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Category
-                  </label>
-                  <select
-                    value={editInfoForm.category || modalVendor.category}
-                    onChange={(e) => setEditInfoForm({ ...editInfoForm, category: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  >
-                    <option value="Fruits & Veg">Fruits & Veg</option>
-                    <option value="Dairy">Dairy</option>
-                    <option value="Grains">Grains</option>
-                    <option value="Spices">Spices</option>
-                    <option value="Uncategorized">Uncategorized</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                    Vendor Type
-                  </label>
-                  <select
-                    value={editInfoForm.type || modalVendor.type}
-                    onChange={(e) => setEditInfoForm({ ...editInfoForm, type: e.target.value as Vendor['type'] })}
-                    className="w-full px-3 py-2 border border-[#D1D5DB] rounded-md text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-3 focus:ring-[#4F46E5]/10"
-                  >
-                    <option value="Farmer">Farmer</option>
-                    <option value="Distributor">Distributor</option>
-                    <option value="Aggregator">Aggregator</option>
-                    <option value="Third-party">Third-party</option>
-                  </select>
-                </div>
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveModal(null);
-                    setEditInfoForm({ name: '', email: '', phone: '', category: '', type: '' });
-                  }}
-                  className="px-6 py-2.5 border border-[#D1D5DB] text-[#1F2937] font-medium rounded-lg hover:bg-[#F3F4F6] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-lg hover:bg-[#4338CA] transition-colors"
-                >
-                  Save Changes
                 </button>
               </DialogFooter>
             </form>

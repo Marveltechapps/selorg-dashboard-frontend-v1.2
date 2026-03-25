@@ -1095,95 +1095,116 @@ export function VendorList(props: VendorListProps = {}) {
     try {
       setIsLoading(true);
       const formData = submitPayload.formData;
-
-      const addressObj = {
-        line1: formData.addressLine1,
-        line2: null,
-        line3: null,
-        city: formData.city,
-        state: formData.state,
-        country: 'India',
-        zipCode: formData.postalCode,
+      const isDraft = submitPayload.status === 'draft';
+      const generateUniqueCode = () => {
+        const timestamp = Date.now().toString(36).toUpperCase();
+        const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+        return `VND-${timestamp}-${random}`;
       };
+      const vendorCode = submitPayload.vendorId ? submitPayload.vendorCode : generateUniqueCode();
 
-      const paymentTermsResolved = (formData.paymentTermsPreferred || formData.paymentTermsBank || '').trim();
+      const rawPayment = (formData.paymentTermsPreferred || formData.paymentTermsBank || '').trim();
+      const paymentTermsTopLevel =
+        rawPayment === 'net30' || rawPayment === 'Net 30'
+          ? '30 days'
+          : rawPayment === 'net15'
+            ? '15 days'
+            : rawPayment === 'net45'
+              ? '45 days'
+              : rawPayment === 'net7'
+                ? '7 days'
+                : rawPayment === 'advance'
+                  ? 'advance'
+                  : rawPayment === 'cod'
+                    ? 'cod'
+                    : rawPayment || '30 days';
 
-      const metadata = {
-        // Step 1 / onboarding
-        registrationNumber: formData.registrationNumber,
-        onboardingSource: formData.onboardingSource || 'direct',
-        serviceableZones: formData.serviceableZones,
-
-        // Core vendor attributes (wizard Step 1 + Step 3)
-        vendorType: formData.vendorType,
-        tier: formData.tier,
-        description: formData.description,
-        gstNumber: formData.gstNumber,
-        panNumber: formData.panNumber,
-        bankName: formData.bankName,
-        accountType: formData.accountType,
-        bankAccount: formData.accountNo,
-        ifscCode: formData.ifscCode,
-        accountHolder: formData.accountHolder,
-
-        // Step 3 / 6
-        paymentTerms: paymentTermsResolved || 'net15',
-        creditLimit:
-          formData.creditLimit != null && String(formData.creditLimit).trim() !== '' ? Number(formData.creditLimit) : 0,
-        leadTimeDays: Number(formData.leadTimeDays || 2),
-        minimumOrderValue:
-          formData.minimumOrderValue != null && String(formData.minimumOrderValue).trim() !== ''
-            ? Number(formData.minimumOrderValue)
-            : 0,
-
-        // Step 8
-        deliveryWindows: formData.deliveryWindows,
-        slaTargetPercent: Number(formData.slaTargetPercent || 90),
-        substitutionPolicy: formData.substitutionPolicy || 'case_by_case',
-        returnPolicy: formData.returnPolicy || 'partial',
-        specialInstructions: formData.specialInstructions || '',
-
-        // Step 5 & 6 purchase limits (persisted via `strict:false` backend metadata)
-        selectedCategories: formData.selectedCategories,
-        productType: formData.productType,
-        minQtyPerDay: formData.minQtyPerDay !== '' ? Number(formData.minQtyPerDay) : undefined,
-        maxQtyPerDay: formData.maxQtyPerDay !== '' ? Number(formData.maxQtyPerDay) : undefined,
-        qtyUnit: formData.qtyUnit,
-
-        // Extra info to support editing/hydration
-        paymentTermsBank: formData.paymentTermsBank,
-        paymentTermsPreferred: formData.paymentTermsPreferred,
-
-        // Step 7
-        categoryLimits: formData.categoryLimits.map((cl) => ({
-          ...cl,
-          minQty: Number(cl.minQty),
-          maxQty: Number(cl.maxQty),
-          leadTimeDays: cl.leadTimeDays != null ? Number(cl.leadTimeDays) : undefined,
-        })),
-
-        // Documents (Step 4)
-        documents: formData.documents || {},
-      };
-
-      const payloadToSend: Record<string, unknown> = {
+      const payload: Record<string, unknown> = {
         vendorName: formData.vendorName,
         name: formData.vendorName,
-        vendorCode: submitPayload.vendorCode,
-        code: submitPayload.vendorCode,
-        status: submitPayload.status,
+        vendorCode,
+        code: vendorCode,
+        status: isDraft ? 'draft' : 'pending',
         contact: {
           name: formData.contactPerson || formData.vendorName,
-          phone: formData.phonePrimary || '',
           email: formData.email || '',
+          phone: formData.phonePrimary || '',
         },
-        address: addressObj,
-        metadata,
+        address: {
+          line1: formData.addressLine1 || 'Not provided',
+          line2: '',
+          line3: null,
+          city: formData.city || 'Not provided',
+          state: formData.state || 'Tamil Nadu',
+          country: 'India',
+          pincode: formData.postalCode || '000000',
+          zipCode: formData.postalCode || '000000',
+        },
+        taxInfo: {
+          gstin: formData.gstNumber || 'PENDING',
+          pan: formData.panNumber || '',
+        },
+        paymentTerms: paymentTermsTopLevel,
+        currencyCode: 'INR',
+        metadata: {
+          category: Array.isArray(formData.selectedCategories)
+            ? formData.selectedCategories[0]
+            : 'General',
+          vendorType: formData.vendorType || 'Third-party',
+          gstNumber: formData.gstNumber || '',
+          panNumber: formData.panNumber || '',
+          bankAccount: formData.accountNo || '',
+          bankName: formData.bankName || '',
+          ifscCode: formData.ifscCode || '',
+          accountHolder: formData.accountHolder || '',
+          accountType: formData.accountType || 'Current',
+          tier: formData.tier || '',
+          description: formData.description || '',
+          registrationNumber: formData.registrationNumber,
+          onboardingSource: formData.onboardingSource || 'direct',
+          serviceableZones: formData.serviceableZones || [],
+          paymentTerms: rawPayment || 'net30',
+          creditLimit: Number(formData.creditLimit) || 0,
+          leadTimeDays: Number(formData.leadTimeDays) || 2,
+          minimumOrderValue: Number(formData.minimumOrderValue) || 0,
+          deliveryWindows: formData.deliveryWindows || [],
+          slaTargetPercent: Number(formData.slaTargetPercent) || 90,
+          substitutionPolicy: formData.substitutionPolicy || 'case_by_case',
+          returnPolicy: formData.returnPolicy || 'partial',
+          specialInstructions: formData.specialInstructions || '',
+          categoryLimits: formData.categoryLimits.map((cl) => ({
+            ...cl,
+            minQty: Number(cl.minQty),
+            maxQty: Number(cl.maxQty),
+            leadTimeDays: cl.leadTimeDays != null ? Number(cl.leadTimeDays) : undefined,
+          })),
+          selectedCategories: formData.selectedCategories || [],
+          productType: formData.productType,
+          minQtyPerDay: formData.minQtyPerDay !== '' ? Number(formData.minQtyPerDay) : undefined,
+          maxQtyPerDay: formData.maxQtyPerDay !== '' ? Number(formData.maxQtyPerDay) : undefined,
+          qtyUnit: formData.qtyUnit,
+          paymentTermsBank: formData.paymentTermsBank,
+          paymentTermsPreferred: formData.paymentTermsPreferred,
+          documents: formData.documents || {},
+        },
       };
 
-      const result = submitPayload.vendorId
-        ? await vendorApi.updateVendor(String(submitPayload.vendorId), payloadToSend)
-        : await vendorApi.createVendor(payloadToSend);
+      let result;
+      if (submitPayload.vendorId) {
+        result = await vendorApi.updateVendor(String(submitPayload.vendorId), payload);
+      } else {
+        try {
+          result = await vendorApi.createVendor(payload);
+        } catch (createError: any) {
+          // Log full details to diagnose live backend validation mismatches.
+          console.error('=== CREATE VENDOR FAILED ===');
+          console.error('Payload sent:', JSON.stringify(payload, null, 2));
+          console.error('Error message:', createError.message);
+          console.error('Full error:', createError);
+          console.error('============================');
+          throw createError;
+        }
+      }
 
       await loadVendors();
 
@@ -1194,7 +1215,22 @@ export function VendorList(props: VendorListProps = {}) {
         vendorId: vendorIdFromResult ? String(vendorIdFromResult) : submitPayload.vendorId ? String(submitPayload.vendorId) : undefined,
       };
     } catch (error: any) {
-      console.error('Failed to create/update vendor:', error);
+      console.error('Failed to create vendor:', error);
+      const msg = error?.message || '';
+      if (
+        msg.includes('already exists') ||
+        error?.status === 409 ||
+        msg.includes('409') ||
+        msg.includes('duplicate')
+      ) {
+        sonnerToast.error(
+          `A vendor with this email already exists. ` +
+            `Search for them in the Vendor List instead.`,
+          { duration: 6000 }
+        );
+      } else {
+        sonnerToast.error(msg || 'Failed to create vendor. Please try again.');
+      }
       throw error;
     } finally {
       setIsLoading(false);

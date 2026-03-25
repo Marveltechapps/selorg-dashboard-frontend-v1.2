@@ -1,10 +1,5 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../config/api';
 import { getAuthToken } from '../../contexts/AuthContext';
-import { DASHBOARD_TOPICS, emitDashboardRefresh } from '../../lib/dashboardRefreshBus';
-
-function notifyVendorDataMutated() {
-  emitDashboardRefresh(DASHBOARD_TOPICS.vendor);
-}
 
 /**
  * Vendor Management API
@@ -77,9 +72,7 @@ export const vendorManagementApi = {
       throw error;
     }
 
-    const json = await response.json();
-    notifyVendorDataMutated();
-    return json;
+    return response.json();
   },
 
   /**
@@ -115,19 +108,19 @@ export const vendorManagementApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Failed to create vendor' }));
-      const msg =
-        typeof error.message === 'string'
-          ? error.message
-          : Array.isArray(error.details)
-            ? error.details.map((d: { msg?: string }) => d.msg).filter(Boolean).join('; ')
-            : 'Failed to create vendor';
-      throw new Error(msg || 'Failed to create vendor');
+      const errorData = await response.json().catch(() => ({ message: 'Failed to create vendor' }));
+      const error: any = new Error(
+        errorData.message ||
+        errorData.error?.message ||
+        errorData.error ||
+        `Failed to create vendor (${response.status})`
+      );
+      error.status = response.status;
+      error.data = errorData;
+      throw error;
     }
 
-    const json = await response.json();
-    notifyVendorDataMutated();
-    return json;
+    return response.json();
   },
 
   /**
@@ -148,9 +141,7 @@ export const vendorManagementApi = {
       throw new Error(error.message || 'Failed to update vendor');
     }
 
-    const json = await response.json();
-    notifyVendorDataMutated();
-    return json;
+    return response.json();
   },
 
   /**
@@ -166,7 +157,6 @@ export const vendorManagementApi = {
     });
 
     if (!response.ok) {
-      // Create error object with status for better error handling
       const error: any = new Error(`Failed to delete vendor (${response.status})`);
       error.status = response.status;
       error.response = response;
@@ -181,14 +171,9 @@ export const vendorManagementApi = {
       throw error;
     }
 
-    const json = await response.json().catch(() => ({}));
-    notifyVendorDataMutated();
-    return json;
+    return response.json().catch(() => ({}));
   },
 
-  /**
-   * Get vendor summary (counts, metrics, health)
-   */
   async getVendorSummary() {
     const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.summary}`, {
       method: 'GET',
@@ -212,40 +197,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Vendor performance metrics (PO, QC, GRN aggregates — real DB data)
-   */
-  async getVendorPerformance(vendorId: string, query?: { startDate?: string; endDate?: string }) {
-    const params = new URLSearchParams();
-    if (query?.startDate) params.append('startDate', query.startDate);
-    if (query?.endDate) params.append('endDate', query.endDate);
-    const q = params.toString();
-    const url = `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.performance(vendorId)}${q ? `?${q}` : ''}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      const error: any = new Error('Failed to fetch vendor performance');
-      try {
-        const errData = await response.json();
-        error.message = errData.message || errData.error || error.message;
-      } catch {
-        error.message = `Failed to fetch vendor performance (${response.status})`;
-      }
-      throw error;
-    }
-
-    return response.json();
-  },
-
-  /**
-   * List vendor QC checks
-   */
   async listVendorQCChecks(vendorId: string) {
     const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.qcChecks(vendorId)}`, {
       method: 'GET',
@@ -262,9 +213,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Get vendor purchase orders
-   */
   async getVendorPurchaseOrders(vendorId: string) {
     const response = await fetch(
       `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.purchaseOrders(vendorId)}`,
@@ -291,11 +239,7 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Get vendor QC checks (alias)
-   */
   async getVendorQCChecks(vendorId: string) {
-    // Reuse existing endpoint helper
     const response = await fetch(
       `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.vendors.qcChecks(vendorId)}`,
       {
@@ -321,9 +265,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * List all QC checks
-   */
   async listQCChecks(filters?: any) {
     const queryParams = new URLSearchParams();
     if (filters) {
@@ -369,9 +310,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * List vendor certificates
-   */
   async listVendorCertificates(vendorId: string) {
     const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.certificates.listVendorCertificates(vendorId)}`, {
       method: 'GET',
@@ -388,9 +326,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Get audits
-   */
   async getAudits(filters?: { vendorId?: string; auditType?: string; result?: string; startDate?: string; endDate?: string }) {
     const params = new URLSearchParams();
     if (filters?.vendorId) params.append('vendorId', filters.vendorId);
@@ -414,9 +349,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Get temperature compliance
-   */
   async getTemperatureCompliance(filters?: { vendorId?: string; shipmentId?: string; compliant?: boolean }) {
     const params = new URLSearchParams();
     if (filters?.vendorId) params.append('vendorId', filters.vendorId);
@@ -438,9 +370,6 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Get vendor ratings
-   */
   async getVendorRatings(vendorId?: string) {
     const params = new URLSearchParams();
     if (vendorId) params.append('vendorId', vendorId);
@@ -460,10 +389,8 @@ export const vendorManagementApi = {
     return response.json();
   },
 
-  /**
-   * Update QC check (approve/reject/appeal)
-   */
   async updateQCCheck(qcId: string, payload: { status?: string; result?: string; notes?: string }) {
+    console.log('API: updateQCCheck called with:', { qcId, payload });
     const response = await fetch(`${API_CONFIG.baseURL}/vendor/qc/${qcId}`, {
       method: 'PATCH',
       headers: {
@@ -486,14 +413,10 @@ export const vendorManagementApi = {
     }
 
     const result = await response.json();
-    notifyVendorDataMutated();
-    // Handle both { success: true, data: {...} } and direct object responses
+    console.log('API: updateQCCheck success:', result);
     return result.data || result;
   },
 
-  /**
-   * Schedule audit
-   */
   async scheduleAudit(auditData: { vendorId: string; vendor?: string; auditType?: string; date?: Date }) {
     if (!auditData.vendorId) {
       throw new Error('Vendor ID is required to schedule audit');
@@ -524,14 +447,9 @@ export const vendorManagementApi = {
       throw new Error(errorMessage);
     }
 
-    const json = await response.json();
-    notifyVendorDataMutated();
-    return json;
+    return response.json();
   },
 
-  /**
-   * Update certificate (verify/renew)
-   */
   async updateCertificate(certId: string, payload: { status?: string; expiresAt?: Date }) {
     const response = await fetch(`${API_CONFIG.baseURL}/vendor/certificates/${certId}`, {
       method: 'PATCH',
@@ -556,14 +474,9 @@ export const vendorManagementApi = {
       throw new Error(errorMessage);
     }
 
-    const json = await response.json();
-    notifyVendorDataMutated();
-    return json;
+    return response.json();
   },
 
-  /**
-   * Update temperature compliance (approve anyway/reject)
-   */
   async updateTemperatureCompliance(tempId: string, payload: { compliant?: boolean; notes?: string }) {
     const response = await fetch(`${API_CONFIG.baseURL}/vendor/qc-compliance/temperature/${tempId}`, {
       method: 'PATCH',
@@ -585,13 +498,10 @@ export const vendorManagementApi = {
       throw new Error(errorMessage);
     }
 
-    const json = await response.json();
-    notifyVendorDataMutated();
-    return json;
+    return response.json();
   },
 };
 
-// Named exports for direct imports
 export const listVendors = vendorManagementApi.listVendors.bind(vendorManagementApi);
 export const getVendors = vendorManagementApi.getVendors.bind(vendorManagementApi);
 export const getVendorById = vendorManagementApi.getVendorById.bind(vendorManagementApi);
@@ -600,9 +510,6 @@ export const createVendor = vendorManagementApi.createVendor.bind(vendorManageme
 export const updateVendor = vendorManagementApi.updateVendor.bind(vendorManagementApi);
 export const deleteVendor = vendorManagementApi.deleteVendor.bind(vendorManagementApi);
 export const getVendorSummary = vendorManagementApi.getVendorSummary.bind(vendorManagementApi);
-export const getVendorPerformance = vendorManagementApi.getVendorPerformance.bind(vendorManagementApi);
-export const getVendorPurchaseOrders = vendorManagementApi.getVendorPurchaseOrders.bind(vendorManagementApi);
-export const getVendorQCChecks = vendorManagementApi.getVendorQCChecks.bind(vendorManagementApi);
 export const listVendorQCChecks = vendorManagementApi.listVendorQCChecks.bind(vendorManagementApi);
 export const listQCChecks = vendorManagementApi.listQCChecks.bind(vendorManagementApi);
 export const listVendorCertificates = vendorManagementApi.listVendorCertificates.bind(vendorManagementApi);

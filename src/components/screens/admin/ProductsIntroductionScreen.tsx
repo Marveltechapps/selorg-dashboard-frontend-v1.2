@@ -222,7 +222,7 @@ export function ProductsIntroductionScreen() {
         </h1>
         <p className="text-sm text-[#71717a] mt-1">
           Single source of truth for products. CMS (Banners, Categories, Collections, product carousels) uses this data.
-          Category and subcategory options follow the taxonomy you maintain under Content Hub → Categories &amp; Subcategories.
+          Category and subcategory options follow the taxonomy you maintain under CMS → Categories &amp; Subcategories.
         </p>
       </div>
 
@@ -375,7 +375,7 @@ export function ProductsIntroductionScreen() {
                 </div>
               </div>
               <p className="text-xs text-[#a1a1aa]">
-                Lists match Content Hub → Categories &amp; Subcategories (customer admin taxonomy API).
+                Lists match CMS → Categories &amp; Subcategories (customer admin taxonomy API).
               </p>
             </div>
             <div>

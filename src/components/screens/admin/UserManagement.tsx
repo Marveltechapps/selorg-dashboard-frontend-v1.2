@@ -41,17 +41,23 @@ import {
   fetchUsers,
   fetchRoles,
   fetchPermissions,
+  fetchPermissionsMatrix,
   fetchAccessLogs,
   fetchLoginSessions,
   updateUser,
   deleteUser,
-  revokeSession
+  revokeSession,
+  updateRoleMatrix,
+  exportRoleConfig,
+  importRoleConfig,
+  PermissionMatrixModule
 } from './userManagementApi';
 import { AddUserModal } from './modals/AddUserModal';
 import { EditUserModal } from './modals/EditUserModal';
 import { CreateRoleModal } from './modals/CreateRoleModal';
 import { BulkOperationsModal } from './modals/BulkOperationsModal';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   UserPlus,
   Filter,
@@ -76,6 +82,9 @@ export function UserManagement() {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
   const [sessions, setSessions] = useState<LoginSession[]>([]);
+  const [matrixModules, setMatrixModules] = useState<PermissionMatrixModule[]>([]);
+  const [matrixDraft, setMatrixDraft] = useState<Record<string, boolean>>({});
+  const [matrixBaseline, setMatrixBaseline] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -96,21 +105,36 @@ export function UserManagement() {
   const [showBulkOps, setShowBulkOps] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const selectedRole = roles.find(r => r.id === selectedRoleId);
 
   useEffect(() => {
     loadAllData();
   }, []);
 
+  useEffect(() => {
+    if (!selectedRole || matrixModules.length === 0) return;
+    const nextState: Record<string, boolean> = {};
+    matrixModules.forEach((module) => {
+      module.permissions.forEach((permission) => {
+        const key = `${module.module}:${permission.name}`;
+        nextState[key] = selectedRole.permissions.includes(permission.name) || selectedRole.permissions.includes(permission.id);
+      });
+    });
+    setMatrixDraft(nextState);
+    setMatrixBaseline(nextState);
+  }, [selectedRoleId, matrixModules, selectedRole?.permissions]);
+
   const loadAllData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [usersData, rolesData, permsData, logsData, sessionsData] = await Promise.all([
+      const [usersData, rolesData, permsData, logsData, sessionsData, matrixData] = await Promise.all([
         fetchUsers(),
         fetchRoles(),
         fetchPermissions(),
         fetchAccessLogs(),
         fetchLoginSessions(),
+        fetchPermissionsMatrix(),
       ]);
 
       setUsers(usersData ?? []);
@@ -118,6 +142,7 @@ export function UserManagement() {
       setPermissions(permsData ?? []);
       setAccessLogs(logsData ?? []);
       setSessions(sessionsData ?? []);
+      setMatrixModules(matrixData ?? []);
       
       if (rolesData && rolesData.length > 0) {
         setSelectedRoleId(rolesData[0].id);
@@ -337,6 +362,72 @@ export function UserManagement() {
     input.click();
   };
 
+  const toggleMatrixPermission = (moduleName: string, permissionName: string) => {
+    const key = `${moduleName}:${permissionName}`;
+    setMatrixDraft((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSaveMatrix = async () => {
+    if (!selectedRole) return;
+    const selectedPermissionNames = Object.entries(matrixDraft)
+      .filter(([, enabled]) => enabled)
+      .map(([key]) => key.split(':')[1]);
+    try {
+      await updateRoleMatrix(selectedRole.id, {
+        permissions: selectedPermissionNames,
+        accessScope: selectedRole.accessScope,
+      });
+      toast.success('Permission matrix saved');
+      setMatrixBaseline(matrixDraft);
+      loadAllData();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save permission matrix');
+    }
+  };
+
+  const handleExportRoleJson = async () => {
+    if (!selectedRole) return;
+    try {
+      const payload = await exportRoleConfig(selectedRole.id);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${selectedRole.name.toLowerCase().replace(/\s+/g, '-')}-role-config.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Role configuration exported');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to export role configuration');
+    }
+  };
+
+  const handleImportRoleJson = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!parsed?.role?.name || !Array.isArray(parsed?.role?.permissions)) {
+          toast.error('Invalid role JSON format');
+          return;
+        }
+        await importRoleConfig({ role: parsed.role, overwrite: false });
+        toast.success('Role configuration imported');
+        loadAllData();
+      } catch (error: any) {
+        toast.error(error?.message || 'Failed to import role configuration');
+      }
+    };
+    input.click();
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-emerald-500';
@@ -371,7 +462,6 @@ export function UserManagement() {
     return `${diffDays}d ago`;
   };
 
-  const selectedRole = roles.find(r => r.id === selectedRoleId);
   const rolePermissions = selectedRole ? permissions.filter(p => selectedRole.permissions.includes(p.id)) : [];
 
   // Group permissions by module for display
@@ -380,6 +470,8 @@ export function UserManagement() {
     acc[perm.module].push(perm);
     return acc;
   }, {} as Record<string, Permission[]>);
+
+  const matrixDirty = JSON.stringify(matrixDraft) !== JSON.stringify(matrixBaseline);
 
   // Show loading state
   if (loading && users.length === 0 && roles.length === 0) {
@@ -692,6 +784,14 @@ export function UserManagement() {
               <Shield size={16} className="mr-2" />
               Create New Role
             </Button>
+            <Button variant="outline" onClick={handleImportRoleJson}>
+              <Upload size={16} className="mr-2" />
+              Import Role JSON
+            </Button>
+            <Button variant="outline" onClick={handleExportRoleJson} disabled={!selectedRole}>
+              <Download size={16} className="mr-2" />
+              Export Role JSON
+            </Button>
           </div>
 
           <div className="grid grid-cols-3 gap-6">
@@ -767,46 +867,65 @@ export function UserManagement() {
 
         {/* TAB 3: Permissions Matrix */}
         <TabsContent value="matrix" className="space-y-4">
-          <div className="border border-[#E5E7EB] rounded-lg overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-[#F9FAFB]">
-                  <TableHead>Module</TableHead>
-                  {roles.slice(0, 5).map(role => (
-                    <TableHead key={role.id} className="text-center">{role.name}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.keys(permissionsByModule).length > 0 && roles.length > 0 ? (
-                  Object.entries(permissionsByModule).map(([module]) => (
-                    <TableRow key={module}>
-                      <TableCell className="font-medium">{module}</TableCell>
-                      {roles.slice(0, 5).map(role => {
-                        const hasPermissions = permissions
-                          .filter(p => p.module === module)
-                          .some(p => role.permissions.includes(p.id));
-                        return (
-                          <TableCell key={role.id} className="text-center">
-                            {hasPermissions ? (
-                              <CheckCircle size={16} className="text-emerald-500 mx-auto" />
-                            ) : (
-                              <XCircle size={16} className="text-gray-300 mx-auto" />
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-[#6B7280]">
-                      {permissions.length === 0 ? 'No permissions data available' : 'No roles available'}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          {matrixDirty && (
+            <div className="sticky top-0 z-10 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm text-amber-900">Unsaved matrix changes detected.</div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setMatrixDraft(matrixBaseline)}>Reset</Button>
+                  <Button size="sm" onClick={handleSaveMatrix}>Save matrix</Button>
+                </div>
+              </div>
+              <pre className="mt-2 max-h-20 overflow-auto rounded bg-white p-2 text-xs">
+                {JSON.stringify({
+                  changedKeys: Object.keys(matrixDraft).filter((key) => matrixDraft[key] !== matrixBaseline[key]),
+                }, null, 2)}
+              </pre>
+            </div>
+          )}
+          <div className="border border-[#E5E7EB] rounded-lg overflow-x-auto p-4 space-y-4">
+            {matrixModules.length > 0 && selectedRole ? (
+              matrixModules.map((module) => (
+                <div key={module.module} className="rounded border border-[#E5E7EB] p-3">
+                  <h4 className="font-semibold mb-2 capitalize">{module.module}</h4>
+                  <div className="space-y-2">
+                    {module.permissions.map((permission) => {
+                      const key = `${module.module}:${permission.name}`;
+                      return (
+                        <div key={key} className="flex items-center justify-between rounded bg-[#F9FAFB] px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={Boolean(matrixDraft[key])}
+                              onCheckedChange={() => toggleMatrixPermission(module.module, permission.name)}
+                            />
+                            <span className="text-sm font-medium">{permission.displayName}</span>
+                            <Badge
+                              variant="secondary"
+                              className={permission.riskLevel === 'high' ? 'bg-red-100 text-red-700' : permission.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}
+                            >
+                              {permission.riskLevel.toUpperCase()}
+                            </Badge>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button className="text-xs text-[#6B7280] underline">info</button>
+                              </TooltipTrigger>
+                              <TooltipContent sideOffset={6}>
+                                {permission.description || 'No description'}
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <span className="text-xs text-[#6B7280] uppercase">{permission.action}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-[#6B7280]">
+                {permissions.length === 0 ? 'No permissions data available' : 'Select a role to edit matrix'}
+              </div>
+            )}
           </div>
         </TabsContent>
 

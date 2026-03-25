@@ -15,7 +15,6 @@ import {
   Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { 
   Zone,
   Incident,
@@ -126,7 +125,6 @@ function OutageManageModalContent({
 import { IncidentDetailModal } from './modals/IncidentDetailModal';
 import { SurgeControlModal } from './modals/SurgeControlModal';
 import { DispatchEngineModal } from './modals/DispatchEngineModal';
-import { AnalyticsModal } from './modals/AnalyticsModal';
 import { SettingsModal } from '@/components/screens/SettingsModal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -144,14 +142,12 @@ export function CitywideControl() {
     storeOutages: { storeId: string; storeName: string; outageReason?: string }[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [weatherMode, setWeatherMode] = useState(false);
   
   // Modal states
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [showSurgeControl, setShowSurgeControl] = useState(false);
   const [showDispatchEngine, setShowDispatchEngine] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showOutageManage, setShowOutageManage] = useState(false);
@@ -274,21 +270,6 @@ export function CitywideControl() {
             <div className="w-2 h-2 bg-[#e11d48] rounded-full animate-pulse"></div>
             LIVE MODE
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setWeatherMode(!weatherMode)}
-          >
-            Weather Mode: {weatherMode ? 'On' : 'Off'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAnalytics(true)}
-          >
-            <BarChart3 size={16} className="mr-2" />
-            Analytics
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -452,11 +433,6 @@ export function CitywideControl() {
                       <div>{zone.activeOrders} Orders</div>
                       <div>{zone.activeRiders} Riders {zone.riderStatus === 'overload' && <span className="text-rose-600 font-bold">OVERLOAD</span>}</div>
                     </div>
-                    {zone.surgeMultiplier && (
-                      <Badge className="mt-1 text-[9px] bg-orange-500 text-white">
-                        {zone.surgeMultiplier}x Surge
-                      </Badge>
-                    )}
                   </div>
                 </div>
               ))}
@@ -676,10 +652,6 @@ export function CitywideControl() {
       <DispatchEngineModal
         open={showDispatchEngine}
         onClose={() => setShowDispatchEngine(false)}
-      />
-      <AnalyticsModal
-        open={showAnalytics}
-        onClose={() => setShowAnalytics(false)}
       />
       <SettingsModal
         isOpen={showSettings}

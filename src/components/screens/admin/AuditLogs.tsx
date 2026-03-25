@@ -63,12 +63,17 @@ import {
 } from 'lucide-react';
 
 export function AuditLogs() {
+  const PAGE_SIZE = 10;
+  const ANY_TIMEFRAME = '__all_timeframe__';
+  const ANY_MODULE = '__all_module__';
+  const ANY_ACTION = '__all_action__';
+  const ANY_SEVERITY = '__all_severity__';
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
 
   // Filter states
   const [filters, setFilters] = useState({
@@ -110,7 +115,7 @@ export function AuditLogs() {
       dateFrom,
       dateTo,
       page,
-      limit: 50,
+      limit: PAGE_SIZE,
     };
   };
 
@@ -157,19 +162,10 @@ export function AuditLogs() {
     loadData(1);
   };
 
-  const handleLoadMore = async () => {
-    if (!meta || meta.page >= meta.pages) return;
-    setLoading(true);
-    try {
-      const f = buildFilters(meta.page + 1);
-      const logsResult = await fetchAuditLogs(f);
-      setLogs((prev) => [...prev, ...logsResult.logs]);
-      setMeta(logsResult.meta);
-    } catch (error) {
-      toast.error('Failed to load more logs');
-    } finally {
-      setLoading(false);
-    }
+  const handlePageChange = (nextPage: number) => {
+    if (!meta) return;
+    if (nextPage < 1 || nextPage > meta.pages || nextPage === meta.page) return;
+    loadData(nextPage);
   };
 
   const handleExport = async (format: 'csv' | 'json') => {
@@ -272,10 +268,14 @@ export function AuditLogs() {
       user_delete: 'bg-rose-500',
       role_assign: 'bg-indigo-500',
     };
+    const actionLabel = action
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
     return (
-      <Badge className={`${actionMap[action] || 'bg-gray-500'} text-xs`}>
+      <Badge className={`${actionMap[action] || 'bg-gray-500'} text-xs max-w-[150px] inline-flex items-center`}>
         {getActionIcon(action)}
-        <span className="ml-1">{action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</span>
+        <span className="ml-1 truncate">{actionLabel}</span>
       </Badge>
     );
   };
@@ -357,8 +357,8 @@ export function AuditLogs() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-6 gap-4">
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Total Events</p>
             <Activity className="text-blue-600" size={16} />
@@ -367,7 +367,7 @@ export function AuditLogs() {
           <p className="text-xs text-[#71717a] mt-2">All time</p>
         </div>
 
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Today's Events</p>
             <Calendar className="text-emerald-600" size={16} />
@@ -376,7 +376,7 @@ export function AuditLogs() {
           <p className="text-xs text-[#71717a] mt-2">Last 24 hours</p>
         </div>
 
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Critical Events</p>
             <AlertTriangle className="text-rose-600" size={16} />
@@ -385,7 +385,7 @@ export function AuditLogs() {
           <p className="text-xs text-[#71717a] mt-2">Requires attention</p>
         </div>
 
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Active Users</p>
             <User className="text-purple-600" size={16} />
@@ -394,21 +394,23 @@ export function AuditLogs() {
           <p className="text-xs text-[#71717a] mt-2">Unique users</p>
         </div>
 
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Top Action</p>
             <TrendingUp className="text-amber-600" size={16} />
           </div>
-          <p className="text-lg font-bold text-amber-600 capitalize">{stats?.topAction}</p>
+          <p className="text-lg font-bold text-amber-600 truncate capitalize">
+            {(stats?.topAction || 'N/A').replace(/_/g, ' ')}
+          </p>
           <p className="text-xs text-[#71717a] mt-2">Most frequent</p>
         </div>
 
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Top Module</p>
             <Code className="text-indigo-600" size={16} />
           </div>
-          <p className="text-lg font-bold text-indigo-600 capitalize">{stats?.topModule}</p>
+          <p className="text-lg font-bold text-indigo-600 truncate capitalize">{stats?.topModule || 'N/A'}</p>
           <p className="text-xs text-[#71717a] mt-2">Most active</p>
         </div>
       </div>
@@ -426,8 +428,8 @@ export function AuditLogs() {
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-4 gap-4">
-            <div className="col-span-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="md:col-span-2 xl:col-span-4">
               <label className="text-xs font-medium text-[#18181b] mb-1 block">Search</label>
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#71717a]" />
@@ -441,12 +443,17 @@ export function AuditLogs() {
             </div>
             <div>
               <label className="text-xs font-medium text-[#18181b] mb-1 block">Timeframe</label>
-              <Select value={filters.timeframe} onValueChange={(v) => setFilters({ ...filters, timeframe: v as typeof filters.timeframe })}>
+              <Select
+                value={filters.timeframe || ANY_TIMEFRAME}
+                onValueChange={(v) =>
+                  setFilters({ ...filters, timeframe: v === ANY_TIMEFRAME ? '' : (v as typeof filters.timeframe) })
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All time" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All time</SelectItem>
+                  <SelectItem value={ANY_TIMEFRAME}>All time</SelectItem>
                   <SelectItem value="24h">Last 24 hours</SelectItem>
                   <SelectItem value="7d">Last 7 days</SelectItem>
                   <SelectItem value="30d">Last 30 days</SelectItem>
@@ -455,12 +462,15 @@ export function AuditLogs() {
             </div>
             <div>
               <label className="text-xs font-medium text-[#18181b] mb-1 block">Module</label>
-              <Select value={filters.module} onValueChange={(value) => setFilters({ ...filters, module: value })}>
+              <Select
+                value={filters.module || ANY_MODULE}
+                onValueChange={(value) => setFilters({ ...filters, module: value === ANY_MODULE ? '' : value })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All modules" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All modules</SelectItem>
+                  <SelectItem value={ANY_MODULE}>All modules</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="users">Users</SelectItem>
                   <SelectItem value="orders">Orders</SelectItem>
@@ -477,12 +487,15 @@ export function AuditLogs() {
 
             <div>
               <label className="text-xs font-medium text-[#18181b] mb-1 block">Action</label>
-              <Select value={filters.action} onValueChange={(value) => setFilters({ ...filters, action: value })}>
+              <Select
+                value={filters.action || ANY_ACTION}
+                onValueChange={(value) => setFilters({ ...filters, action: value === ANY_ACTION ? '' : value })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All actions" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All actions</SelectItem>
+                  <SelectItem value={ANY_ACTION}>All actions</SelectItem>
                   <SelectItem value="create">Create</SelectItem>
                   <SelectItem value="update">Update</SelectItem>
                   <SelectItem value="delete">Delete</SelectItem>
@@ -498,12 +511,15 @@ export function AuditLogs() {
 
             <div>
               <label className="text-xs font-medium text-[#18181b] mb-1 block">Severity</label>
-              <Select value={filters.severity} onValueChange={(value) => setFilters({ ...filters, severity: value })}>
+              <Select
+                value={filters.severity || ANY_SEVERITY}
+                onValueChange={(value) => setFilters({ ...filters, severity: value === ANY_SEVERITY ? '' : value })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All severities" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All severities</SelectItem>
+                  <SelectItem value={ANY_SEVERITY}>All severities</SelectItem>
                   <SelectItem value="critical">Critical</SelectItem>
                   <SelectItem value="warning">Warning</SelectItem>
                   <SelectItem value="success">Success</SelectItem>
@@ -521,7 +537,7 @@ export function AuditLogs() {
               />
             </div>
 
-            <div className="col-span-4 flex gap-2 justify-end">
+            <div className="md:col-span-2 xl:col-span-4 flex gap-2 justify-end">
               <Button size="sm" variant="outline" onClick={handleClearFilters}>
                 Clear Filters
               </Button>
@@ -617,11 +633,36 @@ export function AuditLogs() {
         {logs.length > 0 && (
           <div className="p-3 border-t border-[#e4e4e7] bg-[#fafafa] flex justify-between items-center">
             <p className="text-xs text-[#71717a]">
-              Showing {logs.length} of {meta?.total ?? logs.length} events
+              Showing {Math.max(((meta?.page ?? 1) - 1) * PAGE_SIZE + 1, 1)}-
+              {Math.min(((meta?.page ?? 1) - 1) * PAGE_SIZE + logs.length, meta?.total ?? logs.length)} of{' '}
+              {meta?.total ?? logs.length} events
             </p>
-            {meta && meta.page < meta.pages && (
-              <Button size="sm" variant="outline" onClick={handleLoadMore} disabled={loading}>
-                Load More
+            {meta && meta.pages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handlePageChange((meta.page ?? 1) - 1)}
+                  disabled={loading || (meta.page ?? 1) <= 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-xs text-[#71717a] min-w-[86px] text-center">
+                  Page {meta.page} of {meta.pages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handlePageChange((meta.page ?? 1) + 1)}
+                  disabled={loading || (meta.page ?? 1) >= (meta.pages ?? 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+            {!meta && (
+              <Button size="sm" variant="outline" disabled>
+                Page 1 of 1
               </Button>
             )}
           </div>
@@ -630,7 +671,7 @@ export function AuditLogs() {
 
       {/* Log Details Modal */}
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History size={20} />
@@ -640,7 +681,7 @@ export function AuditLogs() {
           </DialogHeader>
 
           {selectedLog && (
-            <div className="space-y-4">
+            <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
               {/* Event Overview */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-[#f4f4f5] rounded-lg p-3">

@@ -8,15 +8,11 @@ import { MasterData } from './screens/admin/MasterData';
 import { UserManagement } from './screens/admin/UserManagement';
 import { CatalogManagement } from './screens/admin/CatalogManagement';
 import { PricingManagement } from './screens/admin/PricingManagement';
-import { StoreWarehouseManagement } from './screens/admin/StoreWarehouseManagement';
-import { SystemConfiguration } from './screens/admin/SystemConfiguration';
-import { FinanceRules } from './screens/admin/FinanceRules';
 import { SupportCenter } from './screens/admin/SupportCenter';
 import { FraudRiskHub } from './screens/admin/FraudRiskHub';
 import { AnalyticsDashboard } from './screens/admin/AnalyticsDashboard';
 import { NotificationManager } from './screens/admin/NotificationManager';
 import { GeofenceManager } from './screens/admin/GeofenceManager';
-import { IntegrationManager } from './screens/admin/IntegrationManager';
 import { ComplianceCenter } from './screens/admin/ComplianceCenter';
 import { AuditLogs } from './screens/admin/AuditLogs';
 import { CustomerAppHome } from './screens/admin/CustomerAppHome';
@@ -29,17 +25,13 @@ import { SystemTools } from './screens/admin/SystemTools';
 import { CustomerManagement } from './screens/admin/CustomerManagement';
 import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
-import { PickerApprovals } from './screens/admin/PickerApprovals';
-import { PickerActivityLogs } from './screens/admin/PickerActivityLogs';
-import { PickerConfigManagement } from './screens/admin/PickerConfigManagement';
-import { TrainingContentManagement } from './screens/admin/TrainingContentManagement';
+import { PickerManagement } from './screens/admin/PickerManagement';
 import { ContentHub } from './screens/admin/ContentHub';
 import { FaqManagement } from './screens/admin/FaqManagement';
 import { HomeConfigScreen } from './screens/admin/HomeConfigScreen';
 import { ProductsIntroductionScreen } from './screens/admin/ProductsIntroductionScreen';
 import { ContentHubCategoriesScreen } from './screens/admin/ContentHubCategoriesScreen';
 import { CollectionsScreen } from './screens/admin/CollectionsScreen';
-import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { CmsAdminDashboard } from './screens/admin/CmsAdminDashboard';
 import { 
   Tag, 
@@ -69,9 +61,7 @@ const TAB_LABELS: Record<string, string> = {
   'users': 'Users & Roles',
   'customers': 'Customers',
   'catalog': 'Catalog',
-  'pricing': 'Pricing & Promo',
-  'store-config': 'Store & Warehouse',
-  'system-config': 'System Config',
+  'pricing': 'Coupons',
   'finance': 'Finance Rules',
   'legal-policies': 'Legal & Policies',
   'support': 'Support Center',
@@ -79,15 +69,10 @@ const TAB_LABELS: Record<string, string> = {
   'analytics': 'Analytics',
   'notifications': 'Notifications',
   'geofence': 'Geofence Manager',
-  'integrations': 'Integrations',
   'compliance': 'Compliance',
   'audit': 'Audit Logs',
-  'picker-approvals': 'Picker Approvals',
-  'picker-activity-logs': 'Picker Activity Logs',
-  'picker-config': 'Picker Config',
-  'training-content': 'Training Content',
-  'ops-alerts': 'Operations Alerts',
-  'content-hub': 'Content Hub',
+  'picker-management': 'Picker Management',
+  'content-hub': 'CMS',
   'system-tools': 'System Tools',
   'applications': 'Applications',
   'customer-app-home': 'Customer App Home',
@@ -101,6 +86,20 @@ const TAB_LABELS: Record<string, string> = {
   'content-hub-categories': 'Categories & Subcategories',
   'collections': 'Collections',
 };
+
+const CONTENT_HUB_CHILD_TABS = new Set([
+  'applications',
+  'customer-app-home',
+  'onboarding',
+  'app-settings',
+  'app-cms',
+  'cms-pages',
+  'faq-management',
+  'home-config',
+  'products-introduction',
+  'content-hub-categories',
+  'collections',
+]);
 
 function LayoutBreadcrumb({ items }: { items: BreadcrumbSegment[] }) {
   return (
@@ -148,7 +147,7 @@ function PlaceholderScreen({ title, icon: Icon, description }: { title: string, 
 
 function ConfigScreen({ type }: { type: 'pricing' | 'store' | 'system' | 'finance' }) {
     const configMap = {
-        pricing: { title: "Pricing & Promotions", icon: Tag, desc: "Manage base pricing, surge multipliers, and discount campaigns." },
+        pricing: { title: "Coupons", icon: Tag, desc: "Manage coupon creation, activation, and redemption controls." },
         store: { title: "Store & Warehouse Config", icon: Store, desc: "Set operational hours, delivery radii, and capacity limits." },
         system: { title: "System Configuration", icon: Settings, desc: "Global SLA rules, dispatch logic, and API keys." },
         finance: { title: "Finance Rules", icon: CreditCard, desc: "Tax settings, payout cycles, and reconciliation rules." },
@@ -243,10 +242,54 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
     setBreadcrumbOverride(null);
   }, [activeTab]);
 
-  const breadcrumbs: BreadcrumbSegment[] = breadcrumbOverride || [
-    { label: 'Admin' },
-    { label: TAB_LABELS[activeTab] || activeTab },
-  ];
+  React.useEffect(() => {
+    if (activeTab === 'store-config') {
+      setActiveTab('master-data');
+    }
+  }, [activeTab, setActiveTab]);
+
+  React.useEffect(() => {
+    if (activeTab === 'system-config') {
+      setActiveTab('master-data');
+    }
+  }, [activeTab, setActiveTab]);
+
+  React.useEffect(() => {
+    if (activeTab === 'integrations') {
+      setActiveTab('master-data');
+    }
+  }, [activeTab, setActiveTab]);
+
+  React.useEffect(() => {
+    if (activeTab === 'finance') {
+      setActiveTab('users');
+    }
+  }, [activeTab, setActiveTab]);
+
+  React.useEffect(() => {
+    if (
+      activeTab === 'picker-approvals' ||
+      activeTab === 'picker-activity-logs' ||
+      activeTab === 'picker-config' ||
+      activeTab === 'training-content' ||
+      activeTab === 'ops-alerts'
+    ) {
+      setActiveTab('picker-management');
+    }
+  }, [activeTab, setActiveTab]);
+
+  const breadcrumbs: BreadcrumbSegment[] = breadcrumbOverride || (
+    CONTENT_HUB_CHILD_TABS.has(activeTab)
+      ? [
+          { label: 'Admin' },
+          { label: 'CMS', onClick: () => setActiveTab('content-hub') },
+          { label: TAB_LABELS[activeTab] || activeTab },
+        ]
+      : [
+          { label: 'Admin' },
+          { label: TAB_LABELS[activeTab] || activeTab },
+        ]
+  );
 
   return (
     <AdminDashboardProvider>
@@ -262,21 +305,13 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'customers' && <CustomerManagement onBreadcrumbChange={setBreadcrumbOverride} />}
             {activeTab === 'catalog' && <CatalogManagement />}
             {activeTab === 'pricing' && <PricingManagement />}
-            {activeTab === 'store-config' && <StoreWarehouseManagement />}
-            {activeTab === 'system-config' && <SystemConfiguration />}
-            {activeTab === 'finance' && <FinanceRules />}
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
-            {activeTab === 'picker-approvals' && <PickerApprovals />}
-            {activeTab === 'picker-activity-logs' && <PickerActivityLogs />}
-            {activeTab === 'picker-config' && <PickerConfigManagement />}
-            {activeTab === 'training-content' && <TrainingContentManagement />}
-            {activeTab === 'ops-alerts' && <OperationsAlerts />}
+            {activeTab === 'picker-management' && <PickerManagement />}
             {activeTab === 'support' && <SupportCenter />}
             {activeTab === 'fraud' && <FraudRiskHub />}
             {activeTab === 'analytics' && <AnalyticsDashboard />}
             {activeTab === 'notifications' && <NotificationManager />}
             {activeTab === 'geofence' && <GeofenceManager />}
-            {activeTab === 'integrations' && <IntegrationManager />}
             {activeTab === 'compliance' && <ComplianceCenter />}
             {activeTab === 'content-hub' && <ContentHub setActiveTab={setActiveTab} />}
             {activeTab === 'content-hub-categories' && (

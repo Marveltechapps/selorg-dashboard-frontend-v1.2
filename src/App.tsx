@@ -176,7 +176,7 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <VendorManagement {...props} />} 
-                  allowedRoles={['vendor']}
+                  allowedRoles={['vendor', 'admin', 'super_admin']}
                   dashboardId="vendor"
                 />
               </ProtectedRoute>

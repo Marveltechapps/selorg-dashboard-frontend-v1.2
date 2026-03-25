@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Store, City, Zone, Manager, createStore, updateStore, createWarehouse, Warehouse, fetchCities, fetchZones, fetchManagers } from '../storeWarehouseApi';
 import { toast } from 'sonner';
-import { Store as StoreIcon, MapPin, Clock, Users } from 'lucide-react';
+import { Store as StoreIcon } from 'lucide-react';
 
 interface AddStoreModalProps {
   open: boolean;
@@ -32,7 +32,7 @@ interface AddStoreModalProps {
   storeType?: 'store' | 'warehouse';
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeType = 'store' }: AddStoreModalProps) {
   const [loading, setLoading] = useState(false);
@@ -42,12 +42,11 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    type: (storeType === 'warehouse' ? 'warehouse' : 'store') as 'store' | 'dark_store' | 'warehouse',
     address: '',
     cityId: '',
     zoneId: '',
-    city: 'Bangalore',
-    state: 'Karnataka',
+    city: '',
+    state: '',
     pincode: '',
     latitude: '',
     longitude: '',
@@ -57,19 +56,21 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
     manager: '',
     deliveryRadius: '5',
     maxCapacity: '100',
+    currentLoad: '0',
+    serviceStatus: 'Full' as 'Full' | 'Partial' | 'None',
     status: 'active' as 'active' | 'inactive' | 'maintenance' | 'offline',
   });
 
   const [operationalHours, setOperationalHours] = useState<{
     [key: string]: { open: string; close: string; isOpen: boolean };
   }>({
-    monday: { open: '06:00', close: '23:00', isOpen: true },
-    tuesday: { open: '06:00', close: '23:00', isOpen: true },
-    wednesday: { open: '06:00', close: '23:00', isOpen: true },
-    thursday: { open: '06:00', close: '23:00', isOpen: true },
-    friday: { open: '06:00', close: '23:00', isOpen: true },
-    saturday: { open: '06:00', close: '23:00', isOpen: true },
-    sunday: { open: '07:00', close: '22:00', isOpen: true },
+    Monday: { open: '06:00', close: '23:00', isOpen: true },
+    Tuesday: { open: '06:00', close: '23:00', isOpen: true },
+    Wednesday: { open: '06:00', close: '23:00', isOpen: true },
+    Thursday: { open: '06:00', close: '23:00', isOpen: true },
+    Friday: { open: '06:00', close: '23:00', isOpen: true },
+    Saturday: { open: '06:00', close: '23:00', isOpen: true },
+    Sunday: { open: '07:00', close: '22:00', isOpen: true },
   });
 
   useEffect(() => {
@@ -82,12 +83,29 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
   }, [open]);
 
   useEffect(() => {
-    if (open && formData.cityId) {
-      fetchZones(formData.cityId).then(setZones).catch(() => setZones([]));
-    } else if (open) {
+    if (!open || !formData.cityId) {
       setZones([]);
+      return;
     }
+    fetchZones(formData.cityId).then(setZones).catch(() => setZones([]));
   }, [open, formData.cityId]);
+
+  useEffect(() => {
+    if (!formData.cityId) {
+      handleChange('city', '');
+      handleChange('state', '');
+      handleChange('zoneId', '');
+      return;
+    }
+    const selectedCity = cities.find((c) => c.id === formData.cityId || (c as any)._id === formData.cityId);
+    handleChange('city', selectedCity?.name ?? '');
+    handleChange('state', selectedCity?.state ?? '');
+  }, [formData.cityId, cities]);
+
+  const availableZones = useMemo(() => {
+    if (!formData.cityId) return [];
+    return zones.filter((z) => (z.cityId ?? '') === formData.cityId);
+  }, [zones, formData.cityId]);
 
   useEffect(() => {
     if (open) {
@@ -98,7 +116,6 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
         setFormData({
           name: editStore.name,
           code: editStore.code,
-          type: editStore.type,
           address: editStore.address,
           cityId: typeof cityId === 'object' ? (cityId as any)?._id : cityId,
           zoneId: typeof zoneId === 'object' ? (zoneId as any)?._id : zoneId,
@@ -113,14 +130,19 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
           manager: editStore.manager,
           deliveryRadius: String(editStore.deliveryRadius ?? 5),
           maxCapacity: String(editStore.maxCapacity ?? 100),
+          currentLoad: String(editStore.currentLoad ?? 0),
+          serviceStatus: (editStore.serviceStatus as any) ?? 'Full',
           status: editStore.status as any,
         });
-        setOperationalHours(editStore.operationalHours ?? {});
+        const existingHours = editStore.operationalHours ?? {};
+        const normalized: Record<string, { open: string; close: string; isOpen: boolean }> = {};
+        DAYS.forEach((day) => {
+          const source = (existingHours as any)[day] ?? (existingHours as any)[day.toLowerCase()];
+          normalized[day] = source ?? { open: '06:00', close: '23:00', isOpen: true };
+        });
+        setOperationalHours(normalized);
       } else {
         resetForm();
-        if (storeType === 'warehouse') {
-          setFormData(prev => ({ ...prev, type: 'warehouse' }));
-        }
       }
     }
   }, [open, editStore, storeType]);
@@ -129,12 +151,11 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
     setFormData({
       name: '',
       code: '',
-      type: 'store',
       address: '',
       cityId: '',
       zoneId: '',
-      city: 'Bangalore',
-      state: 'Karnataka',
+      city: '',
+      state: '',
       pincode: '',
       latitude: '',
       longitude: '',
@@ -144,16 +165,18 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
       manager: '',
       deliveryRadius: '5',
       maxCapacity: '100',
+      currentLoad: '0',
+      serviceStatus: 'Full',
       status: 'active',
     });
     setOperationalHours({
-      monday: { open: '06:00', close: '23:00', isOpen: true },
-      tuesday: { open: '06:00', close: '23:00', isOpen: true },
-      wednesday: { open: '06:00', close: '23:00', isOpen: true },
-      thursday: { open: '06:00', close: '23:00', isOpen: true },
-      friday: { open: '06:00', close: '23:00', isOpen: true },
-      saturday: { open: '06:00', close: '23:00', isOpen: true },
-      sunday: { open: '07:00', close: '22:00', isOpen: true },
+      Monday: { open: '06:00', close: '23:00', isOpen: true },
+      Tuesday: { open: '06:00', close: '23:00', isOpen: true },
+      Wednesday: { open: '06:00', close: '23:00', isOpen: true },
+      Thursday: { open: '06:00', close: '23:00', isOpen: true },
+      Friday: { open: '06:00', close: '23:00', isOpen: true },
+      Saturday: { open: '06:00', close: '23:00', isOpen: true },
+      Sunday: { open: '07:00', close: '22:00', isOpen: true },
     });
   };
 
@@ -171,7 +194,15 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
     }));
   };
 
+  const handleZoneChange = (value: string) => {
+    const zoneId = value === '_none' ? '' : value;
+    handleChange('zoneId', zoneId);
+  };
+
   const handleSubmit = async () => {
+    const effectiveType: 'store' | 'dark_store' | 'warehouse' =
+      editStore?.type ?? (storeType === 'warehouse' ? 'warehouse' : 'store');
+
     // Validation
     if (!formData.name.trim()) {
       toast.error('Store name is required');
@@ -181,32 +212,53 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
       toast.error('Store code is required');
       return;
     }
+    if (!/^[A-Z0-9-]{1,20}$/.test(formData.code.trim().toUpperCase())) {
+      toast.error('Store code must be uppercase alphanumeric with hyphens only (max 20 chars)');
+      return;
+    }
     if (!formData.address.trim()) {
       toast.error('Address is required');
       return;
     }
-    if (storeType !== 'warehouse' && formData.type !== 'warehouse') {
-      if (!formData.cityId) {
-        toast.error('Please select a city');
-        return;
-      }
+    if (!formData.cityId) {
+      toast.error('Please select a city');
+      return;
+    }
+    if (effectiveType !== 'warehouse') {
       if (!formData.zoneId) {
         toast.error('Please select a zone');
         return;
       }
     }
 
-    if (formData.type === 'dark_store') {
-      const lat = parseFloat(formData.latitude);
-      const lng = parseFloat(formData.longitude);
-      if (!formData.latitude || !formData.longitude || isNaN(lat) || isNaN(lng)) {
-        toast.error('Latitude and Longitude are required for darkstores');
-        return;
-      }
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        toast.error('Invalid coordinates. Latitude must be -90 to 90, Longitude -180 to 180.');
-        return;
-      }
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    if (!formData.latitude || !formData.longitude || isNaN(lat) || isNaN(lng)) {
+      toast.error('Latitude and Longitude are required');
+      return;
+    }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      toast.error('Invalid coordinates. Latitude must be -90 to 90, Longitude -180 to 180.');
+      return;
+    }
+    const deliveryRadius = parseInt(formData.deliveryRadius, 10);
+    if (!Number.isFinite(deliveryRadius) || deliveryRadius < 1 || deliveryRadius > 100) {
+      toast.error('Delivery radius must be between 1 and 100');
+      return;
+    }
+    const maxCapacity = parseInt(formData.maxCapacity, 10);
+    const currentLoad = parseInt(formData.currentLoad, 10);
+    if (!Number.isFinite(maxCapacity) || maxCapacity < 0) {
+      toast.error('Max capacity must be a non-negative number');
+      return;
+    }
+    if (!Number.isFinite(currentLoad) || currentLoad < 0 || currentLoad > maxCapacity) {
+      toast.error('Current load must be between 0 and max capacity');
+      return;
+    }
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
     }
 
     setLoading(true);
@@ -215,21 +267,23 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
       const storeData: Partial<Store> = {
         name: formData.name.trim(),
         code: formData.code.trim().toUpperCase(),
-        type: formData.type,
+        type: effectiveType,
         address: formData.address.trim(),
         cityId: formData.cityId || undefined,
         zoneId: formData.zoneId || undefined,
         city: cityName,
         state: formData.state,
         pincode: formData.pincode.trim(),
-        latitude: parseFloat(formData.latitude) || 12.9716,
-        longitude: parseFloat(formData.longitude) || 77.5946,
+        latitude: parseFloat(formData.latitude),
+        longitude: parseFloat(formData.longitude),
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         managerId: formData.managerId || undefined,
         manager: formData.manager.trim(),
-        deliveryRadius: parseInt(formData.deliveryRadius, 10) || 5,
-        maxCapacity: parseInt(formData.maxCapacity, 10) || 100,
+        deliveryRadius,
+        maxCapacity,
+        currentLoad,
+        serviceStatus: formData.serviceStatus,
         status: formData.status,
         operationalHours,
       };
@@ -240,14 +294,23 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
         toast.success(`${editStore.type === 'warehouse' ? 'Warehouse' : 'Store'} "${formData.name}" updated successfully`);
       } else {
         // Check if creating warehouse
-        if (storeType === 'warehouse' || formData.type === 'warehouse') {
+        if (effectiveType === 'warehouse') {
           const warehouseData = {
             name: formData.name.trim(),
             code: formData.code.trim().toUpperCase(),
             address: formData.address.trim(),
-            city: formData.city,
+            city: cityName,
+            cityId: formData.cityId || undefined,
+            zoneId: formData.zoneId || undefined,
             manager: formData.manager.trim(),
-            storageCapacity: parseInt(formData.maxCapacity) || 1000,
+            managerId: formData.managerId || undefined,
+            storageCapacity: maxCapacity || 1000,
+            currentLoad,
+            serviceStatus: formData.serviceStatus,
+            latitude: lat,
+            longitude: lng,
+            deliveryRadius,
+            operationalHours,
             status: formData.status === 'active' ? 'active' as const : 'inactive' as const,
             zones: [],
           };
@@ -312,7 +375,49 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
 
           <ScrollArea className="flex-1 px-6 min-h-0 overflow-y-auto">
             <TabsContent value="basic" className="space-y-4 mt-4 pb-6">
-              {/* Store Name */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* City */}
+                <div className="space-y-2">
+                  <Label>City *</Label>
+                  <Select
+                    value={formData.cityId || '_none'}
+                    onValueChange={(v) => handleChange('cityId', v === '_none' ? '' : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select city" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">— Select —</SelectItem>
+                      {cities.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Zone */}
+                <div className="space-y-2">
+                  <Label>Zone *</Label>
+                  <Select
+                    value={formData.zoneId || '_none'}
+                    onValueChange={handleZoneChange}
+                    disabled={!formData.cityId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={formData.cityId ? 'Select zone' : 'Select city first'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">— Select —</SelectItem>
+                      {availableZones.map((z) => (
+                        <SelectItem key={z.id} value={z.id}>
+                          {z.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="store-name">Store Name *</Label>
                 <Input
@@ -337,21 +442,6 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                 {editStore && (
                   <p className="text-xs text-[#71717a]">Store code cannot be changed</p>
                 )}
-              </div>
-
-              {/* Store Type */}
-              <div className="space-y-2">
-                <Label>Store Type</Label>
-                <Select value={formData.type} onValueChange={(val: any) => handleChange('type', val)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="store">🏪 Regular Store</SelectItem>
-                    <SelectItem value="dark_store">🌙 Dark Store (24/7)</SelectItem>
-                    <SelectItem value="warehouse">📦 Warehouse</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               {/* Manager */}
@@ -388,6 +478,19 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="current-load">Current Load</Label>
+                  <Input
+                    id="current-load"
+                    type="number"
+                    placeholder="0"
+                    value={formData.currentLoad}
+                    onChange={(e) => handleChange('currentLoad', e.target.value)}
+                    min="0"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="radius">Delivery Radius (km)</Label>
                   <Input
                     id="radius"
@@ -396,8 +499,24 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                     value={formData.deliveryRadius}
                     onChange={(e) => handleChange('deliveryRadius', e.target.value)}
                     min="1"
-                    max="20"
+                    max="100"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Service Status</Label>
+                  <Select
+                    value={formData.serviceStatus}
+                    onValueChange={(v: 'Full' | 'Partial' | 'None') => handleChange('serviceStatus', v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Full">Full</SelectItem>
+                      <SelectItem value="Partial">Partial</SelectItem>
+                      <SelectItem value="None">None</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -431,57 +550,30 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                 />
               </div>
 
-              {/* City, Zone, State, Pincode */}
+              {/* City, State, Pincode */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>City</Label>
-                  <Select
-                    value={formData.cityId || '_none'}
-                    onValueChange={(v) => {
-                      handleChange('cityId', v === '_none' ? '' : v);
-                      handleChange('zoneId', '');
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select city" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">— Select —</SelectItem>
-                      {cities.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="city">City *</Label>
+                  <Input
+                    id="city"
+                    placeholder="Auto-filled from selected zone"
+                    value={formData.city}
+                    readOnly
+                    disabled
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label>Zone</Label>
-                  <Select
-                    value={formData.zoneId || '_none'}
-                    onValueChange={(v) => handleChange('zoneId', v === '_none' ? '' : v)}
-                    disabled={!formData.cityId}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={formData.cityId ? 'Select zone' : 'Select city first'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">— Select —</SelectItem>
-                      {zones.map((z) => (
-                        <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="state">State</Label>
                   <Input
                     id="state"
                     placeholder="Karnataka"
                     value={formData.state}
-                    onChange={(e) => handleChange('state', e.target.value)}
+                    readOnly
+                    disabled
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="pincode">Pincode</Label>
                   <Input
@@ -491,6 +583,7 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                     onChange={(e) => handleChange('pincode', e.target.value)}
                   />
                 </div>
+                <div />
               </div>
 
               {/* Coordinates */}

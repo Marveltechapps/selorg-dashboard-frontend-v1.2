@@ -21,6 +21,7 @@ export interface Store {
   manager: string;
   managerId?: string;
   status: 'active' | 'inactive' | 'maintenance' | 'offline';
+  serviceStatus?: 'Full' | 'Partial' | 'None';
   operationalHours: {
     [key: string]: { open: string; close: string; isOpen: boolean };
   };
@@ -51,6 +52,8 @@ export interface Zone {
   name: string;
   code?: string;
   cityId?: string;
+  cityName?: string;
+  cityState?: string;
   status?: string;
 }
 
@@ -81,6 +84,17 @@ export interface Warehouse {
   manager: string;
   status: 'active' | 'inactive';
   createdAt: string;
+  cityId?: string;
+  zoneId?: string;
+  latitude?: number;
+  longitude?: number;
+  currentLoad?: number;
+  serviceStatus?: 'Full' | 'Partial' | 'None';
+  managerId?: string;
+  deliveryRadius?: number;
+  operationalHours?: {
+    [key: string]: { open: string; close: string; isOpen: boolean };
+  };
 }
 
 export interface Staff {
@@ -506,6 +520,7 @@ function normalizeStore(raw: any): Store {
     manager: raw.manager ?? raw.managerId?.name ?? '',
     managerId: raw.managerId?._id ?? raw.managerId,
     status: raw.status ?? 'active',
+    serviceStatus: raw.serviceStatus ?? 'Full',
     operationalHours,
     deliveryRadius: raw.deliveryRadius ?? 5,
     maxCapacity: raw.maxCapacity ?? 100,
@@ -568,7 +583,8 @@ export async function fetchCities(): Promise<City[]> {
 }
 
 export async function fetchZones(cityId?: string): Promise<Zone[]> {
-  const url = cityId ? `/admin/zones?cityId=${encodeURIComponent(cityId)}` : '/admin/zones';
+  if (!cityId) return [];
+  const url = `/admin/zones?cityId=${encodeURIComponent(cityId)}`;
   const response = await apiRequest<{ success: boolean; data: any[] }>(url);
   if (!response?.success) throw new Error('Failed to load zones');
   return (response.data ?? []).map((z: any) => ({
@@ -576,6 +592,8 @@ export async function fetchZones(cityId?: string): Promise<Zone[]> {
     name: z.name,
     code: z.code,
     cityId: z.cityId?.toString?.() ?? z.cityId,
+    cityName: z.cityName,
+    cityState: z.cityState,
     status: z.status,
   }));
 }
@@ -738,6 +756,8 @@ export async function createStore(data: Partial<Store>): Promise<Store> {
     status: data.status ?? 'active',
     deliveryRadius: data.deliveryRadius ?? 5,
     maxCapacity: data.maxCapacity ?? 100,
+    currentLoad: data.currentLoad ?? 0,
+    serviceStatus: data.serviceStatus ?? 'Full',
     operationalHours: data.operationalHours,
   };
   if (data.cityId) payload.cityId = data.cityId;
@@ -767,6 +787,8 @@ export async function updateStore(id: string, data: Partial<Store>): Promise<Sto
     status: data.status,
     deliveryRadius: data.deliveryRadius,
     maxCapacity: data.maxCapacity,
+    currentLoad: data.currentLoad,
+    serviceStatus: data.serviceStatus,
     operationalHours: data.operationalHours,
   };
   if (data.cityId) payload.cityId = data.cityId;
@@ -816,6 +838,14 @@ export async function createWarehouse(data: Partial<Warehouse> & { cityId?: stri
     cityId: data.cityId,
     zoneId: data.zoneId,
     maxCapacity: data.storageCapacity ?? 1000,
+    currentLoad: data.currentLoad ?? 0,
+    serviceStatus: data.serviceStatus ?? 'Full',
+    latitude: data.latitude,
+    longitude: data.longitude,
+    managerId: data.managerId,
+    deliveryRadius: data.deliveryRadius ?? 5,
+    operationalHours: data.operationalHours,
+    status: data.status ?? 'active',
   };
   const res = await apiRequest<{ success: boolean; data: any }>('/admin/warehouses', {
     method: 'POST',
@@ -829,6 +859,7 @@ export async function createWarehouse(data: Partial<Warehouse> & { cityId?: stri
     code: w.code,
     address: w.address ?? '',
     city: w.city ?? '',
+    cityId: w.cityId,
     storageCapacity: w.storageCapacity ?? w.maxCapacity ?? 0,
     currentUtilization: 0,
     inventoryValue: 0,
@@ -837,6 +868,14 @@ export async function createWarehouse(data: Partial<Warehouse> & { cityId?: stri
     manager: w.manager ?? '',
     status: w.status ?? 'active',
     createdAt: w.createdAt ?? '',
+    zoneId: w.zoneId,
+    latitude: w.latitude,
+    longitude: w.longitude,
+    currentLoad: w.currentLoad ?? 0,
+    serviceStatus: w.serviceStatus ?? 'Full',
+    managerId: w.managerId,
+    deliveryRadius: w.deliveryRadius ?? 5,
+    operationalHours: w.operationalHours ?? {},
   };
 }
 
@@ -849,6 +888,13 @@ export async function updateWarehouse(id: string, data: Partial<Warehouse> & { c
     cityId: data.cityId,
     zoneId: data.zoneId,
     maxCapacity: data.storageCapacity,
+    currentLoad: data.currentLoad,
+    serviceStatus: data.serviceStatus,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    managerId: data.managerId,
+    deliveryRadius: data.deliveryRadius,
+    operationalHours: data.operationalHours,
     status: data.status,
   };
   const res = await apiRequest<{ success: boolean; data: any }>(`/admin/warehouses/${id}`, {
@@ -863,6 +909,7 @@ export async function updateWarehouse(id: string, data: Partial<Warehouse> & { c
     code: w.code,
     address: w.address ?? '',
     city: w.city ?? '',
+    cityId: w.cityId,
     storageCapacity: w.storageCapacity ?? w.maxCapacity ?? 0,
     currentUtilization: w.currentUtilization ?? 0,
     inventoryValue: w.inventoryValue ?? 0,
@@ -871,6 +918,14 @@ export async function updateWarehouse(id: string, data: Partial<Warehouse> & { c
     manager: w.manager ?? '',
     status: w.status ?? 'active',
     createdAt: w.createdAt ?? '',
+    zoneId: w.zoneId,
+    latitude: w.latitude,
+    longitude: w.longitude,
+    currentLoad: w.currentLoad ?? 0,
+    serviceStatus: w.serviceStatus ?? 'Full',
+    managerId: w.managerId,
+    deliveryRadius: w.deliveryRadius ?? 5,
+    operationalHours: w.operationalHours ?? {},
   };
 }
 

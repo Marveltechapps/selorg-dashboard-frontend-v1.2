@@ -18,7 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Role, CreateUserPayload, createUser, fetchRoles, fetchAllStores, StoreOption } from '../userManagementApi';
+import {
+  Role,
+  CreateUserPayload,
+  createUser,
+  fetchRoles,
+  fetchAllStores,
+  StoreOption,
+  sendCreateUserOtp,
+  verifyCreateUserOtp,
+} from '../userManagementApi';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { X, Store } from 'lucide-react';
@@ -31,8 +40,13 @@ interface AddUserModalProps {
 
 export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) {
   const [loading, setLoading] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [stores, setStores] = useState<StoreOption[]>([]);
+  const [verificationRequestId, setVerificationRequestId] = useState('');
+  const [otp, setOtp] = useState('');
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [formData, setFormData] = useState<CreateUserPayload>({
     email: '',
     name: '',
@@ -82,8 +96,11 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('Form submission:', formData);
+
+    if (!isEmailVerified || !formData.emailVerifiedToken) {
+      toast.error('Please verify email with OTP before creating user');
+      return;
+    }
     
     // Validation
     if (!formData.email || !formData.name || !formData.department || !formData.roleId) {
@@ -174,11 +191,70 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
 
   const handleClose = () => {
     setFormData(defaultForm);
+    setVerificationRequestId('');
+    setOtp('');
+    setIsEmailVerified(false);
     onClose();
   };
 
   const handleClear = () => {
     setFormData(defaultForm);
+    setVerificationRequestId('');
+    setOtp('');
+    setIsEmailVerified(false);
+  };
+
+  const handleSendOtp = async () => {
+    if (!formData.email) {
+      toast.error('Enter email to send OTP');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    setSendingOtp(true);
+    try {
+      const response = await sendCreateUserOtp(formData.email);
+      setVerificationRequestId(response.verificationRequestId);
+      setIsEmailVerified(false);
+      setFormData((prev) => ({ ...prev, emailVerifiedToken: undefined }));
+      toast.success('OTP sent to email');
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Failed to send OTP';
+      toast.error(message);
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!verificationRequestId) {
+      toast.error('Send OTP first');
+      return;
+    }
+    if (!otp || otp.trim().length < 4) {
+      toast.error('Enter valid OTP');
+      return;
+    }
+
+    setVerifyingOtp(true);
+    try {
+      const response = await verifyCreateUserOtp(formData.email, otp.trim(), verificationRequestId);
+      setIsEmailVerified(true);
+      setFormData((prev) => ({ ...prev, emailVerifiedToken: response.emailVerifiedToken }));
+      toast.success('Email verified successfully');
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Failed to verify OTP';
+      toast.error(message);
+    } finally {
+      setVerifyingOtp(false);
+    }
   };
 
   const toggleStore = (code: string) => {
@@ -220,53 +296,80 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
                 />
-                <p className="text-xs text-[#6B7280]">User will receive invite at this email</p>
+                <p className="text-xs text-[#6B7280]">Verify this email first before filling remaining details</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name *</Label>
+                <Label htmlFor="otp">OTP Verification *</Label>
                 <Input
-                  id="name"
+                  id="otp"
                   type="text"
-                  placeholder="Enter full name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
+                  placeholder="Enter OTP from email"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  disabled={!verificationRequestId || isEmailVerified}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="department">Department *</Label>
-                <Select 
-                  value={formData.department} 
-                  onValueChange={(value) => setFormData({ ...formData, department: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Operations">Operations</SelectItem>
-                    <SelectItem value="Finance">Finance</SelectItem>
-                    <SelectItem value="Support">Support</SelectItem>
-                    <SelectItem value="IT">IT</SelectItem>
-                    <SelectItem value="Management">Management</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Start Date</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                />
-              </div>
+            <div className="flex items-center gap-3">
+              <Button type="button" variant="outline" onClick={handleSendOtp} disabled={sendingOtp || isEmailVerified}>
+                {sendingOtp ? 'Sending OTP...' : 'Send OTP'}
+              </Button>
+              <Button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={!verificationRequestId || verifyingOtp || isEmailVerified}
+              >
+                {verifyingOtp ? 'Verifying...' : 'Verify OTP'}
+              </Button>
+              {isEmailVerified && <Badge className="bg-emerald-500 text-white">Email verified</Badge>}
             </div>
           </div>
+
+          {isEmailVerified && (
+            <>
+              <div className="space-y-4 border-t border-[#E5E7EB] pt-4">
+                <h3 className="text-lg font-bold text-[#1F2937]">User Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name *</Label>
+                    <Input
+                      id="name"
+                      type="text"
+                      placeholder="Enter full name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required={isEmailVerified}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="department">Department *</Label>
+                    <Select value={formData.department} onValueChange={(value) => setFormData({ ...formData, department: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Operations">Operations</SelectItem>
+                        <SelectItem value="Finance">Finance</SelectItem>
+                        <SelectItem value="Support">Support</SelectItem>
+                        <SelectItem value="IT">IT</SelectItem>
+                        <SelectItem value="Management">Management</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2 max-w-sm">
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  />
+                </div>
+              </div>
 
           {/* Section 2: Access Configuration */}
           <div className="space-y-4 border-t border-[#E5E7EB] pt-4">
@@ -466,6 +569,8 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
               />
             </div>
           </div>
+            </>
+          )}
 
           {/* Modal Footer */}
           <div className="flex items-center justify-end gap-3 border-t border-[#E5E7EB] pt-4">
@@ -475,7 +580,7 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
             <Button type="button" variant="outline" onClick={handleClear}>
               Clear
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !isEmailVerified}>
               {loading ? 'Creating...' : 'Create User'}
             </Button>
           </div>

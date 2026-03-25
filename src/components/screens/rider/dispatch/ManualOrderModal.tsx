@@ -35,6 +35,7 @@ export function ManualOrderModal({
   riders,
   onSuccess,
 }: ManualOrderModalProps) {
+  const UNASSIGNED_RIDER = "__unassigned_rider__";
   const [orderType, setOrderType] = useState<"standard" | "express">("standard");
   const [items, setItems] = useState<string[]>([""]);
   const [pickupLocation, setPickupLocation] = useState("Default Warehouse");
@@ -223,12 +224,15 @@ export function ManualOrderModal({
 
           <div className="space-y-2">
             <Label>Assign to Rider (optional)</Label>
-            <Select value={riderId} onValueChange={setRiderId}>
+            <Select
+              value={riderId || UNASSIGNED_RIDER}
+              onValueChange={(value) => setRiderId(value === UNASSIGNED_RIDER ? '' : value)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Leave unassigned for later dispatch" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Leave unassigned</SelectItem>
+                <SelectItem value={UNASSIGNED_RIDER}>Leave unassigned</SelectItem>
                 {availableRiders.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
                     {r.name}{r.phone ? ` (${r.phone})` : ''} ({r.zone})

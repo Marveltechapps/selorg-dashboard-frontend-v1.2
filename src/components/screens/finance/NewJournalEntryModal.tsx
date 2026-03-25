@@ -196,7 +196,7 @@ export function NewJournalEntryModal({ open, onClose, onSuccess, accounts }: Pro
                                         </SelectItem>
                                       ))
                                     ) : (
-                                      <SelectItem value="" disabled>No accounts available</SelectItem>
+                                      <SelectItem value="__no_accounts__" disabled>No accounts available</SelectItem>
                                     )}
                                 </SelectContent>
                              </Select>

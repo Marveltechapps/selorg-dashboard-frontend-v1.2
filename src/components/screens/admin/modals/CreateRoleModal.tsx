@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
@@ -20,16 +21,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Permission, 
   Role,
+  RoleTemplate,
   CreateRolePayload, 
   createRole, 
   updateRole,
   fetchPermissions,
-  fetchRoleById
+  fetchRoleById,
+  fetchRoleTemplates,
+  fetchPermissionsMatrix,
+  createRoleFromTemplate
 } from '../userManagementApi';
 import { toast } from 'sonner';
+import { CircleAlert } from 'lucide-react';
 
 interface CreateRoleModalProps {
   open: boolean;
@@ -46,6 +53,9 @@ export function CreateRoleModal({
 }: CreateRoleModalProps) {
   const [loading, setLoading] = useState(false);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [templates, setTemplates] = useState<RoleTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
+  const [initialSignature, setInitialSignature] = useState('');
   const [formData, setFormData] = useState<CreateRolePayload>({
     name: '',
     description: '',
@@ -54,11 +64,21 @@ export function CreateRoleModal({
     accessScope: 'global',
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [matrixHelp, setMatrixHelp] = useState<Record<string, string>>({});
+
+  const buildSignature = (data: CreateRolePayload) =>
+    JSON.stringify({
+      ...data,
+      permissions: [...data.permissions].sort(),
+    });
+  const isDirty = initialSignature.length > 0 && buildSignature(formData) !== initialSignature;
 
   useEffect(() => {
     if (open) {
       // Always load permissions first
       loadPermissions().then(() => {
+        loadTemplates();
+        loadMatrixHelp();
         // Then load role data if editing
         if (editingRoleId) {
           // Small delay to ensure permissions state is updated
@@ -121,6 +141,13 @@ export function CreateRoleModal({
           permissions: normalizedPermissions,
           accessScope: role.accessScope,
         });
+        setInitialSignature(buildSignature({
+          name: role.name,
+          description: role.description,
+          roleType: role.roleType,
+          permissions: normalizedPermissions,
+          accessScope: role.accessScope,
+        }));
         
         toast.success(`Loaded ${normalizedPermissions.length} permission(s) for role`);
       }
@@ -131,14 +158,17 @@ export function CreateRoleModal({
   };
   
   const resetForm = () => {
-    setFormData({
+    const defaultState = {
       name: '',
       description: '',
       roleType: 'custom',
       permissions: [],
       accessScope: 'global',
-    });
+    } as CreateRolePayload;
+    setFormData(defaultState);
     setSearchTerm('');
+    setSelectedTemplateId('custom');
+    setInitialSignature(buildSignature(defaultState));
   };
 
   const loadPermissions = async () => {
@@ -151,6 +181,30 @@ export function CreateRoleModal({
       console.error('Failed to load permissions:', error);
       toast.error('Failed to load permissions');
       return [];
+    }
+  };
+
+  const loadTemplates = async () => {
+    try {
+      const data = await fetchRoleTemplates();
+      setTemplates(data);
+    } catch (error) {
+      toast.error('Failed to load role templates');
+    }
+  };
+
+  const loadMatrixHelp = async () => {
+    try {
+      const modules = await fetchPermissionsMatrix();
+      const nextMap: Record<string, string> = {};
+      modules.forEach((module) => {
+        module.permissions.forEach((permission) => {
+          nextMap[permission.name] = permission.description || '';
+        });
+      });
+      setMatrixHelp(nextMap);
+    } catch (error) {
+      // Optional enrichment only.
     }
   };
 
@@ -190,7 +244,16 @@ export function CreateRoleModal({
         await updateRole(editingRoleId, payload);
         toast.success('Role updated successfully');
       } else {
-        await createRole(payload);
+        if (selectedTemplateId !== 'custom') {
+          await createRoleFromTemplate({
+            name: formData.name,
+            templateId: selectedTemplateId,
+            description: formData.description,
+            accessScope: formData.accessScope,
+          });
+        } else {
+          await createRole(payload);
+        }
         toast.success('Role created successfully');
       }
       onRoleCreated?.();
@@ -259,6 +322,33 @@ export function CreateRoleModal({
     toast.info('All permissions deselected');
   };
 
+  const applyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (templateId === 'custom') {
+      return;
+    }
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+    const templatePermissionIds = permissions
+      .filter((permission) => template.permissions.includes(permission.name) || template.permissions.includes(permission.id))
+      .map((permission) => permission.id);
+    setFormData((prev) => ({
+      ...prev,
+      name: prev.name || `${template.name} Copy`,
+      description: template.description || prev.description,
+      accessScope: template.accessScope,
+      permissions: templatePermissionIds,
+    }));
+  };
+
+  const riskBadgeClass = (riskLevel?: string) => {
+    if (riskLevel === 'high') return 'bg-red-100 text-red-700';
+    if (riskLevel === 'medium') return 'bg-amber-100 text-amber-700';
+    return 'bg-emerald-100 text-emerald-700';
+  };
+
   // Group permissions by module
   const permissionsByModule = permissions.reduce((acc, permission) => {
     if (!acc[permission.module]) {
@@ -295,6 +385,49 @@ export function CreateRoleModal({
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
           <div className="space-y-6 overflow-y-auto flex-1 pr-2">
+            {!editingRoleId && (
+              <div className="space-y-2">
+                <Label>Start From Template</Label>
+                <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a role template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">Start from scratch</SelectItem>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {isDirty && (
+              <div className="sticky top-0 z-10 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm text-amber-900">
+                    Unsaved changes: name, scope, description, or permission matrix changed.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => resetForm()}>
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+                <pre className="mt-2 max-h-24 overflow-auto rounded bg-white p-2 text-xs text-slate-700">
+                  {JSON.stringify({
+                    current: {
+                      name: formData.name,
+                      accessScope: formData.accessScope,
+                      permissionsCount: formData.permissions.length,
+                    },
+                  }, null, 2)}
+                </pre>
+              </div>
+            )}
+
             {/* Section 1: Role Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-[#1F2937]">Role Information</h3>
@@ -428,12 +561,25 @@ export function CreateRoleModal({
                                 onCheckedChange={() => togglePermission(permission.id)}
                               />
                               <div className="flex-1">
-                                <Label 
-                                  htmlFor={permission.id} 
-                                  className="text-sm font-medium cursor-pointer"
-                                >
-                                  {permission.displayName}
-                                </Label>
+                                <div className="flex items-center gap-2">
+                                  <Label
+                                    htmlFor={permission.id}
+                                    className="text-sm font-medium cursor-pointer"
+                                  >
+                                    {permission.displayName}
+                                  </Label>
+                                  <Badge className={riskBadgeClass(permission.riskLevel)} variant="secondary">
+                                    {(permission.riskLevel || 'low').toUpperCase()}
+                                  </Badge>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <CircleAlert size={14} className="text-[#6B7280] cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent sideOffset={6}>
+                                      {matrixHelp[permission.name] || permission.description || 'No description'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
                                 <p className="text-xs text-[#6B7280]">{permission.description}</p>
                               </div>
                             </div>

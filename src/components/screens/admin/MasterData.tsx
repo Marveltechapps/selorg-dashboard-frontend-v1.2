@@ -1,102 +1,79 @@
 import React, { useState } from 'react';
-import { Plus, Store, User, Package } from 'lucide-react';
+import { Store, RefreshCw, MapPinned, Building2 } from 'lucide-react';
 import { CitiesTab } from './tabs/CitiesTab';
 import { ZonesTab } from './tabs/ZonesTab';
 import { StoresTab } from './tabs/StoresTab';
 import { WarehousesTab } from './tabs/WarehousesTab';
-import { RidersTab } from './tabs/RidersTab';
-import { EmployeesTab } from './tabs/EmployeesTab';
-import { VehicleTypesTab } from './tabs/VehicleTypesTab';
-import { SkuUnitsTab } from './tabs/SkuUnitsTab';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 
-const TABS = ['Cities', 'Zones', 'Stores', 'Warehouses', 'Riders', 'Employees', 'Vehicle Types', 'SKU Units'] as const;
+const TABS = [
+  { value: 'warehouses', label: 'Warehouses', icon: Building2 },
+  { value: 'cities', label: 'Cities', icon: MapPinned },
+  { value: 'zones', label: 'Zones', icon: MapPinned },
+  { value: 'stores', label: 'Stores', icon: Store },
+] as const;
 
 export function MasterData() {
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]['value']>('warehouses');
   const [addStoreOpen, setAddStoreOpen] = useState(false);
-  const [addSkuOpen, setAddSkuOpen] = useState(false);
 
-  const handleQuickAdd = (action: 'store' | 'rider' | 'sku') => {
-    if (action === 'store') {
-      setActiveTab(2);
-      setAddStoreOpen(true);
-    } else if (action === 'sku') {
-      setActiveTab(7);
-      setAddSkuOpen(true);
-    } else {
-      setActiveTab(4);
-      toast.info('Rider registration is done through the Rider app. View and manage riders here.');
-    }
+  const handleRefresh = () => {
+    setAddStoreOpen(false);
+    toast.success('Master data view refreshed');
   };
 
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full relative">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold text-[#18181b]">Master Data Management</h1>
-          <p className="text-[#71717a] text-sm">Centralized control for all system entities.</p>
+          <p className="text-[#71717a] text-sm">Centralized control for cities, stores, riders, and catalog masters</p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 h-10 px-4 bg-[#e11d48] text-white text-sm font-medium rounded-lg hover:bg-rose-600 shadow-lg shadow-rose-500/25">
-              <Plus size={16} /> Quick Add
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => handleQuickAdd('store')}>
-              <Store size={14} className="mr-2" /> Add Store
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleQuickAdd('rider')}>
-              <User size={14} className="mr-2" /> Add Rider
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleQuickAdd('sku')}>
-              <Package size={14} className="mr-2" /> Add SKU Unit
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleRefresh}>
+            <RefreshCw size={14} className="mr-1.5" /> Refresh
+          </Button>
+        </div>
       </div>
 
-      <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm flex flex-col h-[600px]">
-        {/* Tabs */}
-        <div className="flex border-b border-[#e4e4e7] overflow-x-auto custom-scrollbar">
-          {TABS.map((tab, i) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(i)}
-              className={`px-6 py-4 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${i === activeTab ? 'border-[#e11d48] text-[#e11d48] bg-rose-50/50' : 'border-transparent text-[#71717a] hover:text-[#18181b] hover:bg-[#fcfcfc]'}`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as (typeof TABS)[number]['value'])} className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                <Icon size={14} className="mr-1.5" /> {tab.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
 
-        {/* Tab Content */}
-        {activeTab === 0 && <CitiesTab />}
-        {activeTab === 1 && <ZonesTab />}
-        {activeTab === 2 && (
-          <StoresTab
-            openAddModal={addStoreOpen}
-            onAddModalClose={() => setAddStoreOpen(false)}
-          />
-        )}
-        {activeTab === 3 && <WarehousesTab />}
-        {activeTab === 4 && <RidersTab />}
-        {activeTab === 5 && <EmployeesTab />}
-        {activeTab === 6 && <VehicleTypesTab />}
-        {activeTab === 7 && (
-          <SkuUnitsTab
-            openAddModal={addSkuOpen}
-            onAddModalClose={() => setAddSkuOpen(false)}
-          />
-        )}
-      </div>
+        <TabsContent value="warehouses">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+            <WarehousesTab />
+          </div>
+        </TabsContent>
+        <TabsContent value="cities">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+            <CitiesTab />
+          </div>
+        </TabsContent>
+        <TabsContent value="zones">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+            <ZonesTab />
+          </div>
+        </TabsContent>
+        <TabsContent value="stores">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+            <StoresTab
+              openAddModal={addStoreOpen}
+              onAddModalClose={() => setAddStoreOpen(false)}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

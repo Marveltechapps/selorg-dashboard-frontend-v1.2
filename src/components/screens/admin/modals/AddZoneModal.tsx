@@ -85,15 +85,15 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
           <DialogTitle>{editZone ? 'Edit Zone' : 'Add Zone'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Name *</Label>
+          <div className="space-y-2">
+            <Label>Zone Name *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Indiranagar" />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label>Code</Label>
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. BLR-IND" />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label>City *</Label>
             <Select value={cityId} onValueChange={setCityId} disabled={!!editZone}>
               <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
@@ -105,7 +105,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="space-y-2">
               <Label>Type</Label>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -116,7 +116,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="space-y-2">
               <Label>Status</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -129,11 +129,11 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="space-y-2">
               <Label>Color</Label>
               <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-full p-1" />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label>Area (sq km)</Label>
               <Input type="number" step="0.01" value={areaSqKm} onChange={(e) => setAreaSqKm(e.target.value)} placeholder="0" />
             </div>

@@ -123,6 +123,10 @@ export interface Bundle {
 }
 
 export interface PricingStats {
+  totalCoupons?: number;
+  totalRedemptions?: number;
+  avgDiscountValue?: number;
+  expiringSoonCoupons?: number;
   totalRevenue: number;
   discountedRevenue: number;
   totalDiscount: number;

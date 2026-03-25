@@ -27,6 +27,17 @@ export interface User {
   createdAt: string;
 }
 
+export interface CurrentAdminProfile {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  roleName?: string;
+  accessLevel?: string;
+  status?: UserStatus;
+  department?: string;
+}
+
 export interface Role {
   id: string;
   name: string;
@@ -35,6 +46,10 @@ export interface Role {
   userCount: number;
   permissions: string[];
   accessScope: "global" | "zone" | "store";
+  riskLevel?: "low" | "medium" | "high";
+  templateKey?: string;
+  isTemplate?: boolean;
+  isSystemTemplate?: boolean;
   createdAt: string;
 }
 
@@ -44,6 +59,36 @@ export interface Permission {
   displayName: string;
   module: string;
   description: string;
+  action?: string;
+  riskLevel?: "low" | "medium" | "high";
+  dependsOn?: string[];
+}
+
+export interface RoleTemplate extends Role {}
+
+export interface PermissionMatrixModule {
+  module: string;
+  permissions: Array<{
+    id: string;
+    name: string;
+    displayName: string;
+    description: string;
+    action: string;
+    riskLevel: "low" | "medium" | "high";
+    dependsOn: string[];
+  }>;
+}
+
+export interface RoleConfigExport {
+  schemaVersion: string;
+  exportedAt: string;
+  role: {
+    name: string;
+    description: string;
+    accessScope: "global" | "zone" | "store";
+    riskLevel: "low" | "medium" | "high";
+    permissions: string[];
+  };
 }
 
 export interface AccessLog {
@@ -75,6 +120,7 @@ export interface LoginSession {
 export interface CreateUserPayload {
   email: string;
   password?: string;
+  emailVerifiedToken?: string;
   name: string;
   department: string;
   roleId: string;
@@ -151,6 +197,15 @@ export const fetchUserById = async (id: string): Promise<User | null> => {
   }
 };
 
+export const fetchCurrentAdminProfile = async (): Promise<CurrentAdminProfile | null> => {
+  try {
+    const response = await apiRequest<{ success: boolean; data: CurrentAdminProfile }>('/admin/users/me');
+    return response.data ?? null;
+  } catch {
+    return null;
+  }
+};
+
 export const createUser = async (payload: CreateUserPayload): Promise<User> => {
   const userPayload = {
     ...payload,
@@ -167,6 +222,34 @@ export const createUser = async (payload: CreateUserPayload): Promise<User> => {
   if (!user) throw new Error('Invalid response from create user API');
 
   return { ...user, avatar: user.avatar ?? deriveAvatar(user.name) };
+};
+
+export const sendCreateUserOtp = async (email: string): Promise<{ verificationRequestId: string; expiresAt: string }> => {
+  const response = await apiRequest<{ success: boolean; data: { verificationRequestId: string; expiresAt: string } }>(
+    '/admin/users/verification/send-otp',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+  return response.data;
+};
+
+export const verifyCreateUserOtp = async (
+  email: string,
+  otp: string,
+  verificationRequestId: string
+): Promise<{ emailVerifiedToken: string; email: string }> => {
+  const response = await apiRequest<{ success: boolean; data: { emailVerifiedToken: string; email: string } }>(
+    '/admin/users/verification/verify-otp',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, otp, verificationRequestId }),
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+  return response.data;
 };
 
 export const updateUser = async (id: string, payload: UpdateUserPayload): Promise<User> => {
@@ -222,6 +305,21 @@ export const createRole = async (payload: CreateRolePayload): Promise<Role> => {
   return response.data;
 };
 
+export const createRoleFromTemplate = async (payload: {
+  name: string;
+  templateId?: string;
+  templateKey?: string;
+  description?: string;
+  accessScope?: "global" | "zone" | "store";
+}): Promise<Role> => {
+  const response = await apiRequest<{ success: boolean; data: Role }>('/admin/roles/from-template', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data;
+};
+
 export const updateRole = async (id: string, payload: Partial<CreateRolePayload>): Promise<Role> => {
   const response = await apiRequest<{ success: boolean; data: Role }>(`/admin/roles/${id}`, {
     method: 'PUT',
@@ -234,6 +332,44 @@ export const deleteRole = async (id: string): Promise<void> => {
   await apiRequest<{ success: boolean; message: string }>(`/admin/roles/${id}`, {
     method: 'DELETE',
   });
+};
+
+export const fetchRoleTemplates = async (): Promise<RoleTemplate[]> => {
+  const response = await apiRequest<{ success: boolean; data: RoleTemplate[] }>('/admin/roles/templates');
+  return response.data ?? [];
+};
+
+export const fetchPermissionsMatrix = async (): Promise<PermissionMatrixModule[]> => {
+  const response = await apiRequest<{ success: boolean; data: { modules: PermissionMatrixModule[] } }>('/admin/permissions/matrix');
+  return response.data?.modules ?? [];
+};
+
+export const updateRoleMatrix = async (
+  id: string,
+  payload: { permissions: string[]; accessScope?: "global" | "zone" | "store"; riskLevel?: "low" | "medium" | "high" }
+): Promise<Role> => {
+  const response = await apiRequest<{ success: boolean; data: Role }>(`/admin/roles/${id}/matrix`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data;
+};
+
+export const exportRoleConfig = async (id: string): Promise<RoleConfigExport> => {
+  const response = await apiRequest<{ success: boolean; data: RoleConfigExport }>(`/admin/roles/${id}/export`);
+  return response.data;
+};
+
+export const importRoleConfig = async (
+  payload: { role: RoleConfigExport['role']; overwrite?: boolean }
+): Promise<Role> => {
+  const response = await apiRequest<{ success: boolean; data: Role }>('/admin/roles/import', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data;
 };
 
 export const fetchPermissions = async (): Promise<Permission[]> => {

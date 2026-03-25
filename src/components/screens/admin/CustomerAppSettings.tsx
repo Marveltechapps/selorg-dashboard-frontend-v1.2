@@ -522,7 +522,7 @@ export function CustomerAppSettings(props?: CustomerAppSettingsProps) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full min-w-0 max-w-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -547,26 +547,22 @@ export function CustomerAppSettings(props?: CustomerAppSettingsProps) {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-6">
-        <div className="w-48 shrink-0 space-y-1">
+      {/* Tabs — match System Tools tab strip */}
+      <Tabs
+        value={activeTab}
+        onValueChange={v => setActiveTab(v as SettingsTab)}
+        className="w-full"
+      >
+        <TabsList className="bg-muted text-muted-foreground h-9 items-center rounded-xl p-[3px] flex w-full justify-start overflow-x-auto">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ${
-                activeTab === id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
+            <TabsTrigger key={id} value={id} className="shrink-0">
+              <Icon className="w-4 h-4 mr-1.5" />
               {label}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
 
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 mt-6">
           {/* Branding */}
           {activeTab === 'branding' && (
             <div className="space-y-6">
@@ -1394,7 +1390,7 @@ export function CustomerAppSettings(props?: CustomerAppSettingsProps) {
             </Card>
           )}
         </div>
-      </div>
+      </Tabs>
 
       {/* ─── Coupon Dialog ────────────────────────────── */}
       <Dialog open={couponDialog} onOpenChange={setCouponDialog}>

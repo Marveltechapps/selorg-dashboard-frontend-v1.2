@@ -29,8 +29,6 @@ import {
 import {
   fetchTickets,
   fetchAgents,
-  fetchCannedResponses,
-  fetchCategories,
   fetchSLAMetrics,
   fetchLiveChats,
   updateTicket,
@@ -45,8 +43,6 @@ import {
   fetchFeedback,
   SupportTicket,
   Agent,
-  CannedResponse,
-  TicketCategory,
   SLAMetrics,
   LiveChat,
   SupportFAQ,
@@ -66,11 +62,8 @@ import {
   Eye,
   UserPlus,
   MessageCircle,
-  Award,
-  Zap,
   Activity,
   Target,
-  Users,
   Plus,
   Edit,
   Trash2,
@@ -89,8 +82,6 @@ import { getCurrentUser } from '@/api/authApi';
 export function SupportCenter() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
-  const [categories, setCategories] = useState<TicketCategory[]>([]);
   const [slaMetrics, setSlaMetrics] = useState<SLAMetrics | null>(null);
   const [liveChats, setLiveChats] = useState<LiveChat[]>([]);
   const [faqs, setFaqs] = useState<SupportFAQ[]>([]);
@@ -142,11 +133,9 @@ export function SupportCenter() {
       if (priorityFilter !== 'all') filters.priority = priorityFilter;
       if (categoryFilter !== 'all') filters.category = categoryFilter;
 
-      const [ticketsData, agentsData, cannedData, categoriesData, slaData, chatsData, faqsData, feedbackData] = await Promise.all([
+      const [ticketsData, agentsData, slaData, chatsData, faqsData, feedbackData] = await Promise.all([
         fetchTickets(filters),
         fetchAgents(),
-        fetchCannedResponses(),
-        fetchCategories(),
         fetchSLAMetrics(),
         fetchLiveChats(),
         fetchFAQs(),
@@ -155,8 +144,6 @@ export function SupportCenter() {
 
       setTickets(ticketsData);
       setAgents(agentsData);
-      setCannedResponses(cannedData);
-      setCategories(categoriesData);
       setSlaMetrics(slaData);
       setLiveChats(chatsData);
       setFaqs(faqsData);
@@ -417,18 +404,6 @@ export function SupportCenter() {
     }
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'order': return '🛒';
-      case 'payment': return '💳';
-      case 'delivery': return '🚚';
-      case 'account': return '👤';
-      case 'technical': return '⚙️';
-      case 'feedback': return '💬';
-      default: return '📝';
-    }
-  };
-
   const filteredTickets = tickets.filter(ticket => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
@@ -457,9 +432,6 @@ export function SupportCenter() {
           <p className="text-[#71717a] text-sm">Manage customer tickets and live chat support</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="default" onClick={() => setCreateTicketOpen(true)}>
-            <Plus size={14} className="mr-1.5" /> Create Ticket
-          </Button>
           <Button 
             size="sm" 
             onClick={async () => {
@@ -474,7 +446,7 @@ export function SupportCenter() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Open Tickets</p>
@@ -509,51 +481,34 @@ export function SupportCenter() {
           </p>
           <p className="text-xs text-[#71717a] mt-1">{slaMetrics?.withinSLA} of {slaMetrics?.totalTickets}</p>
         </div>
-        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-[#71717a]">Active Agents</p>
-            <Users className="text-[#e11d48]" size={16} />
-          </div>
-          <p className="text-2xl font-bold text-[#18181b]">{agents.filter(a => a.isOnline).length}</p>
-          <p className="text-xs text-[#71717a] mt-1">of {agents.length} total</p>
-        </div>
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="all-tickets" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="all-tickets">
+      <Tabs defaultValue="all-tickets" className="space-y-4 min-w-0">
+        <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden whitespace-nowrap">
+          <TabsTrigger value="all-tickets" className="shrink-0">
             <MessageSquare size={14} className="mr-1.5" /> All Tickets
           </TabsTrigger>
-          <TabsTrigger value="my-tickets">
+          <TabsTrigger value="my-tickets" className="shrink-0">
             <User size={14} className="mr-1.5" /> My Tickets
           </TabsTrigger>
-          <TabsTrigger value="live-chats">
+          <TabsTrigger value="live-chats" className="shrink-0">
             <MessageCircle size={14} className="mr-1.5" /> Live Chats ({liveChats.length})
           </TabsTrigger>
-          <TabsTrigger value="canned">
-            <Zap size={14} className="mr-1.5" /> Canned Responses
-          </TabsTrigger>
-          <TabsTrigger value="team">
-            <Award size={14} className="mr-1.5" /> Team Performance
-          </TabsTrigger>
-          <TabsTrigger value="categories">
-            <Filter size={14} className="mr-1.5" /> Categories
-          </TabsTrigger>
-          <TabsTrigger value="faqs">
+          <TabsTrigger value="faqs" className="shrink-0">
             <HelpCircle size={14} className="mr-1.5" /> FAQs
           </TabsTrigger>
-          <TabsTrigger value="feedback">
+          <TabsTrigger value="feedback" className="shrink-0">
             <ThumbsUp size={14} className="mr-1.5" /> Feedback
           </TabsTrigger>
-          <TabsTrigger value="refund-tickets">
+          <TabsTrigger value="refund-tickets" className="shrink-0">
             <CreditCard size={14} className="mr-1.5" /> Refund Tickets
           </TabsTrigger>
         </TabsList>
 
         {/* All Tickets Tab - Inbox Layout (P1-37) */}
         <TabsContent value="all-tickets">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm h-[90vh] flex flex-col">
             {/* Filters */}
             <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
               <div className="flex gap-3">
@@ -597,7 +552,7 @@ export function SupportCenter() {
             </div>
 
             {/* Inbox Layout: Left panel list + Right panel detail */}
-            <div className="flex" style={{ height: '600px' }}>
+            <div className="flex flex-1 min-h-0">
               {/* Left Panel: Ticket List */}
               <div className="w-[380px] border-r border-[#e4e4e7] overflow-y-auto flex-shrink-0">
                 {filteredTickets.length === 0 ? (
@@ -722,8 +677,8 @@ export function SupportCenter() {
 
         {/* My Tickets Tab */}
         <TabsContent value="my-tickets">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm">
-            <div className="text-center py-12">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm h-[90vh] overflow-y-auto">
+            <div className="text-center py-12 min-h-full">
               <User className="mx-auto mb-4 text-[#a1a1aa]" size={48} />
               <h3 className="font-bold text-[#18181b] mb-2">My Assigned Tickets</h3>
               <p className="text-[#71717a] mb-4">
@@ -752,13 +707,13 @@ export function SupportCenter() {
 
         {/* Live Chats Tab */}
         <TabsContent value="live-chats">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm h-[90vh] flex flex-col">
             <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
               <h3 className="font-bold text-[#18181b]">Active Chat Sessions</h3>
               <p className="text-xs text-[#71717a] mt-1">{liveChats.length} active conversations</p>
             </div>
 
-            <div className="p-6 space-y-3">
+            <div className="p-6 space-y-3 flex-1 min-h-0 overflow-y-auto">
               {liveChats.length === 0 ? (
                 <div className="text-center py-12 text-[#71717a]">
                   <MessageCircle className="mx-auto mb-3" size={48} />
@@ -804,203 +759,9 @@ export function SupportCenter() {
           </div>
         </TabsContent>
 
-        {/* Canned Responses Tab */}
-        <TabsContent value="canned">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
-              <h3 className="font-bold text-[#18181b]">Quick Reply Templates</h3>
-              <p className="text-xs text-[#71717a] mt-1">{cannedResponses.length} templates available</p>
-            </div>
-
-            <div className="p-6 grid grid-cols-2 gap-4">
-              {cannedResponses.map((response) => (
-                <div key={response.id} className="border border-[#e4e4e7] rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-bold text-[#18181b]">{response.title}</h4>
-                    <Badge variant="outline" className="text-xs">{response.category}</Badge>
-                  </div>
-                  <p className="text-sm text-[#71717a] mb-3 line-clamp-3">{response.content}</p>
-                  <div className="flex items-center justify-between text-xs text-[#a1a1aa]">
-                    <span>Used {response.usageCount} times</span>
-                    <Button size="sm" variant="ghost">
-                      <Send size={12} className="mr-1" /> Use
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Team Performance Tab */}
-        <TabsContent value="team">
-          {/* Analytics Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-[#71717a] text-sm mb-1">
-                <Timer size={16} />
-                Avg Resolution Time
-              </div>
-              <p className="text-2xl font-bold text-[#18181b]">
-                {agents.length > 0
-                  ? `${Math.round(agents.reduce((s, a) => s + a.avgResolutionTime, 0) / agents.length)}m`
-                  : '—'}
-              </p>
-              <p className="text-xs text-[#71717a] mt-1">Across all agents</p>
-            </div>
-            <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-[#71717a] text-sm mb-1">
-                <Activity size={16} />
-                Tickets by Category
-              </div>
-              <div className="space-y-1 mt-1">
-                {categories.slice(0, 3).map((cat) => (
-                  <div key={cat.id} className="flex items-center justify-between text-xs">
-                    <span className="text-[#52525b] truncate">{cat.name}</span>
-                    <span className="font-bold text-[#18181b]">{cat.ticketCount}</span>
-                  </div>
-                ))}
-                {categories.length === 0 && <p className="text-xs text-[#a1a1aa]">No data</p>}
-              </div>
-            </div>
-            <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-[#71717a] text-sm mb-1">
-                <AlertCircle size={16} />
-                SLA Breach Rate
-              </div>
-              <p className="text-2xl font-bold text-[#18181b]">
-                {slaMetrics
-                  ? `${((slaMetrics.breachedCount / Math.max(1, slaMetrics.totalTickets)) * 100).toFixed(1)}%`
-                  : '—'}
-              </p>
-              <p className="text-xs text-[#71717a] mt-1">
-                {slaMetrics ? `${slaMetrics.breachedCount} of ${slaMetrics.totalTickets} tickets` : 'No SLA data'}
-              </p>
-            </div>
-            <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-[#71717a] text-sm mb-1">
-                <Award size={16} />
-                Avg Satisfaction
-              </div>
-              <p className="text-2xl font-bold text-[#18181b]">
-                {agents.length > 0
-                  ? (agents.reduce((s, a) => s + a.satisfactionScore, 0) / agents.length).toFixed(1)
-                  : '—'}
-              </p>
-              <p className="text-xs text-amber-500 mt-1">
-                {agents.length > 0 ? '★'.repeat(Math.round(agents.reduce((s, a) => s + a.satisfactionScore, 0) / agents.length)) : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
-              <h3 className="font-bold text-[#18181b]">Team Leaderboard</h3>
-              <p className="text-xs text-[#71717a] mt-1">Agent performance metrics</p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Agent</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Active Tickets</TableHead>
-                    <TableHead>Total Resolved</TableHead>
-                    <TableHead>Avg Resolution Time</TableHead>
-                    <TableHead>Satisfaction Score</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {agents.map((agent, index) => (
-                    <TableRow key={agent.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#e11d48] text-white flex items-center justify-center font-bold text-xs">
-                            {agent.avatar}
-                          </div>
-                          <div>
-                            <p className="font-medium text-[#18181b]">{agent.name}</p>
-                            <p className="text-xs text-[#71717a]">{agent.email}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {agent.role.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${agent.isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                          <span className="text-sm">{agent.isOnline ? 'Online' : 'Offline'}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-bold text-[#18181b]">{agent.activeTickets}</span>
-                        <span className="text-xs text-[#71717a]"> / {agent.maxTicketCapacity}</span>
-                      </TableCell>
-                      <TableCell className="font-bold text-emerald-600">{agent.totalResolved}</TableCell>
-                      <TableCell className="font-mono">{agent.avgResolutionTime}m</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#18181b]">{agent.satisfactionScore}</span>
-                          <span className="text-amber-500">★</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Categories Tab */}
-        <TabsContent value="categories">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
-              <h3 className="font-bold text-[#18181b]">Ticket Categories</h3>
-              <p className="text-xs text-[#71717a] mt-1">Performance by category</p>
-            </div>
-
-            <div className="p-6 grid grid-cols-3 gap-4">
-              {categories.map((category) => (
-                <div key={category.id} className="border border-[#e4e4e7] rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-[#f4f4f5] rounded-lg flex items-center justify-center text-2xl">
-                      {getCategoryIcon(category.name.toLowerCase().split(' ')[0])}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-[#18181b]">{category.name}</h4>
-                      <p className="text-xs text-[#71717a]">{category.description}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-[#71717a]">Total Tickets</p>
-                      <p className="text-xl font-bold text-[#18181b]">{category.ticketCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#71717a]">Avg Resolution</p>
-                      <p className="text-xl font-bold text-[#18181b]">{category.avgResolutionTime}m</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-3 border-t border-[#e4e4e7]">
-                    <p className="text-xs text-[#71717a]">SLA Target: {category.slaTarget} minutes</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </TabsContent>
-
         {/* FAQs Tab */}
         <TabsContent value="faqs">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm h-[90vh] flex flex-col">
             <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc] flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-[#18181b]">FAQ Management</h3>
@@ -1010,7 +771,7 @@ export function SupportCenter() {
                 <Plus size={14} className="mr-1.5" /> Add FAQ
               </Button>
             </div>
-            <div className="p-6 space-y-3">
+            <div className="p-6 space-y-3 flex-1 min-h-0 overflow-y-auto">
               {faqs.length === 0 ? (
                 <div className="text-center py-12 text-[#71717a]">
                   <HelpCircle className="mx-auto mb-3" size={48} />
@@ -1038,12 +799,12 @@ export function SupportCenter() {
 
         {/* Feedback Tab */}
         <TabsContent value="feedback">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm h-[90vh] flex flex-col">
             <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
               <h3 className="font-bold text-[#18181b]">Feedback Review</h3>
               <p className="text-xs text-[#71717a] mt-1">{feedback.length} feedback items</p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="flex-1 min-h-0 overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1083,12 +844,12 @@ export function SupportCenter() {
         </TabsContent>
         {/* Refund Tickets Tab (P1-28/P1-29) */}
         <TabsContent value="refund-tickets">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm h-[90vh] flex flex-col">
             <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
               <h3 className="font-bold text-[#18181b]">Refund-Related Tickets</h3>
               <p className="text-xs text-[#71717a] mt-1">Tickets involving payment or refund issues</p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="flex-1 min-h-0 overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

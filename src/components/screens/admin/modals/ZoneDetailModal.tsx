@@ -18,7 +18,7 @@ import {
   AlertTriangle,
   Activity
 } from 'lucide-react';
-import { Zone, fetchZoneDetails, fetchZoneOrderTrend } from '../citywideControlApi';
+import { Zone, Incident, LiveMetrics, fetchIncidents, fetchLiveMetrics, fetchZoneDetails, fetchZoneOrderTrend } from '../citywideControlApi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface ZoneDetailModalProps {
@@ -30,6 +30,8 @@ interface ZoneDetailModalProps {
 export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps) {
   const [zone, setZone] = useState<Zone | null>(null);
   const [trendData, setTrendData] = useState<{ time: string; orders: number }[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [liveMetrics, setLiveMetrics] = useState<LiveMetrics | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -38,20 +40,32 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
     }
   }, [open, zoneId]);
 
-  const loadZoneDetails = async () => {
+  useEffect(() => {
+    if (!open || !zoneId) return;
+    const interval = window.setInterval(() => {
+      loadZoneDetails(true);
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [open, zoneId]);
+
+  const loadZoneDetails = async (silent = false) => {
     if (!zoneId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
-      const [zoneData, trend] = await Promise.all([
+      const [zoneData, trend, latestIncidents, metrics] = await Promise.all([
         fetchZoneDetails(zoneId),
         fetchZoneOrderTrend(zoneId),
+        fetchIncidents(undefined, 'ongoing'),
+        fetchLiveMetrics(),
       ]);
       setZone(zoneData);
       setTrendData(trend);
+      setIncidents(latestIncidents);
+      setLiveMetrics(metrics);
     } catch (error) {
       console.error('Failed to load zone details:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -87,9 +101,26 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
     }
   };
 
+  const zoneIncidents = incidents.filter((incident) => {
+    const normalizedZoneName = zone.zoneName.toLowerCase();
+    const storeNames = zone.stores.map((store) => store.storeName.toLowerCase());
+    const storeIds = zone.stores.map((store) => store.storeId.toLowerCase());
+    const text = `${incident.title || ''} ${incident.description || ''} ${incident.storeName || ''} ${incident.storeId || ''}`.toLowerCase();
+    return (
+      text.includes(normalizedZoneName) ||
+      storeNames.some((name) => name && text.includes(name)) ||
+      storeIds.some((id) => id && text.includes(id))
+    );
+  });
+
+  const targetTime = liveMetrics?.targetDeliveryFormatted || '15m 00s';
+  const fulfillmentRate = zone.activeOrders > 0
+    ? Math.max(80, 100 - Math.round((zoneIncidents.length * 100) / Math.max(zone.activeOrders, 1)))
+    : 100;
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl h-[80vh] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -112,7 +143,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="overview" className="mt-4">
+        <Tabs defaultValue="overview" className="mt-4 flex flex-1 min-h-0 flex-col">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="stores">Stores</TabsTrigger>
@@ -121,7 +152,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
             <TabsTrigger value="incidents">Incidents</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#f4f4f5] p-4 rounded-lg">
                 <div className="flex items-center gap-2 text-sm text-[#71717a] mb-1">
@@ -162,18 +193,6 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
               </div>
             </div>
 
-            {zone.surgeMultiplier && (
-              <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-orange-900">Surge Pricing Active</div>
-                    <div className="text-sm text-orange-700">Multiplier: {zone.surgeMultiplier}x</div>
-                  </div>
-                  <Badge className="bg-orange-500 text-white">SURGE</Badge>
-                </div>
-              </div>
-            )}
-
             <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
               <h4 className="font-bold mb-3">Order Trend (Last 12 Hours)</h4>
               <ResponsiveContainer width="100%" height={200}>
@@ -194,7 +213,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
             </div>
           </TabsContent>
 
-          <TabsContent value="stores" className="space-y-3">
+          <TabsContent value="stores" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
             <div className="text-sm text-[#71717a] mb-2">
               {zone.stores.length} stores in this zone
             </div>
@@ -233,7 +252,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
             ))}
           </TabsContent>
 
-          <TabsContent value="riders" className="space-y-3">
+          <TabsContent value="riders" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
             <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
@@ -268,7 +287,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
             </div>
           </TabsContent>
 
-          <TabsContent value="performance" className="space-y-3">
+          <TabsContent value="performance" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
                 <div className="text-sm text-[#71717a]">Delivery SLA</div>
@@ -280,14 +299,14 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                   {zone.avgDeliveryTime}
                 </div>
                 <div className="text-xs text-[#71717a] mt-1">
-                  Target: 15m 00s
+                  Target: {targetTime}
                 </div>
               </div>
 
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
                 <div className="text-sm text-[#71717a]">Order Fulfillment</div>
-                <div className="text-2xl font-bold text-emerald-600">97.2%</div>
-                <div className="text-xs text-[#71717a] mt-1">Last 24 hours</div>
+                <div className="text-2xl font-bold text-emerald-600">{fulfillmentRate}%</div>
+                <div className="text-xs text-[#71717a] mt-1">Derived from live orders vs incidents</div>
               </div>
 
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
@@ -306,24 +325,23 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
             </div>
           </TabsContent>
 
-          <TabsContent value="incidents" className="space-y-3">
-            {zone.stores.some(s => s.status === 'offline') ? (
+          <TabsContent value="incidents" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+            {zoneIncidents.length > 0 ? (
               <div className="bg-rose-50 border border-rose-200 p-4 rounded-lg">
                 <div className="flex items-center gap-2 text-rose-900 font-bold mb-2">
                   <AlertTriangle size={16} />
                   Active Incidents
                 </div>
-                {zone.stores
-                  .filter(s => s.status === 'offline')
-                  .map(store => (
-                    <div key={store.storeId} className="bg-white p-3 rounded border border-rose-200 mb-2 last:mb-0">
-                      <div className="font-bold">{store.storeName} - Offline</div>
-                      <div className="text-sm text-[#71717a] mt-1">Store ID: {store.storeId}</div>
-                      <Button variant="outline" size="sm" className="mt-2">
-                        View Details
-                      </Button>
+                {zoneIncidents.map((incident) => (
+                  <div key={incident.id} className="bg-white p-3 rounded border border-rose-200 mb-2 last:mb-0">
+                    <div className="font-bold">{incident.title}</div>
+                    <div className="text-sm text-[#71717a] mt-1">
+                      {incident.storeName || incident.storeId || zone.zoneName}
                     </div>
-                  ))}
+                    <div className="text-xs text-[#71717a] mt-1">{incident.description}</div>
+                    <div className="text-xs text-rose-700 mt-1 uppercase font-semibold">{incident.severity}</div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="text-center py-8 text-[#71717a]">

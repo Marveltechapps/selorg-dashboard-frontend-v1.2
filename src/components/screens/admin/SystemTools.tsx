@@ -366,8 +366,8 @@ export function SystemTools() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-[#18181b]">System Tools</h1>
-          <p className="text-[#71717a] text-sm">Developer utilities, monitoring, and maintenance tools</p>
+          <h1 className="text-2xl font-bold text-[#18181b]">System Tools & Configuration</h1>
+          <p className="text-[#71717a] text-sm">Monitor infrastructure, run maintenance actions, and manage environment settings</p>
         </div>
         <div className="flex items-center gap-3">
           {loading && (
@@ -394,8 +394,8 @@ export function SystemTools() {
 
       {/* Quick Stats */}
       {systemHealth && (
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-[#71717a]">CPU Usage</p>
               <Cpu className="text-blue-600" size={16} />
@@ -406,7 +406,7 @@ export function SystemTools() {
             </div>
           </div>
 
-          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-[#71717a]">Memory Usage</p>
               <MemoryStick className="text-purple-600" size={16} />
@@ -417,7 +417,7 @@ export function SystemTools() {
             </div>
           </div>
 
-          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-[#71717a]">Disk Usage</p>
               <HardDrive className="text-amber-600" size={16} />
@@ -428,7 +428,7 @@ export function SystemTools() {
             </div>
           </div>
 
-          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm min-h-[132px] flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-[#71717a]">Uptime</p>
               <Activity className="text-emerald-600" size={16} />
@@ -441,36 +441,18 @@ export function SystemTools() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full justify-start border-b border-[#e4e4e7] bg-transparent rounded-none h-auto p-0">
-          <TabsTrigger value="health" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
+        <TabsList className="bg-muted text-muted-foreground h-9 items-center rounded-xl p-[3px] flex w-full justify-start overflow-x-auto">
+          <TabsTrigger value="health" className="shrink-0">
             <Activity size={14} className="mr-1.5" /> System Health
           </TabsTrigger>
-          <TabsTrigger value="cache" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
+          <TabsTrigger value="cache" className="shrink-0">
             <Zap size={14} className="mr-1.5" /> Cache
           </TabsTrigger>
-          <TabsTrigger value="database" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
-            <Database size={14} className="mr-1.5" /> Database
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
+          <TabsTrigger value="logs" className="shrink-0">
             <FileText size={14} className="mr-1.5" /> Logs
           </TabsTrigger>
-          <TabsTrigger value="jobs" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
-            <Clock size={14} className="mr-1.5" /> Cron Jobs
-          </TabsTrigger>
-          <TabsTrigger value="api" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
-            <Wifi size={14} className="mr-1.5" /> APIs
-          </TabsTrigger>
-          <TabsTrigger value="env" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
-            <Settings size={14} className="mr-1.5" /> Environment
-          </TabsTrigger>
-          <TabsTrigger value="migrations" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
-            <Code size={14} className="mr-1.5" /> Migrations
-          </TabsTrigger>
-          <TabsTrigger value="performance" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
+          <TabsTrigger value="performance" className="shrink-0">
             <TrendingUp size={14} className="mr-1.5" /> Performance
-          </TabsTrigger>
-          <TabsTrigger value="retention" className="data-[state=active]:border-b-2 data-[state=active]:border-[#e11d48] rounded-none">
-            <HardDrive size={14} className="mr-1.5" /> Data Retention
           </TabsTrigger>
         </TabsList>
 
@@ -618,58 +600,6 @@ export function SystemTools() {
           )}
         </TabsContent>
 
-        {/* Database Tab */}
-        <TabsContent value="database" className="mt-6 space-y-4">
-          {databaseInfo && (
-            <>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-                  <p className="text-xs text-[#71717a] mb-1">Database Size</p>
-                  <p className="text-2xl font-bold text-[#18181b]">{databaseInfo.size}</p>
-                </div>
-                <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-                  <p className="text-xs text-[#71717a] mb-1">Total Tables</p>
-                  <p className="text-2xl font-bold text-[#18181b]">{databaseInfo.tables}</p>
-                </div>
-                <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
-                  <p className="text-xs text-[#71717a] mb-1">Active Connections</p>
-                  <p className="text-2xl font-bold text-[#18181b]">{databaseInfo.connections}</p>
-                </div>
-              </div>
-
-              <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm">
-                <h3 className="font-bold text-[#18181b] mb-4">Database Operations</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <Button onClick={handleDatabaseBackup} variant="outline">
-                    <Download size={14} className="mr-1.5" /> Create Backup
-                  </Button>
-                  <Button onClick={handleOptimizeDatabase} variant="outline">
-                    <Zap size={14} className="mr-1.5" /> Optimize Tables
-                  </Button>
-                </div>
-
-                <div className="mt-6">
-                  <p className="text-xs text-[#71717a] mb-2">Last Backup</p>
-                  <p className="text-sm font-medium text-[#18181b]">
-                    {new Date(databaseInfo.lastBackup).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="mt-6 grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-[#f4f4f5] rounded-lg">
-                    <p className="text-xs text-[#71717a]">Total Queries</p>
-                    <p className="text-lg font-bold text-[#18181b]">{databaseInfo.queries.toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-[#f4f4f5] rounded-lg">
-                    <p className="text-xs text-[#71717a]">Slow Queries</p>
-                    <p className="text-lg font-bold text-amber-600">{databaseInfo.slowQueries}</p>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </TabsContent>
-
         {/* Logs Tab */}
         <TabsContent value="logs" className="mt-6 space-y-4">
           <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
@@ -763,224 +693,6 @@ export function SystemTools() {
                   </TableRow>
                   ))
                 )}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
-        {/* Cron Jobs Tab */}
-        <TabsContent value="jobs" className="mt-6 space-y-4">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-[#e4e4e7]">
-              <h3 className="font-bold text-[#18181b]">Scheduled Jobs</h3>
-              <p className="text-xs text-[#71717a] mt-1">Automated tasks and background processes</p>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Job Name</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead>Last Run</TableHead>
-                  <TableHead>Next Run</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Avg Duration</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cronJobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="font-medium">{job.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-[#71717a]">{job.schedule}</TableCell>
-                    <TableCell className="text-xs text-[#71717a]">
-                      {new Date(job.lastRun).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs text-[#71717a]">
-                      {new Date(job.nextRun).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(job.status)}>
-                        {job.status.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{job.avgDuration}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleTriggerJob(job.id)}>
-                          <Play size={12} />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleToggleJob(job.id, job.status === 'paused')}
-                        >
-                          {job.status === 'paused' ? <Play size={12} /> : <Pause size={12} />}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
-        {/* API Testing Tab */}
-        <TabsContent value="api" className="mt-6 space-y-4">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-[#e4e4e7]">
-              <h3 className="font-bold text-[#18181b]">API Endpoints Monitor</h3>
-              <p className="text-xs text-[#71717a] mt-1">Real-time endpoint health and performance</p>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Endpoint</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Avg Response</TableHead>
-                  <TableHead>Requests</TableHead>
-                  <TableHead>Error Rate</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {apiEndpoints.map((endpoint, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-mono text-xs">{endpoint.path}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono text-xs">{endpoint.method}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(endpoint.status)}>
-                        {endpoint.status.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{endpoint.avgResponseTime}ms</TableCell>
-                    <TableCell>{endpoint.requestCount.toLocaleString()}</TableCell>
-                    <TableCell>
-                      <span className={endpoint.errorRate > 5 ? 'text-rose-600 font-bold' : 'text-[#71717a]'}>
-                        {endpoint.errorRate}%
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="outline" onClick={() => handleTestApi(endpoint.path)}>
-                        <Play size={12} className="mr-1" /> Test
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
-        {/* Environment Tab */}
-        <TabsContent value="env" className="mt-6 space-y-4">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-[#e4e4e7]">
-              <h3 className="font-bold text-[#18181b]">Environment Variables</h3>
-              <p className="text-xs text-[#71717a] mt-1">System configuration and credentials</p>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Variable</TableHead>
-                  <TableHead>Value</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {envVariables.map((env, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-mono text-sm font-bold">{env.key}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-[#71717a]">
-                          {env.isSensitive && !showMasked[env.key] ? env.value : env.value}
-                        </span>
-                        {env.isSensitive && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setShowMasked({ ...showMasked, [env.key]: !showMasked[env.key] })}
-                          >
-                            {showMasked[env.key] ? <EyeOff size={12} /> : <Eye size={12} />}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{env.category}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedEnvVar(env);
-                          setShowEnvModal(true);
-                        }}
-                      >
-                        <Settings size={12} className="mr-1" /> Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
-        {/* Migrations Tab */}
-        <TabsContent value="migrations" className="mt-6 space-y-4">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-[#e4e4e7] flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-[#18181b]">Database Migrations</h3>
-                <p className="text-xs text-[#71717a] mt-1">Schema version control and updates</p>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={handleRollback}>
-                  <RotateCcw size={14} className="mr-1.5" /> Rollback
-                </Button>
-                <Button size="sm" onClick={handleRunMigrations}>
-                  <Play size={14} className="mr-1.5" /> Run Pending
-                </Button>
-              </div>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Migration</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Executed At</TableHead>
-                  <TableHead>Duration</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {migrations.map((migration) => (
-                  <TableRow key={migration.id}>
-                    <TableCell className="font-mono text-sm">{migration.name}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(migration.status)}>
-                        {migration.status === 'completed' && <CheckCircle size={12} className="mr-1" />}
-                        {migration.status === 'pending' && <Clock size={12} className="mr-1" />}
-                        {migration.status === 'failed' && <XCircle size={12} className="mr-1" />}
-                        {migration.status.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-[#71717a]">
-                      {migration.executedAt ? new Date(migration.executedAt).toLocaleString() : '-'}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{migration.duration || '-'}</TableCell>
-                  </TableRow>
-                ))}
               </TableBody>
             </Table>
           </div>
@@ -1091,101 +803,6 @@ export function SystemTools() {
           </div>
         </TabsContent>
 
-        {/* Data Retention Tab */}
-        <TabsContent value="retention">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
-              <h3 className="font-bold text-[#18181b]">Data Retention Policies</h3>
-              <p className="text-xs text-[#71717a] mt-1">Configure how long data is retained before archival</p>
-            </div>
-
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="border border-[#e4e4e7] rounded-lg p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                    <FileText size={20} className="text-blue-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[#18181b]">Orders</h4>
-                    <p className="text-xs text-[#71717a]">Archive older orders</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[#71717a] mb-1 block">Archive orders older than</label>
-                  <select
-                    value={retentionSettings.archiveOrdersMonths}
-                    onChange={(e) => setRetentionSettings(prev => ({ ...prev, archiveOrdersMonths: parseInt(e.target.value) }))}
-                    className="w-full border border-[#e4e4e7] rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value={3}>3 months</option>
-                    <option value={6}>6 months</option>
-                    <option value={12}>12 months</option>
-                    <option value={18}>18 months</option>
-                    <option value={24}>24 months</option>
-                    <option value={36}>36 months</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="border border-[#e4e4e7] rounded-lg p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
-                    <Terminal size={20} className="text-emerald-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[#18181b]">Chat Logs</h4>
-                    <p className="text-xs text-[#71717a]">Archive old chat conversations</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[#71717a] mb-1 block">Archive chats older than</label>
-                  <select
-                    value={retentionSettings.archiveChatsMonths}
-                    onChange={(e) => setRetentionSettings(prev => ({ ...prev, archiveChatsMonths: parseInt(e.target.value) }))}
-                    className="w-full border border-[#e4e4e7] rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value={1}>1 month</option>
-                    <option value={3}>3 months</option>
-                    <option value={6}>6 months</option>
-                    <option value={12}>12 months</option>
-                    <option value={24}>24 months</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="border border-[#e4e4e7] rounded-lg p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-                    <Clock size={20} className="text-amber-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[#18181b]">Call Logs</h4>
-                    <p className="text-xs text-[#71717a]">Archive old call records</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[#71717a] mb-1 block">Archive call logs older than</label>
-                  <select
-                    value={retentionSettings.archiveCallLogsMonths}
-                    onChange={(e) => setRetentionSettings(prev => ({ ...prev, archiveCallLogsMonths: parseInt(e.target.value) }))}
-                    className="w-full border border-[#e4e4e7] rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value={1}>1 month</option>
-                    <option value={3}>3 months</option>
-                    <option value={6}>6 months</option>
-                    <option value={12}>12 months</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 pb-6">
-              <Button onClick={() => toast.success('Data retention settings saved')}>
-                <Save size={14} className="mr-1.5" /> Save Retention Settings
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
       </Tabs>
 
       {/* Environment Variable Edit Modal */}

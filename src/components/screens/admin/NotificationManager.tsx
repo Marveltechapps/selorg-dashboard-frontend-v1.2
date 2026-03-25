@@ -1271,7 +1271,7 @@ export function NotificationManager() {
                 </SelectTrigger>
                 <SelectContent>
                   {templates.length === 0 ? (
-                    <SelectItem value="" disabled>No active templates. Create one first.</SelectItem>
+                    <SelectItem value="__no_templates__" disabled>No active templates. Create one first.</SelectItem>
                   ) : (
                     templates
                       .filter((t) => t.status === 'active')

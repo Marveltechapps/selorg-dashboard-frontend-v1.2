@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   LayoutDashboard, 
   LayoutGrid,
@@ -7,9 +7,6 @@ import {
   UserCheck,
   ShoppingBag, 
   Tag, 
-  Store, 
-  Settings, 
-  CreditCard, 
   Headphones, 
   ShieldAlert, 
   BarChart3, 
@@ -28,11 +25,11 @@ import {
   Sliders,
   Scale,
   UserPlus,
-  AlertTriangle,
-  Video,
   HelpCircle,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
+import { DASHBOARD_BRANDS } from '@/utils/dashboardFavicon';
+import { fetchCurrentAdminProfile, type CurrentAdminProfile } from '@/components/screens/admin/userManagementApi';
 
 interface AdminSidebarProps {
   activeTab: string;
@@ -43,26 +40,71 @@ interface AdminSidebarProps {
 }
 
 export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, onMobileClose }: AdminSidebarProps) {
+  const [profile, setProfile] = useState<CurrentAdminProfile | null>(null);
+  const cmsChildTabs = useMemo(
+    () =>
+      new Set([
+        'applications',
+        'customer-app-home',
+        'onboarding',
+        'app-settings',
+        'app-cms',
+        'cms-pages',
+        'faq-management',
+        'home-config',
+        'products-introduction',
+        'content-hub-categories',
+        'collections',
+      ]),
+    []
+  );
+
+  useEffect(() => {
+    let active = true;
+    let pollTimer: number | null = null;
+    const loadProfile = async () => {
+      const data = await fetchCurrentAdminProfile();
+      if (!active) return;
+      setProfile(data);
+      // Avoid hammering backend when /admin/users/me fails (returns null on errors).
+      if (data) {
+        pollTimer = window.setTimeout(loadProfile, 20000);
+      }
+    };
+    loadProfile();
+    return () => {
+      active = false;
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+      }
+    };
+  }, []);
+
+  const initials = useMemo(() => {
+    const source = profile?.name || profile?.email || 'A';
+    return source
+      .split(' ')
+      .map((part) => part[0])
+      .filter(Boolean)
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'A';
+  }, [profile?.name, profile?.email]);
+
+  const adminBrand = DASHBOARD_BRANDS.admin;
+  const [c1, c2] = adminBrand.colors;
+
   const navItems = [
     { category: "Control Room", items: [
       { id: 'citywide', label: 'Citywide Control', icon: Globe },
     ]},
-    { category: "Workforce", items: [
-      { id: 'picker-approvals', label: 'Picker Approvals', icon: UserPlus },
-      { id: 'picker-activity-logs', label: 'Picker Activity Logs', icon: History },
-      { id: 'picker-config', label: 'Picker Config', icon: Sliders },
-      { id: 'training-content', label: 'Training Content', icon: Video },
-      { id: 'ops-alerts', label: 'Operations Alerts', icon: AlertTriangle },
-    ]},
     { category: "Platform Settings", items: [
+      { id: 'picker-management', label: 'Picker Management', icon: UserPlus },
       { id: 'master-data', label: 'Master Data', icon: Database },
       { id: 'users', label: 'Users & Roles', icon: Users },
       { id: 'customers', label: 'Customers', icon: UserCheck },
       { id: 'catalog', label: 'Catalog', icon: ShoppingBag },
-      { id: 'pricing', label: 'Pricing & Promo', icon: Tag },
-      { id: 'store-config', label: 'Store & Warehouse', icon: Store },
-      { id: 'system-config', label: 'System Config', icon: Settings },
-      { id: 'finance', label: 'Finance Rules', icon: CreditCard },
+      { id: 'pricing', label: 'Coupons', icon: Tag },
       { id: 'legal-policies', label: 'Legal & Policies', icon: Scale },
     ]},
     { category: "Operational Engines", items: [
@@ -71,20 +113,12 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       { id: 'analytics', label: 'Analytics', icon: BarChart3 },
       { id: 'notifications', label: 'Notifications', icon: Bell },
       { id: 'geofence', label: 'Geofence Manager', icon: Map },
-      { id: 'integrations', label: 'Integrations', icon: Link },
       { id: 'compliance', label: 'Compliance', icon: FileCheck },
     ]},
     { category: "System & App", items: [
-      { id: 'content-hub', label: 'Content Hub', icon: LayoutGrid },
+      { id: 'content-hub', label: 'CMS', icon: LayoutGrid },
       { id: 'audit', label: 'Audit Logs', icon: History },
       { id: 'system-tools', label: 'System Tools', icon: Cpu },
-      { id: 'applications', label: 'Applications', icon: Smartphone },
-      { id: 'customer-app-home', label: 'Customer App Home', icon: Home },
-      { id: 'onboarding', label: 'Onboarding Screens', icon: BookOpen },
-      { id: 'app-settings', label: 'App Settings', icon: Sliders },
-      { id: 'app-cms', label: 'App CMS', icon: Smartphone },
-      { id: 'cms-pages', label: 'CMS Pages', icon: FileText },
-      { id: 'faq-management', label: 'FAQ Management', icon: HelpCircle },
     ]}
   ];
 
@@ -108,12 +142,20 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       {/* Header */}
       <div className="p-4 border-b border-[#27272a] flex items-center min-h-[86px]">
         <div className="flex items-center gap-2 text-white">
-          <div className="w-8 h-8 bg-[#e11d48] rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(225,29,72,0.5)]">
-             <Settings className="text-white" size={18} />
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(225,29,72,0.5)]"
+            style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
+          >
+             <span
+               className="text-white select-none"
+               style={{ fontFamily: "'Recursive', system-ui, sans-serif", fontWeight: 800, fontSize: 16, lineHeight: 1 }}
+             >
+               {adminBrand.initial}
+             </span>
           </div>
           <div>
-            <h1 className="font-bold text-lg leading-none">AdminOps</h1>
-            <p className="text-[10px] text-[#e11d48] font-bold tracking-wider uppercase mt-1">Superuser Access</p>
+            <h1 className="font-bold text-lg leading-none">Admin Operations</h1>
+            <p className="text-[10px] text-[#e11d48] font-bold tracking-wider uppercase mt-1">Secure Access Portal</p>
           </div>
         </div>
       </div>
@@ -128,11 +170,16 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
             <div className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = activeTab === item.id;
+                const isActive =
+                  activeTab === item.id || (item.id === 'content-hub' && cmsChildTabs.has(activeTab));
                 return (
                   <button
                     key={item.id}
                     onClick={() => {
+                      if ((item as any).href) {
+                        window.location.href = (item as any).href;
+                        return;
+                      }
                       setActiveTab(item.id);
                       onMobileClose?.();
                     }}
@@ -157,11 +204,11 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       <div className="p-4 border-t border-[#27272a] bg-[#09090b]">
         <div className="flex items-center gap-3 hover:bg-[#18181b] p-2 rounded-lg cursor-pointer transition-colors group">
           <div className="w-8 h-8 rounded-full bg-[#27272a] flex items-center justify-center border border-[#3f3f46] text-[#e11d48] font-bold text-xs group-hover:bg-[#e11d48] group-hover:text-white transition-colors">
-            AD
+            {initials}
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium text-[#e4e4e7] truncate">System Admin</p>
-            <p className="text-xs text-[#71717a] truncate">Root Access</p>
+            <p className="text-sm font-medium text-[#e4e4e7] truncate">{profile?.name || 'Admin User'}</p>
+            <p className="text-xs text-[#71717a] truncate">{profile?.roleName || profile?.accessLevel || 'Admin'}</p>
           </div>
           <button onClick={onLogout}>
             <LogOut size={16} className="text-[#71717a] hover:text-[#f87171]" />

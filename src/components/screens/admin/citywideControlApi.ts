@@ -58,6 +58,9 @@ export interface Incident {
   affectedCustomers?: number;
   status: "ongoing" | "resolved";
   resolvedAt?: string;
+  storeId?: string | null;
+  storeName?: string | null;
+  outageReason?: string | null;
   timeline?: IncidentTimelineEvent[];
   actions?: IncidentAction[];
 }
