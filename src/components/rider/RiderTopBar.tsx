@@ -22,11 +22,11 @@ export function RiderTopBar({ searchQuery = '', onSearchChange }: RiderTopBarPro
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="h-[72px] bg-white border-b border-[#E0E0E0] fixed top-0 left-[220px] right-0 z-40 flex items-center px-8 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+    <div className="h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 left-[220px] right-0 z-40 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200">
       {/* Left: Hub Status */}
       <div className="flex items-center gap-4 flex-1">
         <div className="flex items-center gap-2">
-           <span className="text-xl font-bold text-[#212121]">Logistics Command Center</span>
+           <span className="text-xl font-bold text-[#18181b]">Logistics Command Center</span>
            <span className="bg-[#FFF7ED] text-[#EA580C] text-xs font-bold px-2 py-0.5 rounded-full border border-[#EA580C]/20 flex items-center gap-1">
              <span className="w-1.5 h-1.5 rounded-full bg-[#EA580C] animate-pulse"></span>
              LIVE

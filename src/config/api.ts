@@ -137,6 +137,9 @@ export const API_ENDPOINTS = {
     auth: {
       login: '/warehouse/auth/login',
     },
+    notifications: '/warehouse/notifications',
+    notificationRead: (id: string) => `/warehouse/notifications/${id}/read`,
+    notificationsReadAll: '/warehouse/notifications/read-all',
     metrics: '/warehouse/metrics',
     orderFlow: '/warehouse/order-flow',
     dailyReport: '/warehouse/reports/daily',

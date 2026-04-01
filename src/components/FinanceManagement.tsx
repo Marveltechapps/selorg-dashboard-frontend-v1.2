@@ -17,6 +17,7 @@ import { SystemMonitoring } from './screens/finance/SystemMonitoring';
 import { CommunicationHub } from './screens/finance/CommunicationHub';
 import { UtilitiesTools } from './screens/finance/UtilitiesTools';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
 export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
@@ -48,6 +49,7 @@ export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
         <FinanceTopBar />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+          <DashboardBreadcrumbs dashboard="finance" activeTab={activeTab} />
             {activeTab === 'overview' && <FinanceOverview />}
             {activeTab === 'customer-payments' && <CustomerPayments />}
             {activeTab === 'vendor-payments' && <VendorPayments />}

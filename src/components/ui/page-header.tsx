@@ -28,6 +28,8 @@ interface PageHeaderProps {
     onClick: () => void;
   };
   className?: string;
+  /** Applied to the main title/actions row (default aligns to start for multi-line titles) */
+  contentClassName?: string;
 }
 
 export function PageHeader({
@@ -36,7 +38,8 @@ export function PageHeader({
   breadcrumbs,
   actions,
   backButton,
-  className
+  className,
+  contentClassName,
 }: PageHeaderProps) {
   return (
     <div className={cn("mb-6", className)}>
@@ -74,7 +77,7 @@ export function PageHeader({
       )}
 
       {/* Main Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className={cn('flex items-start justify-between gap-4', contentClassName)}>
         <div className="flex-1">
           {/* Back Button */}
           {backButton && (
@@ -90,7 +93,7 @@ export function PageHeader({
           )}
 
           {/* Title & Subtitle */}
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-slate-800 mb-1">
               {title}
             </h1>

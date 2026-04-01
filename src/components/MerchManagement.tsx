@@ -11,6 +11,7 @@ import { MerchAnalytics } from './screens/merch/MerchAnalytics';
 import { MerchAlerts } from './screens/merch/MerchAlerts';
 import { ComplianceApprovals } from './screens/merch/ComplianceApprovals';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
 export function MerchManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
@@ -34,6 +35,7 @@ export function MerchManagement({ onLogout }: { onLogout: () => void }) {
         />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+            <DashboardBreadcrumbs dashboard="merch" activeTab={activeTab} />
             {activeTab === 'overview' && (
                 <MerchOverview 
                     onNavigate={setActiveTab} 

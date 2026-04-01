@@ -262,31 +262,39 @@ export function OutboundOps() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pick & Pack Operations"
-        subtitle="Advanced picking strategies and workforce optimization"
-      />
-      <div className="flex justify-between items-center">
-        <div>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={exportData}
-            className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC] flex items-center gap-2"
-          >
-            <Download size={16} />
-            Export
-          </button>
-          {activeTab === 'batch-picking' && (
-            <button 
-              onClick={() => setShowBatchModal(true)}
-              className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
+        className="[&_h1]:mb-0 [&_h1]:flex [&_h1]:flex-wrap [&_h1]:items-baseline [&_h1]:gap-x-2 [&_h1]:gap-y-1 [&_h1]:min-w-0"
+        contentClassName="items-center"
+        title={
+          <>
+            <span>Pick & Pack Operations</span>
+            <span className="text-sm font-normal text-slate-500">
+              Advanced picking strategies and workforce optimization
+            </span>
+          </>
+        }
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={exportData}
+              className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC] flex items-center gap-2"
             >
-              <Plus size={16} />
-              Create Batch
+              <Download size={16} />
+              Export
             </button>
-          )}
-        </div>
-      </div>
+            {activeTab === 'batch-picking' && (
+              <button
+                type="button"
+                onClick={() => setShowBatchModal(true)}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Create Batch
+              </button>
+            )}
+          </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

@@ -5,6 +5,7 @@ import { RefreshCw, MapPin, Package, Layers, Info, AlertCircle, Users, Save, Tra
 import { api } from './overview/riderApi';
 import { Order, Rider } from './overview/types';
 import { toast } from 'sonner';
+import { GOOGLE_MAPS_LOADER_ID } from '../../../utils/googleMapsLoader';
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -65,7 +66,7 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
 
   const hasMapsKey = Boolean(GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY.trim().length > 0);
   const { isLoaded } = useJsApiLoader({
-    id: 'group-delivery-map',
+    id: GOOGLE_MAPS_LOADER_ID,
     googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
   });
 

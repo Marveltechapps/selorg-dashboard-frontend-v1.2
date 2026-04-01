@@ -21,8 +21,10 @@ import {
   type ProductionAlert,
   type ProductionIncident,
 } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function ProductionAlerts() {
+  const { selectedFactoryId } = useProductionFactory();
   const [activeTab, setActiveTab] = useState<'alerts' | 'incidents' | 'history'>('alerts');
   const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState<ProductionAlert | null>(null);
@@ -45,6 +47,7 @@ export function ProductionAlerts() {
         severity: filterSeverity === 'all' ? undefined : filterSeverity,
         category: filterCategory === 'all' ? undefined : filterCategory,
         search: searchTerm || undefined,
+        factoryId: selectedFactoryId || undefined,
       });
       setAlerts(res.alerts ?? []);
       setSummary(prev => ({
@@ -59,17 +62,17 @@ export function ProductionAlerts() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, filterSeverity, filterCategory, searchTerm]);
+  }, [activeTab, filterSeverity, filterCategory, searchTerm, selectedFactoryId]);
 
   const loadIncidents = useCallback(async () => {
     try {
-      const res = await fetchProductionIncidents();
+      const res = await fetchProductionIncidents({ factoryId: selectedFactoryId || undefined });
       setIncidents(res.incidents ?? []);
       setSummary(prev => ({ ...prev, openIncidentsCount: res.openIncidentsCount ?? 0 }));
     } catch (e) {
       setIncidents([]);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   useEffect(() => {
     setLoading(true);
@@ -104,7 +107,7 @@ export function ProductionAlerts() {
         category: newIncident.category || undefined,
         reportedBy: newIncident.reportedBy,
         location: newIncident.location || undefined,
-      });
+      }, selectedFactoryId || undefined);
       setNewIncident({ title: '', description: '', severity: 'medium', category: '', location: '', reportedBy: '' });
       setShowIncidentModal(false);
       toast.success('Incident reported successfully');
@@ -118,7 +121,7 @@ export function ProductionAlerts() {
     try {
       const actionType = newStatus === 'resolved' ? 'resolved' : newStatus === 'dismissed' ? 'dismissed' : 'acknowledge';
       const asn = assignee ?? (newStatus === 'acknowledged' ? prompt('Assign to (enter name):') : undefined);
-      await updateProductionAlertStatus(id, actionType, asn || undefined);
+      await updateProductionAlertStatus(id, actionType, asn || undefined, selectedFactoryId || undefined);
       toast.success(`Alert ${newStatus}`);
       refreshAll();
     } catch (e) {
@@ -128,7 +131,7 @@ export function ProductionAlerts() {
 
   const updateIncidentStatus = async (id: string, newStatus: ProductionIncident['status']) => {
     try {
-      await updateProductionIncidentStatus(id, newStatus);
+      await updateProductionIncidentStatus(id, newStatus, selectedFactoryId || undefined);
       toast.success(`Incident ${newStatus}`);
       refreshAll();
     } catch (e) {
@@ -139,7 +142,7 @@ export function ProductionAlerts() {
   const deleteAlert = async (id: string) => {
     if (!confirm('Are you sure you want to delete this alert?')) return;
     try {
-      await deleteProductionAlert(id);
+      await deleteProductionAlert(id, selectedFactoryId || undefined);
       toast.success('Alert deleted');
       refreshAll();
     } catch (e) {
@@ -151,7 +154,7 @@ export function ProductionAlerts() {
     const assignee = prompt('Assign maintenance to (enter name):');
     if (!assignee) return;
     try {
-      await updateProductionAlertStatus(alertId, 'dispatch', assignee);
+      await updateProductionAlertStatus(alertId, 'dispatch', assignee, selectedFactoryId || undefined);
       toast.success(`Maintenance dispatched to ${assignee}`);
       refreshAll();
     } catch (e) {

@@ -28,6 +28,10 @@ export interface Store {
   deliveryRadius: number;
   maxCapacity: number;
   currentLoad: number;
+  x?: number;
+  y?: number;
+  zones?: string[];
+  metadata?: Record<string, unknown> | null;
   staffCount: number;
   rating: number;
   totalOrders: number;
@@ -82,7 +86,7 @@ export interface Warehouse {
   productCount: number;
   zones: string[];
   manager: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'offline' | 'maintenance';
   createdAt: string;
   cityId?: string;
   zoneId?: string;
@@ -92,6 +96,12 @@ export interface Warehouse {
   serviceStatus?: 'Full' | 'Partial' | 'None';
   managerId?: string;
   deliveryRadius?: number;
+  phone?: string;
+  email?: string;
+  x?: number;
+  y?: number;
+  metadata?: Record<string, unknown> | null;
+  updatedAt?: string;
   operationalHours?: {
     [key: string]: { open: string; close: string; isOpen: boolean };
   };
@@ -525,6 +535,10 @@ function normalizeStore(raw: any): Store {
     deliveryRadius: raw.deliveryRadius ?? 5,
     maxCapacity: raw.maxCapacity ?? 100,
     currentLoad: raw.currentLoad ?? 0,
+    x: raw.x,
+    y: raw.y,
+    zones: raw.zones ?? [],
+    metadata: raw.metadata,
     staffCount: raw.staffCount ?? 0,
     rating: raw.rating ?? 0,
     totalOrders: raw.totalOrders ?? 0,
@@ -619,13 +633,24 @@ export async function fetchWarehouses(params?: { search?: string; status?: strin
     code: w.code ?? `WH-${w.id}`,
     address: w.address ?? '',
     city: w.city ?? '',
+    cityId: w.cityId?.toString?.() ?? w.cityId,
+    zoneId: w.zoneId?.toString?.() ?? w.zoneId,
     storageCapacity: w.storageCapacity ?? 0,
     currentUtilization: w.currentUtilization ?? 0,
     inventoryValue: w.inventoryValue ?? 0,
     productCount: w.productCount ?? 0,
     zones: w.zones ?? [],
     manager: w.manager ?? '',
+    managerId: w.managerId?.toString?.() ?? w.managerId,
     status: w.status ?? 'active',
+    phone: w.phone,
+    email: w.email,
+    latitude: w.latitude,
+    longitude: w.longitude,
+    deliveryRadius: w.deliveryRadius,
+    currentLoad: w.currentLoad,
+    serviceStatus: w.serviceStatus,
+    metadata: w.metadata,
     createdAt: w.createdAt ?? '',
   }));
   return { data, pagination: response.pagination };
@@ -762,6 +787,10 @@ export async function createStore(data: Partial<Store>): Promise<Store> {
   };
   if (data.cityId) payload.cityId = data.cityId;
   if (data.zoneId) payload.zoneId = data.zoneId;
+  if (data.x != null && Number.isFinite(Number(data.x))) payload.x = Number(data.x);
+  if (data.y != null && Number.isFinite(Number(data.y))) payload.y = Number(data.y);
+  if (data.zones != null) payload.zones = data.zones;
+  if (data.metadata !== undefined) payload.metadata = data.metadata;
   const response = await apiRequest<{ success: boolean; data: any }>('/admin/stores', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -793,6 +822,10 @@ export async function updateStore(id: string, data: Partial<Store>): Promise<Sto
   };
   if (data.cityId) payload.cityId = data.cityId;
   if (data.zoneId) payload.zoneId = data.zoneId;
+  if (data.x != null && Number.isFinite(Number(data.x))) payload.x = Number(data.x);
+  if (data.y != null && Number.isFinite(Number(data.y))) payload.y = Number(data.y);
+  if (data.zones != null) payload.zones = data.zones;
+  if (data.metadata !== undefined) payload.metadata = data.metadata;
   const response = await apiRequest<{ success: boolean; data: any }>(`/admin/stores/${id}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
@@ -817,14 +850,29 @@ export async function getWarehouse(id: string): Promise<Warehouse> {
     code: w.code ?? `WH-${w.id}`,
     address: w.address ?? '',
     city: w.city ?? '',
-    storageCapacity: w.storageCapacity ?? 0,
+    cityId: w.cityId?.toString?.() ?? w.cityId,
+    zoneId: w.zoneId?.toString?.() ?? w.zoneId,
+    storageCapacity: w.storageCapacity ?? w.maxCapacity ?? 0,
     currentUtilization: w.currentUtilization ?? 0,
     inventoryValue: w.inventoryValue ?? 0,
     productCount: w.productCount ?? 0,
     zones: w.zones ?? [],
     manager: w.manager ?? '',
+    managerId: w.managerId?.toString?.() ?? w.managerId,
     status: w.status ?? 'active',
+    phone: w.phone ?? '',
+    email: w.email ?? '',
+    latitude: w.latitude,
+    longitude: w.longitude,
+    deliveryRadius: w.deliveryRadius,
+    currentLoad: w.currentLoad,
+    serviceStatus: w.serviceStatus,
+    operationalHours: w.operationalHours,
+    metadata: w.metadata,
+    x: w.x,
+    y: w.y,
     createdAt: w.createdAt ?? '',
+    updatedAt: w.updatedAt,
   };
 }
 
@@ -846,7 +894,13 @@ export async function createWarehouse(data: Partial<Warehouse> & { cityId?: stri
     deliveryRadius: data.deliveryRadius ?? 5,
     operationalHours: data.operationalHours,
     status: data.status ?? 'active',
+    phone: data.phone,
+    email: data.email,
+    zones: data.zones,
+    metadata: data.metadata,
   };
+  if (data.x != null && Number.isFinite(Number(data.x))) payload.x = Number(data.x);
+  if (data.y != null && Number.isFinite(Number(data.y))) payload.y = Number(data.y);
   const res = await apiRequest<{ success: boolean; data: any }>('/admin/warehouses', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -896,7 +950,13 @@ export async function updateWarehouse(id: string, data: Partial<Warehouse> & { c
     deliveryRadius: data.deliveryRadius,
     operationalHours: data.operationalHours,
     status: data.status,
+    phone: data.phone,
+    email: data.email,
+    zones: data.zones,
+    metadata: data.metadata,
   };
+  if (data.x != null && Number.isFinite(Number(data.x))) payload.x = Number(data.x);
+  if (data.y != null && Number.isFinite(Number(data.y))) payload.y = Number(data.y);
   const res = await apiRequest<{ success: boolean; data: any }>(`/admin/warehouses/${id}`, {
     method: 'PUT',
     body: JSON.stringify(payload),

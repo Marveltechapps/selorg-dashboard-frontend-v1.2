@@ -24,9 +24,11 @@ import {
   type ProductionMaintenanceTask as MaintenanceTask,
   type ProductionIotDevice as IoTDevice,
 } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function MaintenanceAssets() {
   const queryClient = useQueryClient();
+  const { selectedFactoryId } = useProductionFactory();
   const [activeTab, setActiveTab] = useState<'equipment' | 'maintenance' | 'iot'>('equipment');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
@@ -34,25 +36,28 @@ export function MaintenanceAssets() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const { data: equipment = [] } = useQuery({
-    queryKey: ['production', 'maintenance', 'equipment'],
-    queryFn: () => fetchProductionEquipment(),
+    queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId],
+    queryFn: () => fetchProductionEquipment(selectedFactoryId || undefined),
+    enabled: !!selectedFactoryId,
   });
 
   const { data: maintenanceTasks = [] } = useQuery({
-    queryKey: ['production', 'maintenance', 'tasks'],
-    queryFn: () => fetchProductionMaintenanceTasks(),
+    queryKey: ['production', 'maintenance', 'tasks', selectedFactoryId],
+    queryFn: () => fetchProductionMaintenanceTasks(selectedFactoryId || undefined),
+    enabled: !!selectedFactoryId,
   });
 
   const { data: iotDevices = [] } = useQuery({
-    queryKey: ['production', 'maintenance', 'iot'],
-    queryFn: () => fetchProductionIotDevices(),
+    queryKey: ['production', 'maintenance', 'iot', selectedFactoryId],
+    queryFn: () => fetchProductionIotDevices(selectedFactoryId || undefined),
+    enabled: !!selectedFactoryId,
   });
 
   const createEquipmentMutation = useMutation({
     mutationFn: (body: { name: string; code: string; category?: string; location?: string }) =>
-      createProductionEquipment(body),
+      createProductionEquipment(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId] });
       toast.success('Equipment added successfully');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to add equipment'),
@@ -67,10 +72,10 @@ export function MaintenanceAssets() {
       scheduledDate: string;
       description: string;
       estimatedHours?: number;
-    }) => createProductionMaintenanceTask(body),
+    }) => createProductionMaintenanceTask(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks', selectedFactoryId] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId] });
       toast.success('Maintenance scheduled');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to schedule maintenance'),
@@ -78,10 +83,10 @@ export function MaintenanceAssets() {
 
   const updateTaskStatusMutation = useMutation({
     mutationFn: ({ taskId, status, technician }: { taskId: string; status: 'scheduled' | 'in-progress' | 'completed' | 'overdue'; technician?: string }) =>
-      updateProductionMaintenanceTaskStatus(taskId, status, technician),
+      updateProductionMaintenanceTaskStatus(taskId, status, technician, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks', selectedFactoryId] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update task'),
   });

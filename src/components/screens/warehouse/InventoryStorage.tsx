@@ -338,45 +338,49 @@ export function InventoryStorage() {
       <PageHeader
         title="Inventory Management"
         subtitle="Stock levels, bin management, and inventory operations"
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={exportData}
+              className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC] flex items-center gap-2"
+            >
+              <Download size={16} />
+              Export
+            </button>
+            {activeTab === 'overview' && (
+              <button
+                type="button"
+                onClick={() => setShowAdjustmentModal(true)}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
+              >
+                <RefreshCw size={16} />
+                New Adjustment
+              </button>
+            )}
+            {activeTab === 'cycle-counts' && (
+              <button
+                type="button"
+                onClick={() => setShowCycleCountModal(true)}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Schedule Count
+              </button>
+            )}
+            {activeTab === 'transfers' && (
+              <button
+                type="button"
+                onClick={() => setShowTransferModal(true)}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
+              >
+                <Plus size={16} />
+                New Transfer
+              </button>
+            )}
+          </div>
+        }
       />
-      <div className="flex justify-between items-center">
-        <div className="flex gap-3">
-          <button 
-            onClick={exportData}
-            className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC] flex items-center gap-2"
-          >
-            <Download size={16} />
-            Export
-          </button>
-          {activeTab === 'overview' && (
-            <button 
-              onClick={() => setShowAdjustmentModal(true)}
-              className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
-            >
-              <RefreshCw size={16} />
-              New Adjustment
-            </button>
-          )}
-          {activeTab === 'cycle-counts' && (
-            <button 
-              onClick={() => setShowCycleCountModal(true)}
-              className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
-            >
-              <Plus size={16} />
-              Schedule Count
-            </button>
-          )}
-          {activeTab === 'transfers' && (
-            <button 
-              onClick={() => setShowTransferModal(true)}
-              className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
-            >
-              <Plus size={16} />
-              New Transfer
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

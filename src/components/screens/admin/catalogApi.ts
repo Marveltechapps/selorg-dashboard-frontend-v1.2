@@ -386,9 +386,14 @@ export async function deleteCategory(id: string): Promise<void> {
 const BULK_UPDATE_KEYS = [
   ...PRODUCT_UPDATE_KEYS,
   'stockIncrement', // optional: add/subtract from stockQuantity
+  'priceIncrement', // optional: add/subtract from price
+  'priceMultiplier', // optional: multiply price by a factor
 ] as const;
 
-export async function bulkUpdateProducts(ids: string[], updates: Partial<Product> & { stockIncrement?: number }): Promise<number> {
+export async function bulkUpdateProducts(
+  ids: string[],
+  updates: Partial<Product> & { stockIncrement?: number; priceIncrement?: number; priceMultiplier?: number }
+): Promise<number> {
   if (!ids?.length) return 0;
   const body: Record<string, unknown> = {};
   for (const key of BULK_UPDATE_KEYS) {

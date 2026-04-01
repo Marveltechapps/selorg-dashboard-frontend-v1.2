@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { DASHBOARD_BRANDS } from '@/utils/dashboardFavicon';
-import { fetchCurrentAdminProfile, type CurrentAdminProfile } from '@/components/screens/admin/userManagementApi';
+import { getAuthUser, type AuthUser } from '@/contexts/AuthContext';
 
 interface AdminSidebarProps {
   activeTab: string;
@@ -40,7 +40,7 @@ interface AdminSidebarProps {
 }
 
 export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, onMobileClose }: AdminSidebarProps) {
-  const [profile, setProfile] = useState<CurrentAdminProfile | null>(null);
+  const [profile, setProfile] = useState<AuthUser | null>(null);
   const cmsChildTabs = useMemo(
     () =>
       new Set([
@@ -60,24 +60,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
   );
 
   useEffect(() => {
-    let active = true;
-    let pollTimer: number | null = null;
-    const loadProfile = async () => {
-      const data = await fetchCurrentAdminProfile();
-      if (!active) return;
-      setProfile(data);
-      // Avoid hammering backend when /admin/users/me fails (returns null on errors).
-      if (data) {
-        pollTimer = window.setTimeout(loadProfile, 20000);
-      }
-    };
-    loadProfile();
-    return () => {
-      active = false;
-      if (pollTimer) {
-        window.clearTimeout(pollTimer);
-      }
-    };
+    setProfile(getAuthUser());
   }, []);
 
   const initials = useMemo(() => {

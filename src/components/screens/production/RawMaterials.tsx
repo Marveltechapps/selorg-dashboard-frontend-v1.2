@@ -14,8 +14,10 @@ import {
   type InboundReceipt,
   type Requisition,
 } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function RawMaterials() {
+  const { selectedFactoryId } = useProductionFactory();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState<InboundReceipt | null>(null);
   const [showOrderModal, setShowOrderModal] = useState<RawMaterial | null>(null);
@@ -33,10 +35,16 @@ export function RawMaterials() {
     setLoading(true);
     setError(null);
     try {
+      if (!selectedFactoryId) {
+        setMaterials([]);
+        setReceipts([]);
+        setRequisitions([]);
+        return;
+      }
       const [mats, recs, reqs] = await Promise.all([
-        fetchRawMaterials(),
-        fetchReceipts(),
-        fetchRequisitions(),
+        fetchRawMaterials(undefined, selectedFactoryId),
+        fetchReceipts(selectedFactoryId),
+        fetchRequisitions(selectedFactoryId),
       ]);
       setMaterials(mats ?? []);
       setReceipts(recs ?? []);
@@ -49,7 +57,7 @@ export function RawMaterials() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   useEffect(() => {
     loadData();
@@ -79,7 +87,7 @@ export function RawMaterials() {
         reorderPoint: parseInt(newMaterial.reorderPoint, 10) || 0,
         supplier: newMaterial.supplier,
         category: newMaterial.category,
-      });
+      }, selectedFactoryId);
       setNewMaterial({ name: '', currentStock: '', unit: '', safetyStock: '', reorderPoint: '', supplier: '', category: '' });
       setShowAddModal(false);
       toast.success('Material added successfully');
@@ -97,7 +105,7 @@ export function RawMaterials() {
       return;
     }
     try {
-      await orderMaterialApi(showOrderModal.id, qty);
+      await orderMaterialApi(showOrderModal.id, qty, selectedFactoryId);
       setShowOrderModal(null);
       setOrderQty('');
       toast.success(`Purchase order created for ${qty} ${showOrderModal.unit} of ${showOrderModal.name}`);
@@ -114,7 +122,7 @@ export function RawMaterials() {
 
   const updateRequisitionStatus = async (id: string, newStatus: Requisition['status']) => {
     try {
-      await updateRequisitionStatusApi(id, newStatus);
+      await updateRequisitionStatusApi(id, newStatus, selectedFactoryId);
       toast.success(`Requisition ${newStatus}`);
       loadData();
     } catch (e) {
@@ -124,7 +132,7 @@ export function RawMaterials() {
 
   const receiveShipment = async (id: string) => {
     try {
-      await markReceiptReceived(id);
+      await markReceiptReceived(id, selectedFactoryId);
       setShowReceiptModal(null);
       toast.success('Shipment marked as received');
       loadData();

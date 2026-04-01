@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ProductionSidebar } from './production/ProductionSidebar';
 import { ProductionTopBar } from './production/ProductionTopBar';
+import { ProductionBreadcrumbs } from './production/ProductionBreadcrumbs';
 import { ProductionOverview } from './screens/production/ProductionOverview';
 import { RawMaterials } from './screens/production/RawMaterials';
 import { ProductionPlanning } from './screens/production/ProductionPlanning';
@@ -15,6 +16,19 @@ import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
 export function ProductionManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
+  const TAB_IDS = [
+    'overview',
+    'raw_materials',
+    'planning',
+    'work_orders',
+    'qc',
+    'maintenance',
+    'workforce',
+    'alerts',
+    'reports',
+    'utilities',
+  ] as const;
+  const effectiveTab = (TAB_IDS as readonly string[]).includes(activeTab as any) ? activeTab : 'overview';
   const [showDowntimeModal, setShowDowntimeModal] = useState(false);
 
   return (
@@ -25,16 +39,22 @@ export function ProductionManagement({ onLogout }: { onLogout: () => void }) {
         <ProductionTopBar setActiveTab={setActiveTab} onOpenDowntime={() => { setActiveTab('overview'); setShowDowntimeModal(true); }} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
-            {activeTab === 'overview' && <ProductionOverview showDowntimeModal={showDowntimeModal} onCloseDowntimeModal={() => setShowDowntimeModal(false)} />}
-            {activeTab === 'raw_materials' && <RawMaterials />}
-            {activeTab === 'planning' && <ProductionPlanning />}
-            {activeTab === 'work_orders' && <WorkOrders />}
-            {activeTab === 'qc' && <ProductionQC />}
-            {activeTab === 'maintenance' && <MaintenanceAssets />}
-            {activeTab === 'workforce' && <ProductionStaff />}
-            {activeTab === 'alerts' && <ProductionAlerts />}
-            {activeTab === 'reports' && <ProductionReports />}
-            {activeTab === 'utilities' && <ProductionUtilities />}
+          <ProductionBreadcrumbs activeTab={effectiveTab} />
+          {effectiveTab === 'overview' && (
+            <ProductionOverview
+              showDowntimeModal={showDowntimeModal}
+              onCloseDowntimeModal={() => setShowDowntimeModal(false)}
+            />
+          )}
+          {effectiveTab === 'raw_materials' && <RawMaterials />}
+          {effectiveTab === 'planning' && <ProductionPlanning />}
+          {effectiveTab === 'work_orders' && <WorkOrders />}
+          {effectiveTab === 'qc' && <ProductionQC />}
+          {effectiveTab === 'maintenance' && <MaintenanceAssets />}
+          {effectiveTab === 'workforce' && <ProductionStaff />}
+          {effectiveTab === 'alerts' && <ProductionAlerts />}
+          {effectiveTab === 'reports' && <ProductionReports />}
+          {effectiveTab === 'utilities' && <ProductionUtilities />}
         </main>
       </div>
     </div>

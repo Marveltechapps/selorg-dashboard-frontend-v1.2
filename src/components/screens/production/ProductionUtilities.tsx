@@ -27,6 +27,7 @@ import {
   bulkUploadProduction,
 } from '../../../api/productionApi';
 import { getCurrentUser } from '../../../api/authApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 interface UploadHistory {
   id: string;
@@ -57,6 +58,7 @@ interface JobCard {
 }
 
 export function ProductionUtilities() {
+  const { selectedFactoryId } = useProductionFactory();
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [showJobCardModal, setShowJobCardModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -74,25 +76,27 @@ export function ProductionUtilities() {
 
   const loadUploadHistory = useCallback(async () => {
     try {
-      const data = await fetchProductionUploadHistory();
+      if (!selectedFactoryId) return;
+      const data = await fetchProductionUploadHistory(selectedFactoryId);
       setUploadHistory(data ?? []);
     } catch {
       setUploadHistory([]);
     } finally {
       setLoadingUploads(false);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   const loadSyncHistory = useCallback(async () => {
     try {
-      const data = await fetchProductionSyncHistory();
+      if (!selectedFactoryId) return;
+      const data = await fetchProductionSyncHistory(selectedFactoryId);
       setSyncHistory(data ?? []);
     } catch {
       setSyncHistory([]);
     } finally {
       setLoadingSyncs(false);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   useEffect(() => {
     loadUploadHistory();
@@ -123,11 +127,12 @@ export function ProductionUtilities() {
   const [settingsLoading, setSettingsLoading] = useState(true);
 
   useEffect(() => {
-    fetchProductionSettings()
+    if (!selectedFactoryId) return;
+    fetchProductionSettings(selectedFactoryId)
       .then(setSystemSettingsState)
       .catch(() => {})
       .finally(() => setSettingsLoading(false));
-  }, []);
+  }, [selectedFactoryId]);
 
   const setSystemSettings = (next: typeof DEFAULT_SETTINGS | ((prev: typeof DEFAULT_SETTINGS) => typeof DEFAULT_SETTINGS)) => {
     setSystemSettingsState(prev => (typeof next === 'function' ? next(prev) : next));
@@ -147,14 +152,15 @@ export function ProductionUtilities() {
   const loadAuditLogs = useCallback(async () => {
     setAuditLogsLoading(true);
     try {
-      const data = await fetchProductionAuditLogs();
+      if (!selectedFactoryId) return;
+      const data = await fetchProductionAuditLogs(selectedFactoryId);
       setAuditLogs(data ?? []);
     } catch {
       setAuditLogs([]);
     } finally {
       setAuditLogsLoading(false);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   useEffect(() => {
     if (showAuditModal) loadAuditLogs();
@@ -167,7 +173,8 @@ export function ProductionUtilities() {
       const res = await bulkUploadProduction(
         uploadFile,
         uploadType,
-        user?.name || 'Current User'
+        user?.name || 'Current User',
+        selectedFactoryId
       );
       setUploadFile(null);
       setShowBulkUploadModal(false);
@@ -211,7 +218,8 @@ export function ProductionUtilities() {
   const syncHSDs = async () => {
     setIsSyncing(true);
     try {
-      const res = await performProductionHSDSync();
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      const res = await performProductionHSDSync(selectedFactoryId);
       const newSync: SyncHistory = {
         id: res.syncId,
         deviceCount: res.deviceCount,
@@ -257,7 +265,8 @@ export function ProductionUtilities() {
 
   const saveSettings = async () => {
     try {
-      await updateProductionSettings(systemSettings);
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      await updateProductionSettings(systemSettings, selectedFactoryId);
       setShowSettingsModal(false);
       toast.success('Settings saved successfully');
     } catch (e) {

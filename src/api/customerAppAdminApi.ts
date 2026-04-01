@@ -166,20 +166,99 @@ export interface Product {
   costPrice?: number;
   taxPercent?: number;
   gstRate?: number;
+  taxCategory?: string;
+  taxBreakup?: {
+    sgstPercent?: number;
+    cgstPercent?: number;
+    igstPercent?: number;
+    cessPercent?: number;
+    sgstAmount?: number;
+    cgstAmount?: number;
+    igstAmount?: number;
+    cessAmount?: number;
+    priceInclGst?: number;
+  };
   discount?: string;
   quantity?: string;
   stockQuantity?: number;
+  fixedStock?: number;
   lowStockThreshold?: number;
+  thresholdAlertRequired?: boolean;
+  thresholdQty?: number;
+  backOrderAllowed?: boolean;
+  backOrderQty?: number;
   brand?: string;
+  brandCode?: string;
   categoryId?: string;
   subcategoryId?: string;
   status?: string;
   featured?: boolean;
+  qcRequired?: boolean;
   variants?: Array<{ sku?: string; size?: string; price?: number; originalPrice?: number }>;
   attributes?: Record<string, unknown>;
   tags?: string[];
+  serialTracking?: boolean;
+  stackable?: boolean;
+  hazardous?: boolean;
+  poisonous?: boolean;
+  skuRotation?: string;
+  rotateBy?: string;
   isActive?: boolean;
   order?: number;
+  // Mastersheet / enrichment structured fields.
+  associatedClientName?: string;
+  styleAttributes?: string;
+  style?: string;
+  skuSource?: string;
+  colour?: string;
+  material?: string;
+  upcEan?: string;
+  washAndCare?: string;
+  shippingAndReturns?: string;
+  lottableValidation?: string;
+  recvValidationCode?: string;
+  pickingInstructions?: string;
+  shippingInstructions?: string;
+  shippingCharges?: number;
+  handlingCharges?: number;
+  isArsApplicable?: boolean;
+  followStyle?: string;
+  arsCalculationMethod?: string;
+  modelStock?: number;
+  imageDescriptions?: string[];
+  isUniqueBarcode?: boolean;
+  dimensions?: {
+    heightCm?: number;
+    lengthCm?: number;
+    widthCm?: number;
+    cube?: number;
+    weightKg?: number;
+  };
+  shelfLife?: {
+    value?: number;
+    type?: string;
+    total?: number;
+    onReceiving?: number;
+    onPicking?: number;
+  };
+  meta?: {
+    title?: string;
+    keywords?: string;
+    description?: string;
+  };
+  udf?: {
+    udf1?: string;
+    udf2?: string;
+    udf3?: string;
+    udf4?: string;
+    udf5?: string;
+    udf6?: string;
+    udf7?: string;
+    udf8?: string;
+    udf9?: string;
+    udf10?: string;
+  };
+  importRaw?: unknown;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -462,6 +541,60 @@ export async function fetchProductsByQuery(params: {
   const url = qp.toString() ? `${PREFIX}/products?${qp.toString()}` : `${PREFIX}/products`;
   const res = await apiRequest<ListResponse<Product>>(url);
   return res.data ?? [];
+}
+
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export async function fetchProductsByQueryPaged(params: {
+  search?: string;
+  status?: 'active' | 'inactive' | 'draft' | 'all';
+  classification?: 'Style' | 'Variant' | 'All';
+  featured?: 'true' | 'false' | 'all';
+  categoryId?: string;
+  subcategoryId?: string;
+  stock?: 'in_stock' | 'low_stock' | 'out_of_stock' | 'all';
+  brand?: string;
+  priceMin?: number | string;
+  priceMax?: number | string;
+  gstMin?: number | string;
+  gstMax?: number | string;
+  page?: number;
+  limit?: number;
+} = {}): Promise<{ data: Product[]; meta: PaginationMeta }> {
+  const qp = new URLSearchParams();
+  if (params.search?.trim()) qp.set('search', params.search.trim());
+  if (params.status && params.status !== 'all') qp.set('status', params.status);
+  if (params.classification && params.classification !== 'All') qp.set('classification', params.classification);
+  if (params.featured && params.featured !== 'all') qp.set('featured', params.featured);
+  if (params.categoryId) qp.set('categoryId', params.categoryId);
+  if (params.subcategoryId) qp.set('subcategoryId', params.subcategoryId);
+  if (params.stock && params.stock !== 'all') qp.set('stock', params.stock);
+  if (params.brand?.trim()) qp.set('brand', params.brand.trim());
+  if (params.priceMin != null && String(params.priceMin).trim() !== '') qp.set('priceMin', String(params.priceMin));
+  if (params.priceMax != null && String(params.priceMax).trim() !== '') qp.set('priceMax', String(params.priceMax));
+  if (params.gstMin != null && String(params.gstMin).trim() !== '') qp.set('gstMin', String(params.gstMin));
+  if (params.gstMax != null && String(params.gstMax).trim() !== '') qp.set('gstMax', String(params.gstMax));
+  if (params.page != null) qp.set('page', String(params.page));
+  if (params.limit != null) qp.set('limit', String(params.limit));
+
+  const url = qp.toString() ? `${PREFIX}/products?${qp.toString()}` : `${PREFIX}/products`;
+  const res = await apiRequest<{ success: boolean; data: Product[]; meta?: PaginationMeta }>(url);
+  return {
+    data: res.data ?? [],
+    meta:
+      res.meta ??
+      ({
+        total: res.data?.length ?? 0,
+        page: params.page ?? 1,
+        limit: params.limit ?? (res.data?.length ?? 0),
+        totalPages: 1,
+      } as PaginationMeta),
+  };
 }
 export async function createProduct(body: Partial<Product>): Promise<Product> {
   const res = await apiRequest<OneResponse<Product>>(`${PREFIX}/products`, {

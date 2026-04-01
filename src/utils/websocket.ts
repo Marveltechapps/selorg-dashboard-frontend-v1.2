@@ -110,7 +110,7 @@ class WebSocketService {
     });
 
     this.socket.on('connect', () => {
-      if (!isProd) console.log('Socket connected');
+      if (!isProd) console.debug('Socket connected');
       this.clearRetryTimer();
       this.reconnectAttempts = 0;
       this.hasLoggedMaxAttempts = false;
@@ -128,11 +128,39 @@ class WebSocketService {
     });
 
     this.socket.on('disconnect', (reason) => {
-      if (!isProd) console.warn('Socket disconnected:', reason);
+      if (!isProd) {
+        // `transport error` is a common symptom when backend is down in dev.
+        if (reason === 'transport error') {
+          console.debug('Socket disconnected (transport error)');
+        } else {
+          console.warn('Socket disconnected:', reason);
+        }
+      }
     });
 
     this.socket.on('connect_error', (err) => {
-      if (!isProd) console.warn('Socket connection error:', err.message);
+      // In dev, if the backend is simply not running, Socket.IO will spam retries
+      // (and the browser will repeatedly log ERR_CONNECTION_REFUSED). Treat that as
+      // a terminal "realtime unavailable" state until the user refreshes.
+      const errText = `${(err as any)?.message ?? ''} ${(err as any) ?? ''}`;
+      const isBackendUnreachable =
+        /ECONNREFUSED|ERR_CONNECTION_REFUSED|connection refused|xhr poll error|transport error/i.test(
+          errText
+        );
+
+      if (!isProd && isBackendUnreachable) {
+        this.connectionFailed = true;
+        this.hasLoggedMaxAttempts = true;
+        this.clearRetryTimer();
+        this.cleanupSocket();
+
+        console.warn(
+          'Socket.io disabled (backend unreachable: connection refused). Real-time updates will be off until refresh.'
+        );
+        return;
+      }
+
+      if (!isProd) console.warn('Socket connection error:', (err as any)?.message ?? err);
 
       this.reconnectAttempts++;
 

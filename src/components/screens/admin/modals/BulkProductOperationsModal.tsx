@@ -25,7 +25,7 @@ interface BulkProductOperationsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: string[];
-  onSuccess?: () => void | Promise<void>;
+  onSuccess?: (updates: Record<string, unknown>, ids: string[]) => void | Promise<void>;
 }
 
 type OperationType = 'price' | 'category' | 'status' | 'stock' | 'featured';
@@ -96,7 +96,28 @@ export function BulkProductOperationsModal({
           toast.error('Please enter a valid price');
           return;
         }
-        updates = { price: priceVal };
+
+        if (priceVal === 0) {
+          toast.error('Please enter a value greater than 0');
+          return;
+        }
+
+        // Backend supports either:
+        // - Fixed increment/decrement via `priceIncrement` (uses `$inc` on `price`)
+        // - Percentage increase/decrease via `priceMultiplier` (uses `$mul` on `price`)
+        if (formData.priceType === 'percentage') {
+          if (formData.priceAction === 'decrease' && priceVal > 100) {
+            toast.error('Percentage decrease cannot exceed 100%');
+            return;
+          }
+
+          const multiplier =
+            formData.priceAction === 'increase' ? 1 + priceVal / 100 : 1 - priceVal / 100;
+          updates = { priceMultiplier: multiplier };
+        } else {
+          const increment = formData.priceAction === 'increase' ? priceVal : -priceVal;
+          updates = { priceIncrement: increment };
+        }
         break;
       }
 
@@ -144,7 +165,7 @@ export function BulkProductOperationsModal({
     try {
       const count = await bulkUpdateProducts(selectedIds, updates);
       toast.success(`Successfully updated ${count} products`);
-      await Promise.resolve(onSuccess?.());
+      await Promise.resolve(onSuccess?.(updates, selectedIds));
       onOpenChange(false);
     } catch (error) {
       toast.error((error as { message?: string })?.message ?? 'Failed to perform bulk operation');

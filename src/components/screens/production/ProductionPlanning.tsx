@@ -3,8 +3,10 @@ import { Calendar, Layers, Clock, Download, X, Plus, Loader2 } from 'lucide-reac
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
 import { fetchPlans, createPlan as createPlanApi, type ProductionPlan } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function ProductionPlanning() {
+  const { selectedFactoryId } = useProductionFactory();
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [plans, setPlans] = useState<ProductionPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,7 +16,11 @@ export function ProductionPlanning() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchPlans();
+      if (!selectedFactoryId) {
+        setPlans([]);
+        return;
+      }
+      const data = await fetchPlans(selectedFactoryId);
       setPlans(data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load plans');
@@ -22,7 +28,7 @@ export function ProductionPlanning() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   useEffect(() => {
     loadData();
@@ -42,13 +48,17 @@ export function ProductionPlanning() {
       return;
     }
     try {
-      await createPlanApi({
-        product: newPlan.product,
-        line: newPlan.line,
-        startDate: newPlan.startDate,
-        endDate: newPlan.endDate || newPlan.startDate,
-        quantity: parseInt(newPlan.quantity, 10) || 0,
-      });
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      await createPlanApi(
+        {
+          product: newPlan.product,
+          line: newPlan.line,
+          startDate: newPlan.startDate,
+          endDate: newPlan.endDate || newPlan.startDate,
+          quantity: parseInt(newPlan.quantity, 10) || 0,
+        },
+        selectedFactoryId
+      );
       setNewPlan({ product: '', line: '', startDate: '', endDate: '', quantity: '' });
       setShowPlanModal(false);
       toast.success('Production plan created successfully!');

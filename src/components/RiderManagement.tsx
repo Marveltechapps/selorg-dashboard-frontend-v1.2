@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { RiderSidebar } from './rider/RiderSidebar';
 import { RiderTopBar } from './rider/RiderTopBar';
 import { RiderOverview } from './screens/rider/RiderOverview';
@@ -16,6 +17,7 @@ import { DeliveryEscalations } from './screens/rider/DeliveryEscalations';
 import { TrainingKitManagement } from './screens/rider/TrainingKitManagement';
 import { GroupDelivery } from './screens/rider/GroupDelivery';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
 const RIDER_TABS = [
   'overview',
@@ -37,7 +39,16 @@ const RIDER_TABS = [
 export function RiderManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
   const [riderSearchQuery, setRiderSearchQuery] = useState('');
-  const tab = RIDER_TABS.includes(activeTab as any) ? activeTab : 'overview';
+  // UI toggle: hide the Communication Hub screen (but keep code/integration intact).
+  const SHOW_COMMUNICATION_HUB = false;
+  const requestedTab = RIDER_TABS.includes(activeTab as any) ? activeTab : 'overview';
+  const tab = !SHOW_COMMUNICATION_HUB && requestedTab === 'communication' ? 'overview' : requestedTab;
+
+  // If someone navigates directly to `/rider/communication`, redirect them away.
+  // Using <Navigate> avoids relying on useEffect (which previously caused a runtime crash).
+  if (!SHOW_COMMUNICATION_HUB && activeTab === 'communication') {
+    return <Navigate to="/rider/overview" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
@@ -47,6 +58,7 @@ export function RiderManagement({ onLogout }: { onLogout: () => void }) {
         <RiderTopBar searchQuery={riderSearchQuery} onSearchChange={setRiderSearchQuery} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+          <DashboardBreadcrumbs dashboard="rider" activeTab={tab} />
             {tab === 'overview' && <RiderOverview searchQuery={riderSearchQuery} />}
             {tab === 'hr' && <RiderHR searchQuery={riderSearchQuery} />}
             {tab === 'dispatch' && <DispatchOps searchQuery={riderSearchQuery} />}

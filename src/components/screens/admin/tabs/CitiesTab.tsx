@@ -3,10 +3,9 @@ import { Plus, Search, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   fetchCities,
-  createCity,
-  updateCity,
   deleteCity,
   City,
+  getCity,
 } from '../masterDataApi';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AddCityModal } from '../modals/AddCityModal';
@@ -44,9 +43,14 @@ export function CitiesTab() {
     setModalOpen(true);
   };
 
-  const handleEdit = (c: City) => {
-    setEditCity(c);
-    setModalOpen(true);
+  const handleEdit = async (c: City) => {
+    try {
+      const full = await getCity(c.id);
+      setEditCity(full);
+      setModalOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Failed to load city');
+    }
   };
 
   const handleDelete = async (c: City) => {

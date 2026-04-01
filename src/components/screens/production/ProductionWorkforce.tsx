@@ -15,9 +15,11 @@ import {
   type ProductionShift as Shift,
   type ProductionAttendance as Attendance,
 } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function ProductionStaff() {
   const queryClient = useQueryClient();
+  const { selectedFactoryId } = useProductionFactory();
   const [activeTab, setActiveTab] = useState<'operators' | 'qc' | 'supervisors'>('operators');
   const [subTab, setSubTab] = useState<'roster' | 'shifts' | 'attendance'>('roster');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -26,34 +28,37 @@ export function ProductionStaff() {
   const dateStr = new Date().toISOString().split('T')[0];
 
   const { data: allStaff = [] } = useQuery({
-    queryKey: ['production', 'staff', 'roster'],
-    queryFn: () => fetchProductionStaffRoster(),
+    queryKey: ['production', 'staff', 'roster', selectedFactoryId],
+    queryFn: () => fetchProductionStaffRoster(selectedFactoryId || undefined),
+    enabled: !!selectedFactoryId,
   });
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['production', 'staff', 'shifts', dateStr],
-    queryFn: () => fetchProductionShiftCoverage({ date: dateStr }),
+    queryKey: ['production', 'staff', 'shifts', dateStr, selectedFactoryId],
+    queryFn: () => fetchProductionShiftCoverage({ date: dateStr, storeId: selectedFactoryId || undefined }),
+    enabled: !!selectedFactoryId,
   });
 
   const { data: attendance = [] } = useQuery({
-    queryKey: ['production', 'staff', 'attendance', dateStr],
-    queryFn: () => fetchProductionAttendance({ date: dateStr }),
+    queryKey: ['production', 'staff', 'attendance', dateStr, selectedFactoryId],
+    queryFn: () => fetchProductionAttendance({ date: dateStr, storeId: selectedFactoryId || undefined }),
+    enabled: !!selectedFactoryId,
   });
 
   const createStaffMutation = useMutation({
-    mutationFn: createProductionStaff,
+    mutationFn: (body: Parameters<typeof createProductionStaff>[0]) => createProductionStaff(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'roster'] });
-      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'roster', selectedFactoryId] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'attendance', dateStr, selectedFactoryId] });
       toast.success('Employee added successfully!');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to add employee'),
   });
 
   const createShiftMutation = useMutation({
-    mutationFn: createProductionShift,
+    mutationFn: (body: Parameters<typeof createProductionShift>[0]) => createProductionShift(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'shifts'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'shifts', dateStr, selectedFactoryId] });
       toast.success('Shift scheduled successfully!');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to schedule shift'),
@@ -61,18 +66,18 @@ export function ProductionStaff() {
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ staffId, status }: { staffId: string; status: 'active' | 'on-break' | 'absent' | 'off-duty' }) =>
-      updateProductionStaffStatus(staffId, status),
+      updateProductionStaffStatus(staffId, status, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'roster'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'roster', selectedFactoryId] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update status'),
   });
 
   const markPresentMutation = useMutation({
-    mutationFn: (recordId: string) => markProductionAttendancePresent(recordId),
+    mutationFn: (recordId: string) => markProductionAttendancePresent(recordId, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'attendance'] });
-      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'roster'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'attendance', dateStr, selectedFactoryId] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'staff', 'roster', selectedFactoryId] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to mark present'),
   });

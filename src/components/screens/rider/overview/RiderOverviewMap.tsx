@@ -1,6 +1,7 @@
 import React from 'react';
 import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 import type { Rider, Order } from './types';
+import { GOOGLE_MAPS_LOADER_ID } from '../../../../utils/googleMapsLoader';
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env
   ?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
@@ -17,7 +18,7 @@ interface RiderOverviewMapProps {
 
 export function RiderOverviewMap({ riders, orders }: RiderOverviewMapProps) {
   const { isLoaded } = useJsApiLoader({
-    id: 'rider-overview-map',
+    id: GOOGLE_MAPS_LOADER_ID,
     googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
   });
 

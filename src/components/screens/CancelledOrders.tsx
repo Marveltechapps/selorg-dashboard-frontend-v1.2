@@ -170,10 +170,6 @@ export function CancelledOrders() {
           </span>
         }
         subtitle={`View and track all cancelled orders for your store`}
-        breadcrumbs={[
-          { label: 'Darkstore' },
-          { label: 'Cancelled Orders' },
-        ]}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => loadOrders(currentPage)} disabled={isLoading}>

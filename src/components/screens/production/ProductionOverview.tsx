@@ -104,7 +104,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
         lineId: newBatch.line,
         product: newBatch.product,
         targetQuantity: targetNum,
-      });
+      }, selectedFactoryId);
       await loadOverview();
       setNewBatch({ line: '', product: '', target: '' });
       setShowBatchModal(false);
@@ -118,7 +118,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
     const line = lines.find((l) => l.id === id);
     if (!line) return;
     try {
-      const res = await updateProductionLine(id, 'pause');
+      const res = await updateProductionLine(id, 'pause', selectedFactoryId);
       await loadOverview();
       setShowManageModal(res.line);
     } catch (e) {
@@ -128,7 +128,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
 
   const resumeLine = async (id: string) => {
     try {
-      await updateProductionLine(id, 'resume');
+      await updateProductionLine(id, 'resume', selectedFactoryId);
       await loadOverview();
       setShowManageModal(null);
     } catch (e) {
@@ -138,7 +138,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
 
   const stopLine = async (id: string) => {
     try {
-      await updateProductionLine(id, 'stop');
+      await updateProductionLine(id, 'stop', selectedFactoryId);
       await loadOverview();
       setShowManageModal(null);
     } catch (e) {

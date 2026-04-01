@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -80,6 +81,7 @@ import { apiRequest } from '@/api/apiClient';
 import { getCurrentUser } from '@/api/authApi';
 
 export function SupportCenter() {
+  const [searchParams] = useSearchParams();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [slaMetrics, setSlaMetrics] = useState<SLAMetrics | null>(null);
@@ -93,6 +95,11 @@ export function SupportCenter() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q != null && q !== '') setSearchQuery(q);
+  }, [searchParams]);
 
   // Modals
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);

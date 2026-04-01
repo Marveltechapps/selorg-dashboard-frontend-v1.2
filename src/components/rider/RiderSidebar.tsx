@@ -26,6 +26,13 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
     { id: 'group-delivery', label: 'Group Delivery', icon: Icons.Map },
   ];
 
+  // UI toggle: hide the Communication Hub button without deleting its code/entry.
+  const SHOW_COMMUNICATION_HUB = false;
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.id === 'communication') return SHOW_COMMUNICATION_HUB;
+    return true;
+  });
+
   return (
     <div className="w-[220px] h-screen bg-[#111827] text-[#E6E6E6] flex flex-col fixed left-0 top-0 z-50 shadow-xl border-r border-[#1F2937]">
       {/* Fixed single hub (Chennai) */}
@@ -47,7 +54,7 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           return (

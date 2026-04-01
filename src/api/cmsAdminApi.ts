@@ -14,7 +14,8 @@ export interface AdminCmsOverview {
 
 export interface AdminCmsUploadResult {
   success: boolean;
-  counts: Record<string, number>;
+  counts: Record<string, any>;
+  warnings?: Array<{ sheet?: string; row?: number; message: string }>;
   errors: Array<{ sheet?: string; row?: number; message: string }>;
 }
 
@@ -65,6 +66,16 @@ export async function uploadCmsPages(file: File): Promise<AdminCmsUploadResult> 
   const formData = new FormData();
   formData.append('file', file);
   return apiRequest<AdminCmsUploadResult>(`${PREFIX}/upload/cms-pages`, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function uploadContentHubMaster(file: File, overwrite = true): Promise<AdminCmsUploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('overwrite', String(overwrite));
+  return apiRequest<AdminCmsUploadResult>(`${PREFIX}/upload/content-hub-master`, {
     method: 'POST',
     body: formData,
   });

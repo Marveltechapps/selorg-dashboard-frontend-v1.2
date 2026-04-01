@@ -7,8 +7,33 @@ export interface City {
   state?: string;
   country?: string;
   isActive?: boolean;
+  metadata?: Record<string, unknown> | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ZoneSettings {
+  deliveryFee?: number;
+  minOrderValue?: number;
+  maxDeliveryRadius?: number;
+  estimatedDeliveryTime?: number;
+  surgeMultiplier?: number;
+  maxCapacity?: number;
+  priority?: number;
+  availableSlots?: string[];
+}
+
+export interface ZoneAnalytics {
+  areaSize?: number;
+  population?: number;
+  activeOrders?: number;
+  totalOrders?: number;
+  dailyOrders?: number;
+  revenue?: number;
+  avgDeliveryTime?: number;
+  riderCount?: number;
+  capacityUsage?: number;
+  customerSatisfaction?: number;
 }
 
 export interface Zone {
@@ -22,6 +47,17 @@ export interface Zone {
   color?: string;
   areaSqKm?: number;
   defaultCapacity?: number;
+  isVisible?: boolean;
+  promoCount?: number;
+  points?: { x: number; y: number }[];
+  polygon?: { lat: number; lng: number }[];
+  center?: { lat?: number; lng?: number };
+  city?: string;
+  region?: string;
+  settings?: ZoneSettings;
+  analytics?: ZoneAnalytics;
+  createdBy?: string;
+  metadata?: Record<string, unknown> | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -83,6 +119,7 @@ export async function fetchCities(params?: { isActive?: boolean; search?: string
     state: c.state,
     country: c.country,
     isActive: c.isActive,
+    metadata: c.metadata,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   }));
@@ -93,7 +130,15 @@ export async function getCity(id: string): Promise<City> {
   const res = await apiRequest<{ success: boolean; data: any }>(`/admin/cities/${id}`);
   if (!res?.success || !res.data) throw new Error('City not found');
   const c = res.data;
-  return { id: c._id?.toString?.() ?? c.id, code: c.code, name: c.name, state: c.state, country: c.country, isActive: c.isActive };
+  return {
+    id: c._id?.toString?.() ?? c.id,
+    code: c.code,
+    name: c.name,
+    state: c.state,
+    country: c.country,
+    isActive: c.isActive,
+    metadata: c.metadata,
+  };
 }
 
 export async function createCity(data: Partial<City>): Promise<City> {
@@ -103,7 +148,15 @@ export async function createCity(data: Partial<City>): Promise<City> {
   });
   if (!res?.success || !res.data) throw new Error('Failed to create city');
   const c = res.data;
-  return { id: c._id?.toString?.() ?? c.id, code: c.code, name: c.name, state: c.state, country: c.country, isActive: c.isActive };
+  return {
+    id: c._id?.toString?.() ?? c.id,
+    code: c.code,
+    name: c.name,
+    state: c.state,
+    country: c.country,
+    isActive: c.isActive,
+    metadata: c.metadata,
+  };
 }
 
 export async function updateCity(id: string, data: Partial<City>): Promise<City> {
@@ -113,7 +166,15 @@ export async function updateCity(id: string, data: Partial<City>): Promise<City>
   });
   if (!res?.success || !res.data) throw new Error('Failed to update city');
   const c = res.data;
-  return { id: c._id?.toString?.() ?? c.id, code: c.code, name: c.name, state: c.state, country: c.country, isActive: c.isActive };
+  return {
+    id: c._id?.toString?.() ?? c.id,
+    code: c.code,
+    name: c.name,
+    state: c.state,
+    country: c.country,
+    isActive: c.isActive,
+    metadata: c.metadata,
+  };
 }
 
 export async function deleteCity(id: string): Promise<void> {
@@ -146,22 +207,20 @@ export async function fetchZones(params?: { cityId?: string; status?: string; se
   return { data, pagination: res.pagination };
 }
 
+function mapZoneFromApi(z: any): Zone {
+  const cityId = z.cityId?._id ?? z.cityId;
+  return {
+    ...z,
+    id: z._id?.toString?.() ?? z.id,
+    cityId: cityId?.toString?.() ?? cityId,
+    cityName: z.cityName ?? z.cityId?.name,
+  };
+}
+
 export async function getZone(id: string): Promise<Zone> {
   const res = await apiRequest<{ success: boolean; data: any }>(`/admin/zones/${id}`);
   if (!res?.success || !res.data) throw new Error('Zone not found');
-  const z = res.data;
-  return {
-    id: z._id?.toString?.() ?? z.id,
-    name: z.name,
-    code: z.code,
-    cityId: z.cityId?.toString?.() ?? z.cityId,
-    cityName: z.cityName,
-    type: z.type,
-    status: z.status,
-    color: z.color,
-    areaSqKm: z.areaSqKm,
-    defaultCapacity: z.defaultCapacity,
-  };
+  return mapZoneFromApi(res.data);
 }
 
 export async function createZone(data: Partial<Zone>): Promise<Zone> {
@@ -170,8 +229,7 @@ export async function createZone(data: Partial<Zone>): Promise<Zone> {
     body: JSON.stringify(data),
   });
   if (!res?.success || !res.data) throw new Error('Failed to create zone');
-  const z = res.data;
-  return { id: z._id?.toString?.() ?? z.id, name: z.name, code: z.code, cityId: z.cityId?.toString?.() ?? z.cityId, cityName: z.cityName, type: z.type, status: z.status };
+  return mapZoneFromApi(res.data);
 }
 
 export async function updateZone(id: string, data: Partial<Zone>): Promise<Zone> {
@@ -180,8 +238,7 @@ export async function updateZone(id: string, data: Partial<Zone>): Promise<Zone>
     body: JSON.stringify(data),
   });
   if (!res?.success || !res.data) throw new Error('Failed to update zone');
-  const z = res.data;
-  return { id: z._id?.toString?.() ?? z.id, name: z.name, code: z.code, cityId: z.cityId?.toString?.() ?? z.cityId, cityName: z.cityName, type: z.type, status: z.status };
+  return mapZoneFromApi(res.data);
 }
 
 export async function deleteZone(id: string): Promise<void> {

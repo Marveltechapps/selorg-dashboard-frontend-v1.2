@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchZones, deleteZone, Zone } from '../masterDataApi';
+import { fetchZones, deleteZone, Zone, getZone } from '../masterDataApi';
 import { fetchCities } from '../storeWarehouseApi';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -51,9 +51,14 @@ export function ZonesTab() {
     setModalOpen(true);
   };
 
-  const handleEdit = (z: Zone) => {
-    setEditZone(z);
-    setModalOpen(true);
+  const handleEdit = async (z: Zone) => {
+    try {
+      const full = await getZone(z.id);
+      setEditZone(full);
+      setModalOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Failed to load zone');
+    }
   };
 
   const handleDelete = async (z: Zone) => {
@@ -131,7 +136,7 @@ export function ZonesTab() {
                     <td className="px-6 py-4 text-[#52525b]">{z.cityName ?? '—'}</td>
                     <td className="px-6 py-4 text-[#52525b]">{z.type ?? '—'}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-xs ${z.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-600'}`}>
+                      <span className={`px-2 py-1 rounded text-xs ${String(z.status ?? '').toLowerCase() === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-600'}`}>
                         {z.status ?? '—'}
                       </span>
                     </td>

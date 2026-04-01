@@ -1268,15 +1268,47 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                           </div>
                           {(item.type === 'banner' || item.type === 'image') && (
                             <>
-                              <Input
-                                placeholder="Image URL"
-                                value={item.imageUrl ?? ''}
-                                onChange={(e) => {
-                                  const next = [...((formData.contentItems as BannerContentItem[]) ?? [])];
-                                  next[idx] = { ...next[idx], imageUrl: e.target.value };
-                                  setFormData({ ...formData, contentItems: next });
-                                }}
-                              />
+                              {item.type === 'banner' ? (
+                                <div className="space-y-1">
+                                  <select
+                                    className="w-full rounded-md border border-[#e4e4e7] bg-white px-3 py-2 text-sm"
+                                    value={banners.find((b) => b._id !== editingId && b.imageUrl === (item.imageUrl ?? ''))?._id ?? ''}
+                                    onChange={(e) => {
+                                      const selectedId = e.target.value;
+                                      const selectedBanner = banners.find((b) => b._id === selectedId);
+                                      const next = [...((formData.contentItems as BannerContentItem[]) ?? [])];
+                                      next[idx] = {
+                                        ...next[idx],
+                                        imageUrl: selectedBanner?.imageUrl ?? '',
+                                        blockTitle: next[idx].blockTitle || selectedBanner?.title || '',
+                                      };
+                                      setFormData({ ...formData, contentItems: next });
+                                    }}
+                                  >
+                                    <option value="">Select banner from banner list</option>
+                                    {banners
+                                      .filter((b) => b._id !== editingId)
+                                      .map((b) => (
+                                        <option key={b._id} value={b._id}>
+                                          {b.title || b._id}
+                                        </option>
+                                      ))}
+                                  </select>
+                                  <p className="text-[11px] text-[#71717a]">
+                                    Banner blocks are selected from existing Banners tab entries.
+                                  </p>
+                                </div>
+                              ) : (
+                                <Input
+                                  placeholder="Image URL"
+                                  value={item.imageUrl ?? ''}
+                                  onChange={(e) => {
+                                    const next = [...((formData.contentItems as BannerContentItem[]) ?? [])];
+                                    next[idx] = { ...next[idx], imageUrl: e.target.value };
+                                    setFormData({ ...formData, contentItems: next });
+                                  }}
+                                />
+                              )}
                               <label className="flex items-center gap-2 text-xs cursor-pointer">
                                 <input
                                   type="checkbox"
@@ -1392,21 +1424,56 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                                           <Trash2 className="h-3 w-3" />
                                         </Button>
                                       </div>
-                                      {(nestItem.type === 'banner' || nestItem.type === 'image') && (
-                                        <Input
-                                          placeholder="Image URL"
-                                          value={nestItem.imageUrl ?? ''}
-                                          onChange={(e) => {
-                                            const parent = (formData.contentItems as BannerContentItem[]) ?? [];
-                                            const row = parent[idx];
-                                            const nested = [...(row.nestedContentItems ?? [])];
-                                            nested[nidx] = { ...nested[nidx], imageUrl: e.target.value };
-                                            const next = [...parent];
-                                            next[idx] = { ...row, nestedContentItems: nested };
-                                            setFormData({ ...formData, contentItems: next });
-                                          }}
-                                        />
-                                      )}
+                                      {(nestItem.type === 'banner' || nestItem.type === 'image') &&
+                                        (nestItem.type === 'banner' ? (
+                                          <div className="space-y-1">
+                                            <select
+                                              className="w-full rounded-md border border-[#e4e4e7] bg-white px-3 py-2 text-sm"
+                                              value={
+                                                banners.find(
+                                                  (b) => b._id !== editingId && b.imageUrl === (nestItem.imageUrl ?? '')
+                                                )?._id ?? ''
+                                              }
+                                              onChange={(e) => {
+                                                const selectedId = e.target.value;
+                                                const selectedBanner = banners.find((b) => b._id === selectedId);
+                                                const parent = (formData.contentItems as BannerContentItem[]) ?? [];
+                                                const row = parent[idx];
+                                                const nested = [...(row.nestedContentItems ?? [])];
+                                                nested[nidx] = { ...nested[nidx], imageUrl: selectedBanner?.imageUrl ?? '' };
+                                                const next = [...parent];
+                                                next[idx] = { ...row, nestedContentItems: nested };
+                                                setFormData({ ...formData, contentItems: next });
+                                              }}
+                                            >
+                                              <option value="">Select banner from banner list</option>
+                                              {banners
+                                                .filter((b) => b._id !== editingId)
+                                                .map((b) => (
+                                                  <option key={b._id} value={b._id}>
+                                                    {b.title || b._id}
+                                                  </option>
+                                                ))}
+                                            </select>
+                                            <p className="text-[11px] text-[#71717a]">
+                                              Banner blocks are selected from existing Banners tab entries.
+                                            </p>
+                                          </div>
+                                        ) : (
+                                          <Input
+                                            placeholder="Image URL"
+                                            value={nestItem.imageUrl ?? ''}
+                                            onChange={(e) => {
+                                              const parent = (formData.contentItems as BannerContentItem[]) ?? [];
+                                              const row = parent[idx];
+                                              const nested = [...(row.nestedContentItems ?? [])];
+                                              nested[nidx] = { ...nested[nidx], imageUrl: e.target.value };
+                                              const next = [...parent];
+                                              next[idx] = { ...row, nestedContentItems: nested };
+                                              setFormData({ ...formData, contentItems: next });
+                                            }}
+                                          />
+                                        ))}
                                       {nestItem.type === 'video' && (
                                         <Input
                                           placeholder="Video URL"

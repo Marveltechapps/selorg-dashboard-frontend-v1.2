@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchWarehouses, deleteWarehouse, Warehouse } from '../storeWarehouseApi';
+import { fetchWarehouses, deleteWarehouse, Warehouse, getWarehouse } from '../storeWarehouseApi';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AddWarehouseModal } from '../modals/AddWarehouseModal';
 
@@ -38,9 +38,14 @@ export function WarehousesTab() {
     setModalOpen(true);
   };
 
-  const handleEdit = (w: Warehouse) => {
-    setEditWarehouse(w);
-    setModalOpen(true);
+  const handleEdit = async (w: Warehouse) => {
+    try {
+      const full = await getWarehouse(w.id);
+      setEditWarehouse(full);
+      setModalOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Failed to load warehouse');
+    }
   };
 
   const handleDelete = async (w: Warehouse) => {

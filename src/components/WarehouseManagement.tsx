@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 import { WarehouseSidebar } from './warehouse/WarehouseSidebar';
 import { WarehouseTopBar } from './warehouse/WarehouseTopBar';
+import { WarehouseBreadcrumbs } from './warehouse/WarehouseBreadcrumbs';
 import { WarehouseOverview } from './screens/warehouse/WarehouseOverview';
 import { InboundOps } from './screens/warehouse/InboundOps';
 import { InventoryStorage } from './screens/warehouse/InventoryStorage';
@@ -30,10 +31,16 @@ export function WarehouseManagement({ onLogout }: { onLogout: () => void }) {
     <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] font-sans">
       <WarehouseSidebar activeTab={effectiveTab} setActiveTab={setActiveTab} onLogout={onLogout} />
       
-      <div className="pl-[240px]">
+      {/* Fixed top bar is out of flow — reserve space with a non-shrinking spacer (flex-col). Heights ≥ WarehouseTopBar h-14/h-16 + room for border/shadow/zoom. */}
+      <div className="pl-[240px] min-h-screen flex flex-col">
         <WarehouseTopBar />
-        
-        <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+        <div
+          aria-hidden
+          className="w-full shrink-0 flex-none h-[72px]"
+        />
+
+        <main className="flex-1 min-w-0 px-3 sm:px-6 md:px-8 pb-12 max-w-[1920px] mx-auto w-full pt-1">
+            <WarehouseBreadcrumbs activeTab={effectiveTab} />
             {effectiveTab === 'overview' && <WarehouseOverview />}
             {effectiveTab === 'inbound' && <InboundOps />}
             {effectiveTab === 'inventory' && <InventoryStorage />}

@@ -29,110 +29,148 @@ export interface SearchSuggestion {
   category: string;
 }
 
-/** Mock result when backend is unavailable or returns empty. Always returns at least some results for any query. */
-function mockSearchResult(query: string): GlobalSearchResult {
-  const q = (query || '').trim().toLowerCase();
-  const safeQuery = query?.trim() || 'search';
-  const orders: SearchItem[] = [
-    { id: 'ord-1', type: 'order', title: `Order ORD-${safeQuery.slice(0, 8).toUpperCase()}`, subtitle: 'Pending pick', status: 'pending', metadata: {} },
-    { id: 'ord-2', type: 'order', title: 'Order ORD-1002', subtitle: 'In transit', status: 'active', metadata: {} },
-    { id: 'ord-3', type: 'order', title: 'Order ORD-1003', subtitle: 'Delivered', status: 'completed', metadata: {} },
-  ];
-  const products: SearchItem[] = [
-    { id: 'sku-1', type: 'product', title: `SKU-${safeQuery || '101'}`, subtitle: 'Product A', status: 'in-stock', metadata: {} },
-    { id: 'sku-2', type: 'product', title: 'Product B', subtitle: 'SKU-102', status: 'in-stock', metadata: {} },
-  ];
-  const users: SearchItem[] = [
-    { id: 'usr-1', type: 'user', title: `User ${safeQuery}`, subtitle: 'Admin', status: 'active', metadata: {} },
-  ];
-  const vendors: SearchItem[] = [
-    { id: 'vnd-1', type: 'vendor', title: `Vendor ${safeQuery}`, subtitle: 'Supplier', status: 'active', metadata: {} },
-  ];
-  const riders: SearchItem[] = [
-    { id: 'rider-1', type: 'rider', title: `Rider ${safeQuery}`, subtitle: 'On duty', status: 'active', metadata: {} },
-  ];
-  const inventory: SearchItem[] = [
-    { id: 'inv-1', type: 'inventory', title: `Bin A-1-${safeQuery || '1'}`, subtitle: 'SKU-101', status: 'occupied', metadata: {} },
-  ];
-  const results = {
-    orders: orders.slice(0, 5),
-    products: products.slice(0, 5),
-    users,
-    vendors: vendors.slice(0, 5),
-    riders: riders.slice(0, 5),
-    inventory: inventory.slice(0, 5),
-  };
-  const total = results.orders.length + results.products.length + results.users.length + results.vendors.length + results.riders.length + results.inventory.length;
+/** Scopes shared search to the dashboard that issued the request (backend filters modules + recent). */
+export type SearchDashboardScope = 'admin' | 'warehouse';
+
+export interface GlobalSearchRequestOptions {
+  dashboard?: SearchDashboardScope;
+}
+
+const RESULT_KEYS = ['orders', 'products', 'users', 'vendors', 'riders', 'inventory'] as const;
+
+function emptyResults(): GlobalSearchResult['results'] {
   return {
-    query: query?.trim() || '',
-    results,
-    total,
-    took: 10,
+    orders: [],
+    products: [],
+    users: [],
+    vendors: [],
+    riders: [],
+    inventory: [],
   };
 }
 
+function emptyGlobalSearchResult(query: string): GlobalSearchResult {
+  return {
+    query: query.trim(),
+    results: emptyResults(),
+    total: 0,
+    took: 0,
+  };
+}
+
+function normalizeGlobalSearchResult(query: string, raw: unknown): GlobalSearchResult {
+  if (raw == null || typeof raw !== 'object') {
+    return emptyGlobalSearchResult(query);
+  }
+  const root = raw as Record<string, unknown>;
+  const payload =
+    root.data != null && typeof root.data === 'object' && !Array.isArray(root.data)
+      ? (root.data as Record<string, unknown>)
+      : root;
+  const resultsRaw = payload.results;
+  const resultsObj =
+    resultsRaw != null && typeof resultsRaw === 'object' && !Array.isArray(resultsRaw)
+      ? (resultsRaw as Record<string, unknown>)
+      : {};
+
+  const results = emptyResults();
+  for (const key of RESULT_KEYS) {
+    const arr = resultsObj[key];
+    if (Array.isArray(arr)) {
+      results[key] = arr as SearchItem[];
+    }
+  }
+
+  const total = RESULT_KEYS.reduce((sum, k) => sum + results[k].length, 0);
+  const tookRaw = payload.took;
+  const took =
+    typeof tookRaw === 'number' && Number.isFinite(tookRaw) && tookRaw >= 0 ? tookRaw : 0;
+  const qRaw = payload.query;
+  const q = typeof qRaw === 'string' ? qRaw : query.trim();
+
+  return { query: q, results, total, took };
+}
+
+function appendDashboardQuery(
+  pathWithQuery: string,
+  options?: GlobalSearchRequestOptions
+): string {
+  if (!options?.dashboard) return pathWithQuery;
+  const sep = pathWithQuery.includes('?') ? '&' : '?';
+  return `${pathWithQuery}${sep}dashboard=${encodeURIComponent(options.dashboard)}`;
+}
+
 /**
- * Perform global search across all modules. Returns mock data when backend is unavailable or returns 0 results.
+ * Perform global search via `/shared/search` only.
+ * Pass `dashboard` from admin or warehouse top bars so the API returns only that surface’s modules.
  */
 export async function globalSearch(
   query: string,
   type: string = 'all',
-  limit: number = 10
+  limit: number = 10,
+  options?: GlobalSearchRequestOptions
 ): Promise<GlobalSearchResult> {
   try {
+    const qs = new URLSearchParams({
+      q: query,
+      type,
+      limit: String(limit),
+    });
+    if (options?.dashboard) qs.set('dashboard', options.dashboard);
     const data = await apiRequest<GlobalSearchResult | { data: GlobalSearchResult }>(
-      `/shared/search?q=${encodeURIComponent(query)}&type=${type}&limit=${limit}`
+      `/shared/search?${qs.toString()}`
     );
-    const result = (data as any).data ?? data;
-    if (!result || typeof result !== 'object') return mockSearchResult(query);
-    const total = result.total ?? 0;
-    const results = result.results ?? {};
-    const hasAny = [
-      results.orders?.length,
-      results.products?.length,
-      results.users?.length,
-      results.vendors?.length,
-      results.riders?.length,
-      results.inventory?.length,
-    ].some((n) => (n ?? 0) > 0);
-    if (total === 0 || !hasAny) return mockSearchResult(query);
-    return result;
+    return normalizeGlobalSearchResult(query, data);
   } catch {
-    return mockSearchResult(query);
+    return emptyGlobalSearchResult(query);
   }
 }
 
 /**
- * Get search suggestions. Returns mock when backend is unavailable.
+ * Get search suggestions from `/shared/search/suggestions`.
  */
 export async function getSearchSuggestions(
   query: string,
-  limit: number = 5
+  limit: number = 5,
+  options?: GlobalSearchRequestOptions
 ): Promise<SearchSuggestion[]> {
   try {
+    const base = `/shared/search/suggestions?q=${encodeURIComponent(query)}&limit=${limit}`;
     const response = await apiRequest<{ success: boolean; data: SearchSuggestion[] }>(
-      `/shared/search/suggestions?q=${encodeURIComponent(query)}&limit=${limit}`
+      appendDashboardQuery(base, options)
     );
-    return (response as any).data || [];
+    if (response == null || typeof response !== 'object') return [];
+    const data = (response as { data?: unknown }).data;
+    if (!Array.isArray(data)) return [];
+    return data.filter(
+      (s): s is SearchSuggestion =>
+        s != null &&
+        typeof s === 'object' &&
+        typeof (s as SearchSuggestion).text === 'string' &&
+        (s as SearchSuggestion).text.length > 0
+    );
   } catch {
-    return [
-      { text: `SKU-${query}`, type: 'sku', category: 'inventory' },
-      { text: `PO-${query}`, type: 'po', category: 'inbound' },
-      { text: `Transfer ${query}`, type: 'transfer', category: 'transfers' },
-    ].slice(0, limit);
+    return [];
   }
 }
 
 /**
- * Get recent searches. Returns mock when backend is unavailable.
+ * Get recent searches from `/shared/search/recent`.
  */
-export async function getRecentSearches(limit: number = 10): Promise<string[]> {
+export async function getRecentSearches(
+  limit: number = 10,
+  options?: GlobalSearchRequestOptions
+): Promise<string[]> {
   try {
+    const base = `/shared/search/recent?limit=${limit}`;
     const response = await apiRequest<{ success: boolean; data: string[] }>(
-      `/shared/search/recent?limit=${limit}`
+      appendDashboardQuery(base, options)
     );
-    return (response as any).data || [];
+    if (response == null || typeof response !== 'object') return [];
+    const data = (response as { data?: unknown }).data;
+    if (!Array.isArray(data)) return [];
+    return data.filter((x): x is string => typeof x === 'string' && x.length > 0);
   } catch {
-    return ['SKU-101', 'PO-2024-001', 'TRF-001', 'ORD-1001'];
+    return [];
   }
 }

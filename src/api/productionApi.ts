@@ -75,8 +75,11 @@ export interface WorkOrder {
 
 const base = API_CONFIG.baseURL;
 
-export async function fetchRawMaterials(search?: string): Promise<RawMaterial[]> {
-  const q = search ? `?search=${encodeURIComponent(search)}` : '';
+export async function fetchRawMaterials(search?: string, storeId?: string): Promise<RawMaterial[]> {
+  const qs = new URLSearchParams();
+  if (search) qs.set('search', search);
+  if (storeId) qs.set('storeId', storeId);
+  const q = qs.toString() ? `?${qs.toString()}` : '';
   const data = await fetchApi<RawMaterial[]>(`${base}${API_ENDPOINTS.production.rawMaterials.materials}${q}`);
   return Array.isArray(data) ? data : [];
 }
@@ -89,31 +92,36 @@ export async function createRawMaterial(body: {
   reorderPoint?: number;
   supplier?: string;
   category?: string;
-}): Promise<RawMaterial> {
+}, storeId?: string): Promise<RawMaterial> {
+  const payload = storeId ? { ...body, storeId } : body;
   return fetchApi<RawMaterial>(`${base}${API_ENDPOINTS.production.rawMaterials.materials}`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 }
 
-export async function orderMaterial(id: string, quantity?: number): Promise<{ message: string }> {
+export async function orderMaterial(id: string, quantity?: number, storeId?: string): Promise<{ message: string }> {
+  const payload = storeId ? { quantity, storeId } : { quantity };
   return fetchApi<{ message: string }>(`${base}${API_ENDPOINTS.production.rawMaterials.orderMaterial(id)}`, {
     method: 'POST',
-    body: JSON.stringify({ quantity }),
+    body: JSON.stringify(payload),
   });
 }
 
-export async function fetchReceipts(): Promise<InboundReceipt[]> {
-  const data = await fetchApi<InboundReceipt[]>(`${base}${API_ENDPOINTS.production.rawMaterials.receipts}`);
+export async function fetchReceipts(storeId?: string): Promise<InboundReceipt[]> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const data = await fetchApi<InboundReceipt[]>(`${base}${API_ENDPOINTS.production.rawMaterials.receipts}${q}`);
   return Array.isArray(data) ? data : [];
 }
 
-export async function markReceiptReceived(id: string): Promise<void> {
-  await fetchApi(`${base}${API_ENDPOINTS.production.rawMaterials.receiveReceipt(id)}`, { method: 'POST' });
+export async function markReceiptReceived(id: string, storeId?: string): Promise<void> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  await fetchApi(`${base}${API_ENDPOINTS.production.rawMaterials.receiveReceipt(id)}${q}`, { method: 'POST' });
 }
 
-export async function fetchRequisitions(): Promise<Requisition[]> {
-  const data = await fetchApi<Requisition[]>(`${base}${API_ENDPOINTS.production.rawMaterials.requisitions}`);
+export async function fetchRequisitions(storeId?: string): Promise<Requisition[]> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const data = await fetchApi<Requisition[]>(`${base}${API_ENDPOINTS.production.rawMaterials.requisitions}${q}`);
   return Array.isArray(data) ? data : [];
 }
 
@@ -122,25 +130,29 @@ export async function createRequisition(body: {
   quantity: number;
   line: string;
   requestedBy: string;
-}): Promise<Requisition> {
+}, storeId?: string): Promise<Requisition> {
+  const payload = storeId ? { ...body, storeId } : body;
   return fetchApi<Requisition>(`${base}${API_ENDPOINTS.production.rawMaterials.requisitions}`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 }
 
 export async function updateRequisitionStatus(
   id: string,
-  status: 'approved' | 'rejected' | 'issued'
+  status: 'approved' | 'rejected' | 'issued',
+  storeId?: string
 ): Promise<void> {
+  const payload = storeId ? { status, storeId } : { status };
   await fetchApi(`${base}${API_ENDPOINTS.production.rawMaterials.updateRequisitionStatus(id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(payload),
   });
 }
 
-export async function fetchPlans(): Promise<ProductionPlan[]> {
-  const data = await fetchApi<ProductionPlan[]>(`${base}${API_ENDPOINTS.production.planning.plans}`);
+export async function fetchPlans(storeId?: string): Promise<ProductionPlan[]> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const data = await fetchApi<ProductionPlan[]>(`${base}${API_ENDPOINTS.production.planning.plans}${q}`);
   return Array.isArray(data) ? data : [];
 }
 
@@ -150,15 +162,19 @@ export async function createPlan(body: {
   startDate: string;
   endDate?: string;
   quantity: number;
-}): Promise<ProductionPlan> {
+}, storeId?: string): Promise<ProductionPlan> {
+  const payload = storeId ? { ...body, endDate: body.endDate || body.startDate, storeId } : { ...body, endDate: body.endDate || body.startDate };
   return fetchApi<ProductionPlan>(`${base}${API_ENDPOINTS.production.planning.plans}`, {
     method: 'POST',
-    body: JSON.stringify({ ...body, endDate: body.endDate || body.startDate }),
+    body: JSON.stringify(payload),
   });
 }
 
-export async function fetchWorkOrders(search?: string): Promise<WorkOrder[]> {
-  const q = search ? `?search=${encodeURIComponent(search)}` : '';
+export async function fetchWorkOrders(search?: string, storeId?: string): Promise<WorkOrder[]> {
+  const qs = new URLSearchParams();
+  if (search) qs.set('search', search);
+  if (storeId) qs.set('storeId', storeId);
+  const q = qs.toString() ? `?${qs.toString()}` : '';
   const data = await fetchApi<WorkOrder[]>(`${base}${API_ENDPOINTS.production.workOrders.list}${q}`);
   return Array.isArray(data) ? data : [];
 }
@@ -169,31 +185,36 @@ export async function createWorkOrder(body: {
   line?: string;
   priority?: 'low' | 'medium' | 'high';
   dueDate?: string;
-}): Promise<WorkOrder> {
+}, storeId?: string): Promise<WorkOrder> {
+  const payload = storeId ? { ...body, storeId } : body;
   return fetchApi<WorkOrder>(`${base}${API_ENDPOINTS.production.workOrders.list}`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 }
 
-export async function getWorkOrder(id: string): Promise<WorkOrder> {
-  return fetchApi<WorkOrder>(`${base}${API_ENDPOINTS.production.workOrders.byId(id)}`);
+export async function getWorkOrder(id: string, storeId?: string): Promise<WorkOrder> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return fetchApi<WorkOrder>(`${base}${API_ENDPOINTS.production.workOrders.byId(id)}${q}`);
 }
 
-export async function assignWorkOrderOperator(id: string, operator: string): Promise<void> {
+export async function assignWorkOrderOperator(id: string, operator: string, storeId?: string): Promise<void> {
+  const payload = storeId ? { operator, storeId } : { operator };
   await fetchApi(`${base}${API_ENDPOINTS.production.workOrders.assign(id)}`, {
     method: 'POST',
-    body: JSON.stringify({ operator }),
+    body: JSON.stringify(payload),
   });
 }
 
 export async function updateWorkOrderStatus(
   id: string,
-  status: 'pending' | 'in-progress' | 'completed' | 'on-hold'
+  status: 'pending' | 'in-progress' | 'completed' | 'on-hold',
+  storeId?: string
 ): Promise<void> {
+  const payload = storeId ? { status, storeId } : { status };
   await fetchApi(`${base}${API_ENDPOINTS.production.workOrders.updateStatus(id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -327,11 +348,12 @@ export async function startProductionBatch(body: {
 
 export async function updateProductionLine(
   lineId: string,
-  action: 'pause' | 'resume' | 'stop'
+  action: 'pause' | 'resume' | 'stop',
+  factoryId?: string
 ): Promise<{ success: boolean; line: ProductionLineOverview; message: string }> {
   return fetchApi(`${base}${API_ENDPOINTS.production.updateLine(lineId)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, ...(factoryId ? { factoryId } : {}) }),
   });
 }
 
@@ -361,23 +383,28 @@ export async function fetchProductionAlerts(params?: {
 export async function updateProductionAlertStatus(
   alertId: string,
   actionType: 'acknowledge' | 'resolved' | 'dismissed' | 'dispatch',
-  assignee?: string
+  assignee?: string,
+  factoryId?: string
 ): Promise<{ alert: ProductionAlert }> {
   return fetchApi(`${base}${dash.alertStatus(alertId)}`, {
     method: 'PUT',
-    body: JSON.stringify({ actionType, assignee }),
+    body: JSON.stringify({ actionType, assignee, factoryId }),
   });
 }
 
-export async function deleteProductionAlert(alertId: string): Promise<void> {
-  await fetchApi(`${base}${dash.alertDelete(alertId)}`, { method: 'DELETE' });
+export async function deleteProductionAlert(alertId: string, factoryId?: string): Promise<void> {
+  const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
+  await fetchApi(`${base}${dash.alertDelete(alertId)}${q}`, { method: 'DELETE' });
 }
 
-export async function fetchProductionIncidents(): Promise<{
+export async function fetchProductionIncidents(params?: { factoryId?: string }): Promise<{
   incidents: ProductionIncident[];
   openIncidentsCount: number;
 }> {
-  return fetchApi(`${base}${dash.incidents}`);
+  const q = new URLSearchParams();
+  if (params?.factoryId) q.set('factoryId', params.factoryId);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  return fetchApi(`${base}${dash.incidents}${qs}`);
 }
 
 export async function createProductionIncident(body: {
@@ -387,35 +414,43 @@ export async function createProductionIncident(body: {
   category?: string;
   reportedBy: string;
   location?: string;
-}): Promise<{ incident: ProductionIncident }> {
+}, factoryId?: string): Promise<{ incident: ProductionIncident }> {
+  const payload = factoryId ? { ...body, factoryId } : body;
   return fetchApi(`${base}${dash.incidents}`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 }
 
 export async function updateProductionIncidentStatus(
   incidentId: string,
-  status: 'open' | 'investigating' | 'resolved'
+  status: 'open' | 'investigating' | 'resolved',
+  factoryId?: string
 ): Promise<{ incident: ProductionIncident }> {
   return fetchApi(`${base}${dash.incidentStatus(incidentId)}`, {
     method: 'PUT',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, factoryId }),
   });
 }
 
 export async function fetchProductionReports(params?: {
   reportType?: string;
   preset?: 'week' | 'month' | 'quarter';
+  factoryId?: string;
 }): Promise<ProductionReportsData> {
   const q = new URLSearchParams();
   if (params?.reportType) q.set('reportType', params.reportType);
   if (params?.preset) q.set('preset', params.preset);
+  if (params?.factoryId) q.set('factoryId', params.factoryId);
   return fetchApi(`${base}${dash.reports}?${q}`);
 }
 
-export async function exportProductionReports(preset?: string): Promise<Blob> {
-  const url = preset ? `${base}${dash.reportsExport}?preset=${preset}` : `${base}${dash.reportsExport}`;
+export async function exportProductionReports(preset?: string, factoryId?: string): Promise<Blob> {
+  const q = new URLSearchParams();
+  if (preset) q.set('preset', preset);
+  if (factoryId) q.set('factoryId', factoryId);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  const url = `${base}${dash.reportsExport}${qs}`;
   const token = getAuthToken();
   const res = await fetch(url, {
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -424,27 +459,31 @@ export async function exportProductionReports(preset?: string): Promise<Blob> {
   return res.blob();
 }
 
-export async function fetchProductionUploadHistory(): Promise<ProductionUploadHistoryItem[]> {
-  const data = await fetchApi<{ uploads: ProductionUploadHistoryItem[] }>(`${base}${dash.uploadHistory}`);
+export async function fetchProductionUploadHistory(factoryId?: string): Promise<ProductionUploadHistoryItem[]> {
+  const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
+  const data = await fetchApi<{ uploads: ProductionUploadHistoryItem[] }>(`${base}${dash.uploadHistory}${q}`);
   return data?.uploads ?? [];
 }
 
-export async function fetchProductionSyncHistory(): Promise<ProductionSyncHistoryItem[]> {
-  const data = await fetchApi<{ syncs: ProductionSyncHistoryItem[] }>(`${base}${dash.syncHistory}`);
+export async function fetchProductionSyncHistory(factoryId?: string): Promise<ProductionSyncHistoryItem[]> {
+  const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
+  const data = await fetchApi<{ syncs: ProductionSyncHistoryItem[] }>(`${base}${dash.syncHistory}${q}`);
   return data?.syncs ?? [];
 }
 
-export async function performProductionHSDSync(): Promise<{
+export async function performProductionHSDSync(factoryId?: string): Promise<{
   syncId: string;
   deviceCount: number;
   status: string;
   duration: string;
 }> {
-  return fetchApi(`${base}${dash.hsdSync}`, { method: 'POST', body: '{}' });
+  const payload = factoryId ? { factoryId } : {};
+  return fetchApi(`${base}${dash.hsdSync}`, { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function fetchProductionSettings(): Promise<ProductionSettingsData> {
-  const data = await fetchApi<{ settings: ProductionSettingsData }>(`${base}${dash.settings}`);
+export async function fetchProductionSettings(factoryId?: string): Promise<ProductionSettingsData> {
+  const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
+  const data = await fetchApi<{ settings: ProductionSettingsData }>(`${base}${dash.settings}${q}`);
   return data?.settings ?? {
     autoSync: true,
     syncInterval: '15',
@@ -455,29 +494,33 @@ export async function fetchProductionSettings(): Promise<ProductionSettingsData>
   };
 }
 
-export async function updateProductionSettings(settings: Partial<ProductionSettingsData>): Promise<ProductionSettingsData> {
+export async function updateProductionSettings(settings: Partial<ProductionSettingsData>, factoryId?: string): Promise<ProductionSettingsData> {
+  const payload = factoryId ? { ...settings, factoryId } : settings;
   const data = await fetchApi<{ settings: ProductionSettingsData }>(`${base}${dash.settings}`, {
     method: 'PUT',
-    body: JSON.stringify(settings),
+    body: JSON.stringify(payload),
   });
   return data?.settings ?? settings as ProductionSettingsData;
 }
 
-export async function fetchProductionAuditLogs(): Promise<ProductionAuditLogEntry[]> {
-  const data = await fetchApi<{ logs: ProductionAuditLogEntry[] }>(`${base}${dash.auditLogs}`);
+export async function fetchProductionAuditLogs(factoryId?: string): Promise<ProductionAuditLogEntry[]> {
+  const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
+  const data = await fetchApi<{ logs: ProductionAuditLogEntry[] }>(`${base}${dash.auditLogs}${q}`);
   return data?.logs ?? [];
 }
 
 export async function bulkUploadProduction(
   file: File,
   uploadType: 'work-orders' | 'materials' | 'roster' | 'maintenance',
-  uploadedBy?: string
+  uploadedBy?: string,
+  factoryId?: string
 ): Promise<{ recordsProcessed: number; message: string }> {
   const token = getAuthToken();
   const form = new FormData();
   form.append('file', file);
   form.append('uploadType', uploadType);
   if (uploadedBy) form.append('uploadedBy', uploadedBy);
+  if (factoryId) form.append('factoryId', factoryId);
 
   const res = await fetch(`${base}${dash.bulkUpload}`, {
     method: 'POST',

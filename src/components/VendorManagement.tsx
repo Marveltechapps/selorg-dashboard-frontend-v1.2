@@ -3,6 +3,7 @@ import { VendorSidebar } from './vendor/VendorSidebar';
 import { VendorTopBar } from './vendor/VendorTopBar';
 import { CardSkeleton } from './ui/ux-components';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
 const VendorOverview = React.lazy(() =>
   import('./screens/vendor/VendorOverview').then((m) => ({ default: m.VendorOverview }))
@@ -59,6 +60,7 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
         <VendorTopBar searchQuery={vendorSearchQuery} onSearchChange={setVendorSearchQuery} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+          <DashboardBreadcrumbs dashboard="vendor" activeTab={activeTab} />
           <Suspense
             fallback={
               <div className="p-6">

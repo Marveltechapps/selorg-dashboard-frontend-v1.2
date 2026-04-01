@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,7 @@ import {
 } from 'lucide-react';
 
 export function UserManagement() {
+  const [searchParams] = useSearchParams();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -90,6 +92,11 @@ export function UserManagement() {
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q != null && q !== '') setSearchTerm(q);
+  }, [searchParams]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   

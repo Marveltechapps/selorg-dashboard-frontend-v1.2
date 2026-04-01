@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getProductionSession, setProductionSession, PRODUCTION_KEYS } from '../../../utils/productionSessionStore';
 import { fetchProductionReports, exportProductionReports } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 type ReportType = 'kpi' | 'material' | 'quality' | 'workforce' | 'maintenance' | 'overview' | null;
 type DatePreset = 'week' | 'month' | 'quarter';
@@ -40,6 +41,7 @@ function getRangeForPreset(preset: DatePreset): DateRange {
 }
 
 export function ProductionReports() {
+  const { selectedFactoryId } = useProductionFactory();
   const [selectedReport, setSelectedReport] = useState<ReportType>('overview');
   const [datePreset, setDatePreset] = useState<DatePreset>(() => {
     const stored = getProductionSession<DatePreset | null>(PRODUCTION_KEYS.reportsDateRange, null);
@@ -62,7 +64,11 @@ export function ProductionReports() {
   const loadReports = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetchProductionReports({ reportType: selectedReport || 'overview', preset: datePreset });
+      const res = await fetchProductionReports({
+        reportType: selectedReport || 'overview',
+        preset: datePreset,
+        factoryId: selectedFactoryId || undefined,
+      });
       setReportData(res.data ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load reports');
@@ -70,7 +76,7 @@ export function ProductionReports() {
     } finally {
       setLoading(false);
     }
-  }, [selectedReport, datePreset]);
+  }, [selectedReport, datePreset, selectedFactoryId]);
 
   useEffect(() => {
     setLoading(true);
@@ -143,7 +149,7 @@ export function ProductionReports() {
 
   const exportAllReports = async () => {
     try {
-      const blob = await exportProductionReports(datePreset);
+      const blob = await exportProductionReports(datePreset, selectedFactoryId || undefined);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

@@ -10,8 +10,10 @@ import {
   updateWorkOrderStatus,
   type WorkOrder,
 } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function WorkOrders() {
+  const { selectedFactoryId } = useProductionFactory();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState<WorkOrder | null>(null);
   const [showAssignModal, setShowAssignModal] = useState<WorkOrder | null>(null);
@@ -25,7 +27,11 @@ export function WorkOrders() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchWorkOrders();
+      if (!selectedFactoryId) {
+        setOrders([]);
+        return;
+      }
+      const data = await fetchWorkOrders(undefined, selectedFactoryId);
       setOrders(data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load work orders');
@@ -33,7 +39,7 @@ export function WorkOrders() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedFactoryId]);
 
   useEffect(() => {
     loadData();
@@ -53,13 +59,17 @@ export function WorkOrders() {
       return;
     }
     try {
-      await createWorkOrder({
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      await createWorkOrder(
+        {
         product: newOrder.product,
         quantity: parseInt(newOrder.quantity, 10) || 0,
         line: newOrder.line || undefined,
         priority: newOrder.priority,
         dueDate: newOrder.dueDate || undefined,
-      });
+        },
+        selectedFactoryId
+      );
       setNewOrder({ product: '', quantity: '', line: '', priority: 'medium', dueDate: '' });
       setShowCreateModal(false);
       toast.success('Work order created');
@@ -71,7 +81,8 @@ export function WorkOrders() {
 
   const updateStatus = async (id: string, newStatus: WorkOrder['status']) => {
     try {
-      await updateWorkOrderStatus(id, newStatus);
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      await updateWorkOrderStatus(id, newStatus, selectedFactoryId);
       toast.success('Status updated');
       loadData();
     } catch (e) {
@@ -92,7 +103,8 @@ export function WorkOrders() {
       return;
     }
     try {
-      await assignWorkOrderOperator(showAssignModal.id, operator);
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      await assignWorkOrderOperator(showAssignModal.id, operator, selectedFactoryId);
       setShowAssignModal(null);
       setAssignOperatorName('');
       toast.success('Operator assigned');

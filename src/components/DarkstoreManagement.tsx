@@ -29,6 +29,7 @@ import { ExceptionQueue } from './screens/darkstore/ExceptionQueue';
 import { LivePickingMonitor } from './screens/darkstore/LivePickingMonitor';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
@@ -63,6 +64,7 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
         <TopBar setActiveTab={setActiveTab} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+            <DashboardBreadcrumbs dashboard="darkstore" activeTab={activeTab} />
             {activeTab === 'overview' && <DashboardHome setActiveTab={setActiveTab} />}
             {activeTab === 'liveorders' && <LiveOrders />}
             {activeTab === 'cancelledorders' && <CancelledOrders />}

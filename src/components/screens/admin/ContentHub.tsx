@@ -17,6 +17,8 @@ import {
   TrendingUp,
   FileCheck,
   RefreshCw,
+  UploadCloud,
+  Loader2,
 } from 'lucide-react';
 import {
   Card,
@@ -26,6 +28,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { toast } from 'sonner';
+import { uploadContentHubMaster } from '@/api/cmsAdminApi';
 
 interface ContentHubProps {
   setActiveTab: (tab: string) => void;
@@ -64,6 +69,15 @@ const SHARED_ITEMS = [
 
 export function ContentHub({ setActiveTab }: ContentHubProps) {
   const totalModules = PICKER_ITEMS.length + CUSTOMER_ITEMS.length + SHARED_ITEMS.length;
+  const [importing, setImporting] = React.useState(false);
+  const [importProgress, setImportProgress] = React.useState(0);
+  const [lastImportResult, setLastImportResult] = React.useState<{
+    success: boolean;
+    counts?: Record<string, any>;
+    warnings?: Array<{ sheet?: string; row?: number; message: string }>;
+    errors?: Array<{ sheet?: string; row?: number; message: string }>;
+  } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const renderCard = (item: { id: string; label: string; desc: string; icon: React.ElementType }) => {
     const Icon = item.icon;
@@ -89,20 +103,112 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
     );
   };
 
+  const handleImport = async (file: File) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      toast.error('Only .xlsx files are allowed');
+      return;
+    }
+    setImportProgress(10);
+    setImporting(true);
+    try {
+      const result = await uploadContentHubMaster(file, true);
+      setLastImportResult(result);
+      setImportProgress(100);
+      if (result.success) {
+        toast.success('Import complete');
+      } else {
+        const topErrors = (result.errors || [])
+          .slice(0, 3)
+          .map((e) => `${e.sheet || 'Sheet'}${e.row ? ` row ${e.row}` : ''}: ${e.message}`)
+          .join(' | ');
+        toast.error(topErrors || 'Import finished with issues');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Import failed');
+    } finally {
+      window.setTimeout(() => {
+        setImporting(false);
+        setImportProgress(0);
+      }, 350);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!importing) return;
+    const timer = window.setInterval(() => {
+      setImportProgress((prev) => (prev >= 92 ? prev : prev + 6));
+    }, 450);
+    return () => window.clearInterval(timer);
+  }, [importing]);
+
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          if (file) void handleImport(file);
+          // reset so same file can be re-selected
+          e.currentTarget.value = '';
+        }}
+        disabled={importing}
+      />
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold text-[#18181b]">CMS</h1>
           <p className="text-[#71717a] text-sm">Central place to manage all app content</p>
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-[#e4e4e7] bg-white text-sm font-medium text-[#18181b] hover:bg-[#f4f4f5] transition-colors"
-        >
-          <RefreshCw size={14} className="mr-1.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-[#e4e4e7] bg-white text-sm font-medium text-[#18181b] hover:bg-[#f4f4f5] transition-colors"
+          >
+            <RefreshCw size={14} className="mr-1.5" /> Refresh
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-[#e4e4e7] bg-white text-sm font-medium text-[#18181b] hover:bg-[#f4f4f5] transition-colors disabled:opacity-60"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {importing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <UploadCloud size={14} className="mr-1.5" />}
+            {importing ? 'Importing…' : 'Import'}
+          </button>
+        </div>
       </div>
+      {importing && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-[#71717a]">
+            <span>Import in progress...</span>
+            <span>{Math.min(100, Math.max(0, importProgress))}%</span>
+          </div>
+          <Progress value={importProgress} className="h-2 bg-[#f1f5f9] [&>div]:bg-[#e11d48]" />
+        </div>
+      )}
+      {lastImportResult && (
+        <div className="rounded-md border border-[#e4e4e7] bg-white p-3 space-y-2">
+          <div className="text-sm font-medium text-[#18181b]">
+            Last import: {lastImportResult.success ? 'Success' : 'Completed with issues'}
+          </div>
+          <div className="text-xs text-[#71717a] break-all">
+            Counts: {JSON.stringify(lastImportResult.counts || {})}
+          </div>
+          {!!lastImportResult.warnings?.length && (
+            <div className="text-xs text-amber-700">
+              Warnings: {lastImportResult.warnings.slice(0, 5).map((w) => `${w.sheet || 'Sheet'}${w.row ? ` row ${w.row}` : ''}: ${w.message}`).join(' | ')}
+            </div>
+          )}
+          {!!lastImportResult.errors?.length && (
+            <div className="text-xs text-red-600">
+              Errors: {lastImportResult.errors.slice(0, 5).map((e) => `${e.sheet || 'Sheet'}${e.row ? ` row ${e.row}` : ''}: ${e.message}`).join(' | ')}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">

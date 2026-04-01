@@ -23,9 +23,11 @@ import {
   type QCInspection as Inspection,
   type QCLabTest as LabTest,
 } from '../../../api/productionApi';
+import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
 export function ProductionQC() {
   const queryClient = useQueryClient();
+  const { selectedFactoryId } = useProductionFactory();
   const [activeTab, setActiveTab] = useState<'inspections' | 'lab_tests'>('inspections');
   const [showInspectionModal, setShowInspectionModal] = useState(false);
   const [showLabTestModal, setShowLabTestModal] = useState(false);
@@ -33,20 +35,22 @@ export function ProductionQC() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const { data: inspections = [], isLoading: loadingInspections } = useQuery({
-    queryKey: ['production', 'qc', 'inspections'],
-    queryFn: () => fetchQCInspections(),
+    queryKey: ['production', 'qc', 'inspections', selectedFactoryId],
+    queryFn: () => fetchQCInspections(selectedFactoryId || undefined),
+    enabled: !!selectedFactoryId,
   });
 
   const { data: labTests = [], isLoading: loadingLabTests } = useQuery({
-    queryKey: ['production', 'qc', 'labTests'],
-    queryFn: () => fetchQCLabTests(),
+    queryKey: ['production', 'qc', 'labTests', selectedFactoryId],
+    queryFn: () => fetchQCLabTests(selectedFactoryId || undefined),
+    enabled: !!selectedFactoryId,
   });
 
   const createInspectionMutation = useMutation({
     mutationFn: (body: { batch: string; checkType: string; result: 'pass' | 'fail' | 'pending'; inspector: string; notes?: string }) =>
-      createQCInspection(body),
+      createQCInspection(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'inspections'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'inspections', selectedFactoryId] });
       toast.success('Inspection logged successfully');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to log inspection'),
@@ -54,9 +58,9 @@ export function ProductionQC() {
 
   const createLabTestMutation = useMutation({
     mutationFn: (body: { product: string; source: string; testType: string; priority?: 'low' | 'normal' | 'high' }) =>
-      createQCLabTest(body),
+      createQCLabTest(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests', selectedFactoryId] });
       toast.success('Lab test requested');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to request lab test'),
@@ -64,9 +68,9 @@ export function ProductionQC() {
 
   const updateLabTestStatusMutation = useMutation({
     mutationFn: ({ sampleId, status, result }: { sampleId: string; status: 'pending' | 'in-progress' | 'completed'; result?: string }) =>
-      updateQCLabTestStatus(sampleId, status, result),
+      updateQCLabTestStatus(sampleId, status, result, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests'] });
+      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests', selectedFactoryId] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update test'),
   });

@@ -14,6 +14,7 @@ import { Button } from "../ui/button";
 import * as outboundApi from './outboundApi';
 import { ActionHistoryViewer } from '../ui/action-history-viewer';
 import { websocketService } from '../../utils/websocket';
+import { GOOGLE_MAPS_LOADER_ID } from '../../utils/googleMapsLoader';
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -24,7 +25,7 @@ const riderMapContainerStyle = {
 
 function RiderMap({ riders }: { riders: outboundApi.Rider[] }) {
   const { isLoaded } = useJsApiLoader({
-    id: 'outbound-rider-map',
+    id: GOOGLE_MAPS_LOADER_ID,
     googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
   });
 

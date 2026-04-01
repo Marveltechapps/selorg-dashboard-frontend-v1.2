@@ -59,6 +59,10 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
     currentLoad: '0',
     serviceStatus: 'Full' as 'Full' | 'Partial' | 'None',
     status: 'active' as 'active' | 'inactive' | 'maintenance' | 'offline',
+    legacyX: '',
+    legacyY: '',
+    zonesCsv: '',
+    metadataJson: '',
   });
 
   const [operationalHours, setOperationalHours] = useState<{
@@ -133,6 +137,13 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
           currentLoad: String(editStore.currentLoad ?? 0),
           serviceStatus: (editStore.serviceStatus as any) ?? 'Full',
           status: editStore.status as any,
+          legacyX: editStore.x != null ? String(editStore.x) : '',
+          legacyY: editStore.y != null ? String(editStore.y) : '',
+          zonesCsv: Array.isArray(editStore.zones) ? editStore.zones.join(', ') : '',
+          metadataJson:
+            editStore.metadata != null && Object.keys(editStore.metadata as object).length
+              ? JSON.stringify(editStore.metadata, null, 2)
+              : '',
         });
         const existingHours = editStore.operationalHours ?? {};
         const normalized: Record<string, { open: string; close: string; isOpen: boolean }> = {};
@@ -168,6 +179,10 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
       currentLoad: '0',
       serviceStatus: 'Full',
       status: 'active',
+      legacyX: '',
+      legacyY: '',
+      zonesCsv: '',
+      metadataJson: '',
     });
     setOperationalHours({
       Monday: { open: '06:00', close: '23:00', isOpen: true },
@@ -261,6 +276,38 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
       return;
     }
 
+    let metadata: Record<string, unknown> | null | undefined = undefined;
+    if (formData.metadataJson.trim()) {
+      try {
+        const parsed = JSON.parse(formData.metadataJson);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          toast.error('Metadata must be a JSON object');
+          return;
+        }
+        metadata = parsed;
+      } catch {
+        toast.error('Metadata must be valid JSON');
+        return;
+      }
+    } else if (editStore != null && editStore.metadata != null) {
+      metadata = null;
+    }
+
+    const zoneTags = formData.zonesCsv
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const lx = formData.legacyX.trim() ? Number(formData.legacyX) : undefined;
+    const ly = formData.legacyY.trim() ? Number(formData.legacyY) : undefined;
+    if (formData.legacyX.trim() && !Number.isFinite(lx as number)) {
+      toast.error('Legacy X must be a number');
+      return;
+    }
+    if (formData.legacyY.trim() && !Number.isFinite(ly as number)) {
+      toast.error('Legacy Y must be a number');
+      return;
+    }
+
     setLoading(true);
     try {
       const cityName = cities.find(c => c.id === formData.cityId || (c as any)._id === formData.cityId)?.name ?? formData.city;
@@ -286,6 +333,10 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
         serviceStatus: formData.serviceStatus,
         status: formData.status,
         operationalHours,
+        ...(lx !== undefined ? { x: lx } : {}),
+        ...(ly !== undefined ? { y: ly } : {}),
+        zones: zoneTags,
+        ...(metadata !== undefined ? { metadata } : {}),
       };
 
       let createdStore: Store | Warehouse;
@@ -311,8 +362,13 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
             longitude: lng,
             deliveryRadius,
             operationalHours,
-            status: formData.status === 'active' ? 'active' as const : 'inactive' as const,
-            zones: [],
+            status: formData.status,
+            phone: formData.phone.trim(),
+            email: formData.email.trim(),
+            zones: zoneTags.length ? zoneTags : [],
+            ...(metadata !== undefined ? { metadata } : {}),
+            ...(lx !== undefined ? { x: lx } : {}),
+            ...(ly !== undefined ? { y: ly } : {}),
           };
           createdStore = await createWarehouse(warehouseData);
           toast.success(`Warehouse "${formData.name}" created successfully`);
@@ -366,10 +422,11 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
 
         <Tabs defaultValue="basic" className="flex-1 flex flex-col min-h-0">
           <div className="px-6 pt-2 flex-shrink-0">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
               <TabsTrigger value="location">Location & Contact</TabsTrigger>
               <TabsTrigger value="hours">Operational Hours</TabsTrigger>
+              <TabsTrigger value="advanced">Advanced</TabsTrigger>
             </TabsList>
           </div>
 
@@ -568,8 +625,7 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                     id="state"
                     placeholder="Karnataka"
                     value={formData.state}
-                    readOnly
-                    disabled
+                    onChange={(e) => handleChange('state', e.target.value)}
                   />
                 </div>
               </div>
@@ -702,6 +758,52 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
                 >
                   Set 24/7
                 </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="advanced" className="space-y-4 mt-4 pb-6">
+              <p className="text-xs text-muted-foreground">Legacy map coordinates and tag list; optional JSON metadata stored on the store document.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="legacy-x">Legacy X</Label>
+                  <Input
+                    id="legacy-x"
+                    type="number"
+                    step="any"
+                    value={formData.legacyX}
+                    onChange={(e) => handleChange('legacyX', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="legacy-y">Legacy Y</Label>
+                  <Input
+                    id="legacy-y"
+                    type="number"
+                    step="any"
+                    value={formData.legacyY}
+                    onChange={(e) => handleChange('legacyY', e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zones-csv">Legacy zone tags (comma-separated)</Label>
+                <Input
+                  id="zones-csv"
+                  value={formData.zonesCsv}
+                  onChange={(e) => handleChange('zonesCsv', e.target.value)}
+                  placeholder="tag1, tag2"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="store-metadata">Metadata (JSON object)</Label>
+                <Textarea
+                  id="store-metadata"
+                  className="font-mono text-xs"
+                  rows={6}
+                  value={formData.metadataJson}
+                  onChange={(e) => handleChange('metadataJson', e.target.value)}
+                  placeholder="{}"
+                />
               </div>
             </TabsContent>
           </ScrollArea>
