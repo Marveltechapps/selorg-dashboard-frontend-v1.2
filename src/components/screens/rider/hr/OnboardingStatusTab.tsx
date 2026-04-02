@@ -1,30 +1,23 @@
 import React from "react";
 import { Rider } from "./types";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Mail, Clock } from "lucide-react";
-import { sendReminderToRider } from "./hrApi";
-import { toast } from "sonner";
+import { Clock } from "lucide-react";
 
 interface OnboardingStatusTabProps {
   riders: Rider[];
   loading: boolean;
-  onRefresh?: () => void;
 }
 
-export function OnboardingStatusTab({ riders, loading, onRefresh }: OnboardingStatusTabProps) {
+export function OnboardingStatusTab({ riders, loading }: OnboardingStatusTabProps) {
   const onboardingRiders = riders.filter(r => r.status === "onboarding");
 
-  const handleRemind = async (riderId: string, riderName: string) => {
-    try {
-      const result = await sendReminderToRider(riderId);
-      toast.success(result?.message ?? `Reminder sent to ${riderName}`);
-      // Background refresh to sync with server (non-blocking)
-      onRefresh?.().catch(() => {});
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send reminder");
+  const formatDaysActive = (rider: Rider): string => {
+    const n = rider.onboardingDaysActive;
+    if (typeof n === "number") {
+      return `${n} ${n === 1 ? "day" : "days"}`;
     }
+    return "—";
   };
 
   return (
@@ -44,17 +37,16 @@ export function OnboardingStatusTab({ riders, loading, onRefresh }: OnboardingSt
               <TableHead>Contact</TableHead>
               <TableHead>Stage</TableHead>
               <TableHead>Days Active</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
                <TableRow>
-                 <TableCell colSpan={5} className="text-center py-8">Loading...</TableCell>
+                 <TableCell colSpan={4} className="text-center py-8">Loading...</TableCell>
                </TableRow>
             ) : onboardingRiders.length === 0 ? (
                <TableRow>
-                 <TableCell colSpan={5} className="text-center py-8 text-gray-500">No riders currently onboarding</TableCell>
+                 <TableCell colSpan={4} className="text-center py-8 text-gray-500">No riders currently onboarding</TableCell>
                </TableRow>
             ) : (
               onboardingRiders.map((rider) => (
@@ -74,13 +66,8 @@ export function OnboardingStatusTab({ riders, loading, onRefresh }: OnboardingSt
                   <TableCell className="text-gray-500 text-sm">
                     <div className="flex items-center gap-1">
                       <Clock size={14} />
-                      {Math.floor(Math.random() * 10) + 1} days
+                      {formatDaysActive(rider)}
                     </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="h-8 gap-2" onClick={() => handleRemind(rider.id, rider.name)}>
-                      <Mail size={14} /> Remind
-                    </Button>
                   </TableCell>
                 </TableRow>
               ))

@@ -114,7 +114,12 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+      const err = errorData.error;
+      const msg =
+        typeof err === "string"
+          ? err
+          : err?.message ?? errorData.message ?? `HTTP error! status: ${response.status}`;
+      throw new Error(msg);
     }
     
     return await response.json();

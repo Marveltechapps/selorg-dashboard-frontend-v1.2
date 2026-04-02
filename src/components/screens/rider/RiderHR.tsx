@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { HrSummaryCards } from "./hr/HrSummaryCards";
 import { DocumentApprovalTable } from "./hr/DocumentApprovalTable";
 import { DocumentReviewDrawer } from "./hr/DocumentReviewDrawer";
-import { OnboardRiderModal } from "./hr/OnboardRiderModal";
 import { OnboardingStatusTab } from "./hr/OnboardingStatusTab";
 import { TrainingStatusTab } from "./hr/TrainingStatusTab";
 import { AccessAndDeviceTab } from "./hr/AccessAndDeviceTab";
@@ -34,7 +31,6 @@ export function RiderHR() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   
   // Modal/Drawer State
-  const [isOnboardOpen, setIsOnboardOpen] = useState(false);
   const [reviewDoc, setReviewDoc] = useState<RiderDocument | null>(null);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [reviewRiderDetails, setReviewRiderDetails] = useState<Rider | null>(null);
@@ -153,15 +149,6 @@ export function RiderHR() {
       <PageHeader
         title="Rider HR & Payroll"
         subtitle="Staff management and compensation"
-        actions={
-          <button 
-            onClick={() => setIsOnboardOpen(true)}
-            className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2"
-          >
-            <Plus size={16} />
-            Add Rider
-          </button>
-        }
       />
 
       {/* Summary Cards */}
@@ -229,11 +216,6 @@ export function RiderHR() {
         onStatusUpdate={handleStatusUpdate}
       />
 
-      <OnboardRiderModal 
-        isOpen={isOnboardOpen}
-        onClose={() => setIsOnboardOpen(false)}
-        onSuccess={loadDashboardData}
-      />
     </div>
   );
 }

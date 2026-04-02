@@ -8,6 +8,8 @@ export interface Rider {
   trainingStatus: "not_started" | "in_progress" | "completed";
   appAccess: "enabled" | "disabled";
   deviceAssigned: boolean;
+  /** Whole days in onboarding; computed on backend from createdAt while status is onboarding */
+  onboardingDaysActive?: number | null;
   hubName?: string;
   contract: {
     startDate: string;

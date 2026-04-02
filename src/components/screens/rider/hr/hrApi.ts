@@ -20,6 +20,8 @@ interface ApiRider {
   deviceType?: string | null;
   hubName?: string | null;
   createdAt?: string | null; // Added for days active calculation
+  /** Server-computed; days since createdAt while status is onboarding */
+  onboardingDaysActive?: number | null;
   contract: {
     startDate: string;
     endDate: string;
@@ -129,8 +131,22 @@ function safeDateIso(value: any, fallback?: string): string | undefined {
 /**
  * Transform backend rider to frontend rider
  */
+function fallbackOnboardingDaysFromCreated(
+  createdAt: string | null | undefined,
+  status: ApiRider["status"]
+): number | undefined {
+  if (status !== "onboarding" || !createdAt) return undefined;
+  const start = new Date(createdAt);
+  if (Number.isNaN(start.getTime())) return undefined;
+  return Math.max(0, Math.floor((Date.now() - start.getTime()) / 86400000));
+}
+
 function transformRider(apiRider: ApiRider): Rider {
   const defaultIso = new Date().toISOString();
+  const onboardingDaysActive =
+    typeof apiRider.onboardingDaysActive === "number"
+      ? apiRider.onboardingDaysActive
+      : fallbackOnboardingDaysFromCreated(apiRider.createdAt, apiRider.status);
   return {
     id: apiRider.id,
     name: apiRider.name,
@@ -142,6 +158,7 @@ function transformRider(apiRider: ApiRider): Rider {
     trainingStatus: apiRider.trainingStatus,
     appAccess: apiRider.appAccess,
     deviceAssigned: apiRider.deviceAssigned,
+    onboardingDaysActive,
     createdAt: apiRider.createdAt || undefined, // Backend returns ISO string format
     contract: {
       startDate: apiRider.contract.startDate, // Backend returns YYYY-MM-DD format
