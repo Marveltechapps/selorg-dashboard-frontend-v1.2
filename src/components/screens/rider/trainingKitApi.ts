@@ -74,7 +74,7 @@ export async function createTrainingVideo(
   data: TrainingVideoFormData
 ): Promise<TrainingVideo> {
   const res = await apiRequest<{ success: boolean; data: TrainingVideo }>(
-    API_ENDPOINTS.admin.trainingVideos.create,
+    '/rider/kit/training-videos',
     {
       method: 'POST',
       body: JSON.stringify(data),
@@ -88,7 +88,7 @@ export async function updateTrainingVideo(
   data: Partial<TrainingVideoFormData>
 ): Promise<TrainingVideo> {
   const res = await apiRequest<{ success: boolean; data: TrainingVideo }>(
-    API_ENDPOINTS.admin.trainingVideos.update(id),
+    `/rider/kit/training-videos/${id}`,
     {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -98,14 +98,14 @@ export async function updateTrainingVideo(
 }
 
 export async function deleteTrainingVideo(id: string): Promise<void> {
-  await apiRequest<{ success: boolean }>(API_ENDPOINTS.admin.trainingVideos.delete(id), {
+  await apiRequest<{ success: boolean }>(`/rider/kit/training-videos/${id}`, {
     method: 'DELETE',
   });
 }
 
 export async function fetchTrainingVideoById(id: string): Promise<TrainingVideo | null> {
   const res = await apiRequest<{ success: boolean; data: TrainingVideo }>(
-    API_ENDPOINTS.admin.trainingVideos.byId(id)
+    `/rider/kit/training-videos/${id}`
   );
   return res.data ?? null;
 }
