@@ -40,6 +40,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 import {
   type TrainingVideo,
   type KitConfig,
@@ -52,6 +53,11 @@ import {
   deleteTrainingVideo
 } from './trainingKitApi';
 import { fetchAllRiders } from './hr/hrApi';
+
+type DeleteConfirmState =
+  | { type: 'video'; id: string; title: string }
+  | { type: 'kit'; item: KitItem }
+  | null;
 
 function durationSecondsToDisplay(sec: number): string {
   if (sec < 60) return `${sec} sec`;
@@ -84,6 +90,9 @@ export function TrainingKitManagement() {
     isActive: true,
   });
 
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   // Kit Item Form state
   const [showKitItemForm, setShowKitItemForm] = useState(false);
   const [editingKitItem, setEditingKitItem] = useState<KitItem | null>(null);
@@ -110,7 +119,7 @@ export function TrainingKitManagement() {
         }),
         fetchAllRiders().catch(err => {
           console.error('Error fetching riders:', err);
-          return [] as Rider[];
+          return [];
         })
       ]);
 
@@ -370,12 +379,12 @@ export function TrainingKitManagement() {
                         }}>
                           <Pencil size={14} />
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={async () => {
-                          if (confirm(`Delete video "${v.title}"?`)) {
-                            await deleteTrainingVideo(v._id);
-                            loadData();
-                          }
-                        }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-700"
+                          onClick={() => setDeleteConfirm({ type: 'video', id: v._id, title: v.title })}
+                        >
                           <Trash2 size={14} />
                         </Button>
                       </div>
@@ -490,13 +499,12 @@ export function TrainingKitManagement() {
                           }}>
                             <Pencil size={14} />
                           </Button>
-                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={async () => {
-                            if (confirm(`Remove item "${item.label}"?`)) {
-                              const newItems = kitConfig.items.filter(i => i.id !== item.id);
-                              await updateKitConfig({ ...kitConfig, items: newItems });
-                              loadData();
-                            }
-                          }}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-700"
+                            onClick={() => setDeleteConfirm({ type: 'kit', item })}
+                          >
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -509,6 +517,51 @@ export function TrainingKitManagement() {
           </div>
         </div>
       )}
+
+      <ConfirmationDialog
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirm(null);
+        }}
+        title={deleteConfirm?.type === 'kit' ? 'Remove kit item?' : 'Delete training video?'}
+        description={
+          deleteConfirm?.type === 'kit'
+            ? `Remove "${deleteConfirm.item.label}" from the checklist? You can add it again later.`
+            : deleteConfirm?.type === 'video'
+              ? `Delete "${deleteConfirm.title}"? This cannot be undone.`
+              : ''
+        }
+        confirmText={deleteConfirm?.type === 'kit' ? 'Remove' : 'Delete'}
+        cancelText="Cancel"
+        variant="destructive"
+        isLoading={deleteLoading}
+        onConfirm={async () => {
+          if (!deleteConfirm) return;
+          setDeleteLoading(true);
+          try {
+            if (deleteConfirm.type === 'video') {
+              await deleteTrainingVideo(deleteConfirm.id);
+              toast.success('Training video deleted');
+            } else {
+              if (!kitConfig) {
+                toast.error('Kit configuration is not loaded');
+                throw new Error('Kit configuration is not loaded');
+              }
+              const newItems = kitConfig.items.filter((i) => i.id !== deleteConfirm.item.id);
+              await updateKitConfig({ ...kitConfig, items: newItems });
+              toast.success('Kit item removed');
+            }
+            loadData();
+          } catch {
+            toast.error(
+              deleteConfirm.type === 'video' ? 'Failed to delete video' : 'Failed to remove kit item'
+            );
+            throw new Error('delete failed');
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+      />
 
       {/* Video Form Modal */}
       <Dialog open={showVideoForm} onOpenChange={setShowVideoForm}>

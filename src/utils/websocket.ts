@@ -3,9 +3,10 @@ import { getAuthToken, getAuthUser } from '../contexts/AuthContext';
 
 /**
  * Resolve the WebSocket server URL and path.
- * Priority: VITE_WS_URL > VITE_API_BASE_URL origin > direct backend (dev) > same origin.
- * Connects directly to backend in dev to avoid Vite proxy "socket hang up" errors.
- * Uses path /hhd-socket.io (backend Socket.IO path).
+ * Priority: VITE_WS_URL > VITE_API_BASE_URL origin > same page origin (dev proxy).
+ * Uses path /hhd-socket.io (backend Socket.IO path). When env URLs are unset, same-origin
+ * lets Vite proxy /hhd-socket.io to the backend — avoids hardcoding localhost:5001, which
+ * breaks LAN access (browser would hit the client machine, not the dev server).
  */
 function resolveWsConfig(): { url: string; path: string } {
   const envUrl = (import.meta.env.VITE_WS_URL ?? '').trim();
@@ -21,10 +22,10 @@ function resolveWsConfig(): { url: string; path: string } {
     }
   }
 
-  // Dev fallback: if backend WebSocket endpoint is not explicitly configured,
-  // disable Socket.IO by returning an empty URL. The caller will treat this
-  // as "no realtime backend" and rely on HTTP polling instead of spamming
-  // ERR_CONNECTION_REFUSED logs to /hhd-socket.io.
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return { url: window.location.origin, path: '/hhd-socket.io' };
+  }
+
   return { url: '', path: '/hhd-socket.io' };
 }
 

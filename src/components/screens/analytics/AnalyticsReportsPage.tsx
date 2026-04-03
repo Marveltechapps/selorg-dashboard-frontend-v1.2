@@ -27,7 +27,7 @@ interface AnalyticsReportsPageProps {
 }
 
 export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageProps) {
-  const [activeMetric, setActiveMetric] = useState<MetricType | null>(null);
+  const [activeMetric, setActiveMetric] = useState<MetricType>('rider');
   const [granularity, setGranularity] = useState<Granularity>('day');
   const [dateRange, setDateRange] = useState('7d');
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -60,9 +60,9 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
       refreshIntervalRef.current = null;
     }
 
-    if (activeMetric && autoRefreshEnabled) {
+    if (autoRefreshEnabled) {
       refreshIntervalRef.current = setInterval(() => {
-        if (isMountedRef.current && activeMetric) {
+        if (isMountedRef.current) {
           loadData(activeMetric, true); // silent refresh
         }
       }, 30000); // 30 seconds
@@ -77,9 +77,7 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
 
   // Load data when metric, granularity, or dateRange changes
   useEffect(() => {
-    if (activeMetric) {
-      loadData(activeMetric, false);
-    }
+    loadData(activeMetric, false);
   }, [activeMetric, granularity, dateRange]);
 
   const loadData = async (metric: MetricType, silent: boolean = false) => {
@@ -128,9 +126,7 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
   };
 
   const handleManualRefresh = () => {
-    if (activeMetric) {
-      loadData(activeMetric, false);
-    }
+    loadData(activeMetric, false);
   };
 
   const MetricCard = ({ 
@@ -177,23 +173,21 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
           <p className="text-[#757575] text-sm">Performance metrics, fleet efficiency, and SLA reports</p>
         </div>
         <div className="flex gap-2 items-center">
-           {activeMetric && (
-             <>
-               <Button 
-                 variant="outline" 
-                 onClick={handleManualRefresh} 
-                 disabled={loading}
-                 title="Refresh data"
-               >
-                 <RefreshCw size={16} className={cn(loading && "animate-spin")} />
-               </Button>
-               {lastRefresh && (
-                 <span className="text-xs text-[#757575] hidden sm:inline">
-                   Updated {lastRefresh.toLocaleTimeString()}
-                 </span>
-               )}
-             </>
-           )}
+           <>
+             <Button 
+               variant="outline" 
+               onClick={handleManualRefresh} 
+               disabled={loading}
+               title="Refresh data"
+             >
+               <RefreshCw size={16} className={cn(loading && "animate-spin")} />
+             </Button>
+             {lastRefresh && (
+               <span className="text-xs text-[#757575] hidden sm:inline">
+                 Updated {lastRefresh.toLocaleTimeString()}
+               </span>
+             )}
+           </>
            <Button onClick={() => setIsExportOpen(true)} className="bg-[#212121] hover:bg-black text-white">
              <Download size={16} className="mr-2" />
              Export Report
@@ -229,17 +223,8 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
         />
       </div>
 
-      {/* Chart Panel */}
+      {/* Chart Panel — defaults to Rider Performance */}
       <div className="min-h-[500px] transition-all">
-        {!activeMetric ? (
-           <div className="bg-white border border-[#E0E0E0] rounded-xl border-dashed p-12 flex flex-col items-center justify-center text-[#9E9E9E] min-h-[400px]">
-              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                 <BarChart3 size={32} className="opacity-20 text-gray-900" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">Select a metric above</h3>
-              <p>Click on a card to view detailed analytics and charts.</p>
-           </div>
-        ) : (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
              {/* Toolbar */}
              <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm">
@@ -300,7 +285,6 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
                {activeMetric === 'fleet' && <FleetUtilizationCharts data={fleetData} loading={loading} />}
              </div>
           </div>
-        )}
       </div>
 
       <ExportReportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
