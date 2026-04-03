@@ -31,6 +31,12 @@ interface MerchAlertsProps {
 export function MerchAlerts({ searchQuery = "", onNavigate }: MerchAlertsProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    type: 'all',
+    severity: 'all',
+    status: 'active', // default to show new/in-progress
+    search: '',
+  });
 
   const loadAlerts = async () => {
     try {
@@ -55,12 +61,6 @@ export function MerchAlerts({ searchQuery = "", onNavigate }: MerchAlertsProps) 
     loadAlerts();
   }, [filters.status, filters.type, filters.severity]);
   const [selectedAlerts, setSelectedAlerts] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState({
-    type: 'all',
-    severity: 'all',
-    status: 'active', // default to show new/in-progress
-    search: '',
-  });
 
   // History State
   const [resolvedAlerts, setResolvedAlerts] = useState<Alert[]>([]);

@@ -48,6 +48,107 @@ const generateFallbackCoords = (address: string) => {
   return { lat, lng };
 };
 
+function coordsFromRawOrder(raw: any): { lat: number; lng: number } | undefined {
+  const nested = raw?.delivery?.address?.coordinates;
+  const c = raw?.coordinates ?? nested;
+  if (
+    c &&
+    typeof c.lat === 'number' &&
+    typeof c.lng === 'number' &&
+    !Number.isNaN(c.lat) &&
+    !Number.isNaN(c.lng)
+  ) {
+    return { lat: c.lat, lng: c.lng };
+  }
+  if (c != null && c.lat != null && c.lng != null) {
+    const lat = Number(c.lat);
+    const lng = Number(c.lng);
+    if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+      return { lat, lng };
+    }
+  }
+  return undefined;
+}
+
+function dropAddressString(order: any): string {
+  const d = order?.dropLocation;
+  if (typeof d === 'string') return d;
+  if (d && typeof d.address === 'string') return d.address;
+  return order?.delivery_address || '';
+}
+
+/** Merge saved-cluster order payloads with geocoded list orders so map markers always get coordinates when possible. */
+function enrichOrderForMap(raw: any, processedById: Map<string, Order>): Order {
+  const merged = raw?.id ? processedById.get(raw.id) : undefined;
+  const drop =
+    dropAddressString(raw) ||
+    (merged ? (typeof merged.dropLocation === 'string' ? merged.dropLocation : '') : '');
+  const pickup =
+    typeof raw?.pickupLocation === 'string'
+      ? raw.pickupLocation
+      : merged?.pickupLocation || '';
+
+  let coordinates = merged?.coordinates ?? coordsFromRawOrder(raw);
+  if (!coordinates && drop) {
+    coordinates = generateFallbackCoords(drop);
+  }
+
+  return {
+    id: raw.id || merged?.id || '',
+    status: (raw.status || merged?.status || 'pending') as Order['status'],
+    slaDeadline:
+      typeof merged?.slaDeadline === 'string'
+        ? merged.slaDeadline
+        : raw.slaDeadline
+          ? new Date(raw.slaDeadline).toISOString()
+          : new Date().toISOString(),
+    pickupLocation: pickup,
+    dropLocation: drop || merged?.dropLocation || pickup,
+    customerName: raw.customerName || merged?.customerName || '',
+    items: Array.isArray(merged?.items) ? merged.items : Array.isArray(raw.items) ? raw.items : [],
+    timeline: Array.isArray(merged?.timeline) ? merged.timeline : Array.isArray(raw.timeline) ? raw.timeline : [],
+    riderId: raw.riderId ?? merged?.riderId,
+    etaMinutes: raw.etaMinutes ?? merged?.etaMinutes,
+    coordinates,
+  };
+}
+
+function normalizeSavedClusterApi(c: any, processedById: Map<string, Order>): Cluster {
+  const orders = (c.orders || []).map((raw: any) => enrichOrderForMap(raw, processedById));
+  let center = c.center as { lat: number; lng: number } | undefined;
+  const withCoords = orders.filter((o) => o.coordinates);
+  const invalidCenter =
+    !center ||
+    typeof center.lat !== 'number' ||
+    typeof center.lng !== 'number' ||
+    Number.isNaN(center.lat) ||
+    Number.isNaN(center.lng) ||
+    (center.lat === 0 && center.lng === 0);
+  if (withCoords.length > 0 && invalidCenter) {
+    center = {
+      lat: withCoords.reduce((s, o) => s + o.coordinates!.lat, 0) / withCoords.length,
+      lng: withCoords.reduce((s, o) => s + o.coordinates!.lng, 0) / withCoords.length,
+    };
+  }
+  return {
+    id: c.clusterId,
+    clusterId: c.clusterId,
+    orders,
+    center: center || defaultCenter,
+    color: c.color,
+    status: c.status,
+    isSaved: true,
+  };
+}
+
+function unwrapClustersResponse(data: unknown): any[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object' && Array.isArray((data as any).data)) {
+    return (data as any).data;
+  }
+  return [];
+}
+
 export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [riders, setRiders] = useState<Rider[]>([]);
@@ -63,6 +164,7 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
   const [saving, setSaving] = useState(false);
 
   const geocodeCache = useRef<Record<string, { lat: number; lng: number }>>({});
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
   const hasMapsKey = Boolean(GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY.trim().length > 0);
   const { isLoaded } = useJsApiLoader({
@@ -226,18 +328,15 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
       setOrders(processedOrders);
       setRiders(ridersData);
 
+      const savedList = unwrapClustersResponse(savedClustersData);
+      const processedById = new Map(processedOrders.map((o) => [o.id, o]));
+
       // If we have saved clusters, use them first
-      if (savedClustersData && savedClustersData.length > 0) {
-        const mappedClusters: Cluster[] = savedClustersData.map((c: any) => ({
-          id: c.clusterId,
-          clusterId: c.clusterId,
-          orders: c.orders,
-          center: c.center,
-          color: c.color,
-          status: c.status,
-          isSaved: true,
-        }));
-        
+      if (savedList.length > 0) {
+        const mappedClusters: Cluster[] = savedList.map((c: any) =>
+          normalizeSavedClusterApi(c, processedById)
+        );
+
         setClusters(mappedClusters);
         
         const clusteredOrderIds = new Set(mappedClusters.flatMap(c => c.orders.map(o => o.id)));
@@ -321,6 +420,31 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
       performClustering(orders);
     }
   }, [distanceThreshold, performClustering]);
+
+  useEffect(() => {
+    if (!hasMapsKey || !isLoaded || !mapInstance || clusters.length === 0) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoint = false;
+    const ordersToFrame = selectedCluster
+      ? selectedCluster.orders
+      : clusters.flatMap((c) => c.orders);
+    for (const o of ordersToFrame) {
+      if (o.coordinates) {
+        bounds.extend(o.coordinates);
+        hasPoint = true;
+      }
+    }
+    if (!hasPoint) return;
+    const listener = google.maps.event.addListenerOnce(mapInstance, 'bounds_changed', () => {
+      const z = mapInstance.getZoom();
+      if (z != null && z > 16) mapInstance.setZoom(16);
+    });
+    mapInstance.fitBounds(bounds, 64);
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [hasMapsKey, isLoaded, mapInstance, selectedCluster, clusters]);
 
   if (!hasMapsKey) {
     // Don’t block the entire screen behind an infinite map loader spinner.
@@ -613,12 +737,14 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
         </div>
 
         {/* Right: Map & Detail Overlay */}
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          <div className="flex-1 bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm relative">
+        <div className="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
+          <div className="flex-1 bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm relative min-h-0">
             <GoogleMap
               mapContainerStyle={containerStyle}
               center={mapCenter}
               zoom={14}
+              onLoad={(map) => setMapInstance(map)}
+              onUnmount={() => setMapInstance(null)}
               options={{
                 disableDefaultUI: false,
                 styles: [{ featureType: 'poi', stylers: [{ visibility: 'off' }] }],
@@ -635,7 +761,7 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
                     );
                     return (
                       <Marker
-                        key={order.id}
+                        key={`${cluster.id}-${order.id}`}
                         position={jittered}
                         icon={
                           (globalThis as any)?.google?.maps?.SymbolPath?.CIRCLE
@@ -670,9 +796,9 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
                 </React.Fragment>
               ))}
 
-              {selectedOrder && (
+              {selectedOrder?.coordinates && (
                 <InfoWindow
-                  position={selectedOrder.coordinates!}
+                  position={selectedOrder.coordinates}
                   onCloseClick={() => setSelectedOrder(null)}
                 >
                   <div className="p-2 min-w-[180px]">
