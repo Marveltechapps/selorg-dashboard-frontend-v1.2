@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { fetchStores, fetchWarehouses } from "@/components/screens/admin/storeWarehouseApi";
 import { AvailableRider, fetchAvailableRiders, createShift } from "./shiftsApi";
 
 interface CreateShiftModalProps {
@@ -17,7 +19,10 @@ interface CreateShiftModalProps {
 }
 
 export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: CreateShiftModalProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [hubsLoading, setHubsLoading] = useState(false);
+  const [hubNames, setHubNames] = useState<string[]>([]);
   const [riders, setRiders] = useState<AvailableRider[]>([]);
   const [selectedRiders, setSelectedRiders] = useState<string[]>([]);
   
@@ -25,25 +30,63 @@ export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: C
     date: selectedDate,
     startTime: "08:00",
     endTime: "16:00",
-    hub: "Downtown Hub",
+    hub: "",
     isPeakHour: false,
   });
 
   useEffect(() => {
-    if (isOpen) {
-      setFormData(prev => ({ ...prev, date: selectedDate }));
-      loadRiders();
-    }
-  }, [isOpen, selectedDate]);
+    if (!isOpen) return;
+    let cancelled = false;
 
-  const loadRiders = async () => {
-    try {
-      const data = await fetchAvailableRiders(selectedDate);
-      setRiders(data);
-    } catch (error) {
-      console.error("Failed to load riders");
-    }
-  };
+    const loadRiders = async () => {
+      try {
+        const data = await fetchAvailableRiders(selectedDate);
+        if (!cancelled) setRiders(data);
+      } catch {
+        console.error("Failed to load riders");
+      }
+    };
+
+    const loadHubsFromAdmin = async () => {
+      setHubsLoading(true);
+      try {
+        const [storesRes, warehousesRes] = await Promise.all([
+          fetchStores({ status: "active", limit: 200 }),
+          fetchWarehouses({ status: "active", limit: 200 }),
+        ]);
+        if (cancelled) return;
+        const names = [
+          ...new Set(
+            [
+              ...storesRes.data.map((s) => s.name),
+              ...warehousesRes.data.map((w) => w.name),
+            ].filter((n): n is string => Boolean(n?.trim()))
+          ),
+        ].sort((a, b) => a.localeCompare(b));
+        setHubNames(names);
+        setFormData((prev) => ({
+          ...prev,
+          date: selectedDate,
+          hub: names.includes(prev.hub) ? prev.hub : names[0] ?? "",
+        }));
+      } catch {
+        if (!cancelled) {
+          setHubNames([]);
+          toast.error("Failed to load hubs from admin");
+        }
+      } finally {
+        if (!cancelled) setHubsLoading(false);
+      }
+    };
+
+    setFormData((prev) => ({ ...prev, date: selectedDate }));
+    void loadRiders();
+    void loadHubsFromAdmin();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, selectedDate]);
 
   const handleToggleRider = (riderId: string) => {
     setSelectedRiders(prev => 
@@ -54,6 +97,10 @@ export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: C
   const handleSubmit = async () => {
     if (selectedRiders.length === 0) {
       toast.error("Please select at least one rider");
+      return;
+    }
+    if (!formData.hub?.trim()) {
+      toast.error("Select a hub");
       return;
     }
 
@@ -103,16 +150,32 @@ export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: C
              </div>
              <div className="space-y-2">
                 <Label>Hub</Label>
-                <Select value={formData.hub} onValueChange={(v) => setFormData({...formData, hub: v})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Downtown Hub">Downtown Hub</SelectItem>
-                    <SelectItem value="North Hub">North Hub</SelectItem>
-                    <SelectItem value="West Hub">West Hub</SelectItem>
-                  </SelectContent>
-                </Select>
+                {hubsLoading ? (
+                  <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading stores from admin…
+                  </div>
+                ) : hubNames.length === 0 ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                    No active stores or warehouses in admin. Add them under Store &amp; Warehouse Management.
+                  </div>
+                ) : (
+                  <Select
+                    value={formData.hub || hubNames[0]}
+                    onValueChange={(v) => setFormData({ ...formData, hub: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select hub" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hubNames.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
              </div>
           </div>
 
@@ -146,6 +209,25 @@ export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: C
 
           <div className="space-y-2">
             <Label>Select Riders</Label>
+            {riders.length === 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-medium">No riders available to assign</p>
+                <p className="mt-1 text-amber-900/90">
+                  Roster shifts require riders here. To publish open slots that riders book in the app (no assignees at creation), use Rider Shift Management.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+                  onClick={() => {
+                    onClose();
+                    navigate("/rider/rider-shifts");
+                  }}
+                >
+                  Open Rider Shift Management
+                </Button>
+              </div>
+            )}
             <div className="h-[150px] border rounded-md overflow-y-auto p-2 space-y-1">
               {riders.map(rider => (
                 <div 
@@ -168,7 +250,16 @@ export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: C
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={loading || selectedRiders.length === 0}>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              loading ||
+              selectedRiders.length === 0 ||
+              hubsLoading ||
+              !formData.hub?.trim() ||
+              hubNames.length === 0
+            }
+          >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Shifts
           </Button>
