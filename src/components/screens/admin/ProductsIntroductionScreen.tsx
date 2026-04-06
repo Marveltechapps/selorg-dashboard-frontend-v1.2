@@ -67,10 +67,14 @@ export function ProductsIntroductionScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [advancedJson, setAdvancedJson] = useState<string>('{}');
+  const [descAbout, setDescAbout] = useState('');
+  const [descHealthBenefits, setDescHealthBenefits] = useState('');
+  const [descNutrition, setDescNutrition] = useState('');
+  const [descOriginOfPlace, setDescOriginOfPlace] = useState('');
+
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
     sku: '',
-    description: '',
     imageUrl: '',
     images: [],
     price: 0,
@@ -246,10 +250,13 @@ export function ProductsIntroductionScreen() {
 
   const openCreate = () => {
     setEditingId(null);
+    setDescAbout('');
+    setDescHealthBenefits('');
+    setDescNutrition('');
+    setDescOriginOfPlace('');
     setFormData({
       name: '',
       sku: '',
-      description: '',
       imageUrl: '',
       images: [],
       price: 0,
@@ -277,22 +284,35 @@ export function ProductsIntroductionScreen() {
     if (typeof val === 'object' && val !== null && '_id' in val) return String((val as { _id: string })._id);
     return '';
   };
-  const resolveDesc = (val: unknown): string => {
-    if (val == null) return '';
-    if (typeof val === 'string') return val;
-    if (typeof val === 'object' && val !== null) {
-      const o = val as { about?: string; raw?: string };
-      return o.about || o.raw || '';
-    }
-    return '';
-  };
-
   const openEdit = (p: Product) => {
     setEditingId(p._id);
+    const d = p.description;
+    if (d == null) {
+      setDescAbout('');
+      setDescHealthBenefits('');
+      setDescNutrition('');
+      setDescOriginOfPlace('');
+    } else if (typeof d === 'string') {
+      setDescAbout(d.trim());
+      setDescHealthBenefits('');
+      setDescNutrition('');
+      setDescOriginOfPlace('');
+    } else {
+      const o = d as {
+        about?: string;
+        healthBenefits?: string;
+        nutrition?: string;
+        originOfPlace?: string;
+        raw?: string;
+      };
+      setDescAbout(String(o.about ?? o.raw ?? '').trim());
+      setDescHealthBenefits(String(o.healthBenefits ?? '').trim());
+      setDescNutrition(String(o.nutrition ?? '').trim());
+      setDescOriginOfPlace(String(o.originOfPlace ?? '').trim());
+    }
     setFormData({
       name: p.name,
       sku: p.sku ?? '',
-      description: resolveDesc(p.description),
       imageUrl: p.imageUrl ?? (p.images?.[0] ?? ''),
       images: p.images ?? [],
       price: p.price,
@@ -371,10 +391,22 @@ export function ProductsIntroductionScreen() {
     }
     setSaving(true);
     try {
+      const rawCombined = [descAbout, descHealthBenefits, descNutrition, descOriginOfPlace]
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(' ');
+      const descriptionPayload = {
+        about: descAbout.trim(),
+        healthBenefits: descHealthBenefits.trim(),
+        nutrition: descNutrition.trim(),
+        originOfPlace: descOriginOfPlace.trim(),
+        raw: rawCombined || descAbout.trim(),
+      };
+
       const payload: Record<string, unknown> = {
         name: formData.name?.trim(),
         sku: formData.sku?.trim() || undefined,
-        description: formData.description?.toString().trim() || undefined,
+        description: descriptionPayload,
         imageUrl: formData.imageUrl?.toString().trim() || undefined,
         images: formData.imageUrl ? [formData.imageUrl] : formData.images ?? [],
         price: formData.price,
@@ -729,14 +761,52 @@ export function ProductsIntroductionScreen() {
                 placeholder="Product name"
               />
             </div>
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Input
-                id="description"
-                value={formData.description ?? ''}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Product description"
-              />
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-[#18181b]">Product information (customer app)</p>
+              <p className="text-xs text-[#71717a]">
+                Shown on the product detail screen as collapsible sections (About, Health Benefits, Nutrition, Origin of
+                Place).
+              </p>
+              <div>
+                <Label htmlFor="desc-about">About</Label>
+                <Textarea
+                  id="desc-about"
+                  value={descAbout}
+                  onChange={(e) => setDescAbout(e.target.value)}
+                  placeholder="About this product"
+                  className="min-h-[72px] mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="desc-health">Health Benefits</Label>
+                <Textarea
+                  id="desc-health"
+                  value={descHealthBenefits}
+                  onChange={(e) => setDescHealthBenefits(e.target.value)}
+                  placeholder="Health benefits"
+                  className="min-h-[72px] mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="desc-nutrition">Nutrition</Label>
+                <Textarea
+                  id="desc-nutrition"
+                  value={descNutrition}
+                  onChange={(e) => setDescNutrition(e.target.value)}
+                  placeholder="Nutritional information"
+                  className="min-h-[72px] mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="desc-origin">Origin of Place</Label>
+                <Textarea
+                  id="desc-origin"
+                  value={descOriginOfPlace}
+                  onChange={(e) => setDescOriginOfPlace(e.target.value)}
+                  placeholder="e.g. Sourced from farms in India"
+                  className="min-h-[72px] mt-1"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-4">

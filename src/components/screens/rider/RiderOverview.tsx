@@ -17,17 +17,34 @@ interface RiderOverviewProps {
   searchQuery?: string;
 }
 
+type RiderOverviewSessionCache = {
+  searchQuery: string;
+  summary: DashboardSummary | null;
+  orders: Order[];
+  riders: Rider[];
+};
+
+let riderOverviewSessionCache: RiderOverviewSessionCache | null = null;
+
+function readOverviewCache(sq: string): RiderOverviewSessionCache | null {
+  if (riderOverviewSessionCache && riderOverviewSessionCache.searchQuery === sq) {
+    return riderOverviewSessionCache;
+  }
+  return null;
+}
+
 let _autoAssignPref = true;
 
 export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [riders, setRiders] = useState<Rider[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = readOverviewCache(searchQuery);
+  const [summary, setSummary] = useState<DashboardSummary | null>(() => cached?.summary ?? null);
+  const [orders, setOrders] = useState<Order[]>(() => cached?.orders ?? []);
+  const [riders, setRiders] = useState<Rider[]>(() => cached?.riders ?? []);
+  const [loading, setLoading] = useState(() => !cached);
   const [autoAssignEnabled, setAutoAssignEnabled] = useState(_autoAssignPref);
   const [refreshStatus, setRefreshStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const localOrderUpdates = useRef<Record<string, Partial<Order>>>({});
-  const lastOrdersRef = useRef<Order[]>([]);
+  const lastOrdersRef = useRef<Order[]>(cached?.orders ?? []);
   const persistAutoAssign = (enabled: boolean) => {
     _autoAssignPref = enabled;
     setAutoAssignEnabled(enabled);
@@ -90,9 +107,16 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
         toast.error('Failed to load data. Check connection and try again.');
       } else {
         setRefreshStatus('success');
+        riderOverviewSessionCache = {
+          searchQuery,
+          summary: summaryData ?? null,
+          orders: merged,
+          riders: ridersData ?? [],
+        };
       }
     } catch (error) {
       console.error("Failed to fetch data", error);
+      riderOverviewSessionCache = null;
       setSummary(null);
       setOrders([]);
       setRiders([]);
@@ -104,7 +128,11 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
   };
 
   useEffect(() => {
-    fetchData(true);
+    const hit = readOverviewCache(searchQuery);
+    if (hit) {
+      lastOrdersRef.current = hit.orders;
+    }
+    fetchData(!hit);
   }, []);
 
   const searchFetchedRef = React.useRef(false);

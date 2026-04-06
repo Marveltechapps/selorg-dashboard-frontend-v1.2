@@ -1,6 +1,14 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as Icons from 'lucide-react';
 import { cn } from "../../lib/utils";
+import { getAuthUser, type AuthUser } from '@/contexts/AuthContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface RiderSidebarProps {
   activeTab: string;
@@ -8,7 +16,36 @@ interface RiderSidebarProps {
   onLogout?: () => void;
 }
 
+function formatDetail(value: string | string[] | undefined | null): string {
+  if (value === undefined || value === null) return '—';
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(', ') : '—';
+  }
+  const s = String(value).trim();
+  return s.length > 0 ? s : '—';
+}
+
 export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebarProps) {
+  const [profile, setProfile] = useState<AuthUser | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  useEffect(() => {
+    setProfile(getAuthUser());
+  }, []);
+
+  const initials = useMemo(() => {
+    const source = profile?.name || profile?.email || 'R';
+    return source
+      .split(' ')
+      .map((part) => part[0])
+      .filter(Boolean)
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'R';
+  }, [profile?.name, profile?.email]);
+
+  const roleLabel = profile?.role || 'Rider dashboard';
+
   const navItems = [
     { id: 'overview', label: 'Rider Overview', icon: Icons.LayoutDashboard },
     { id: 'hr', label: 'Rider HR & Docs', icon: Icons.Users },
@@ -77,19 +114,62 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
 
       {/* User Profile */}
       <div className="p-4 border-t border-[#1F2937] bg-[#111827]">
-        <div className="flex items-center gap-3 hover:bg-[#1F2937] p-2 rounded-lg cursor-pointer transition-colors">
-          <div className="w-8 h-8 rounded-full bg-[#F97316] flex items-center justify-center border border-[#C2410C] text-white font-bold text-xs">
-            OM
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium text-white truncate">Ops Manager</p>
-            <p className="text-xs text-[#808080] truncate">Fleet Lead</p>
-          </div>
-          <button onClick={onLogout}>
+        <div className="flex items-center gap-3 p-2 rounded-lg transition-colors">
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="flex flex-1 min-w-0 items-center gap-3 text-left rounded-lg hover:bg-[#1F2937] cursor-pointer transition-colors"
+          >
+            <div className="w-8 h-8 shrink-0 rounded-full bg-[#F97316] flex items-center justify-center border border-[#C2410C] text-white font-bold text-xs">
+              {initials}
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <p className="text-sm font-medium text-white truncate">{profile?.name || 'Signed-in user'}</p>
+              <p className="text-xs text-[#808080] truncate">{roleLabel}</p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLogout?.();
+            }}
+            className="shrink-0 p-1 rounded-md hover:bg-[#1F2937]"
+            aria-label="Log out"
+          >
             <Icons.LogOut size={16} className="text-[#666666] hover:text-[#F87171]" />
           </button>
         </div>
       </div>
+
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-md bg-white text-[#212121] border-[#E0E0E0]">
+          <DialogHeader>
+            <DialogTitle className="text-[#111827]">Your profile</DialogTitle>
+            <DialogDescription className="text-[#757575]">
+              Account details for the signed-in dashboard user.
+            </DialogDescription>
+          </DialogHeader>
+          <dl className="grid gap-3 text-sm pt-2">
+            <div className="grid grid-cols-[120px_1fr] gap-2 gap-x-4">
+              <dt className="text-[#757575] font-medium">Name</dt>
+              <dd className="font-medium text-[#212121] break-words">{formatDetail(profile?.name)}</dd>
+              <dt className="text-[#757575] font-medium">Email</dt>
+              <dd className="text-[#212121] break-all">{formatDetail(profile?.email)}</dd>
+              <dt className="text-[#757575] font-medium">User ID</dt>
+              <dd className="font-mono text-xs text-[#212121] break-all">{formatDetail(profile?.id)}</dd>
+              <dt className="text-[#757575] font-medium">Role</dt>
+              <dd className="text-[#212121]">{formatDetail(profile?.role)}</dd>
+              <dt className="text-[#757575] font-medium">Hub key</dt>
+              <dd className="text-[#212121] break-words">{formatDetail(profile?.hubKey)}</dd>
+              <dt className="text-[#757575] font-medium">Primary store</dt>
+              <dd className="font-mono text-xs text-[#212121] break-all">{formatDetail(profile?.primaryStoreId)}</dd>
+              <dt className="text-[#757575] font-medium">Assigned stores</dt>
+              <dd className="text-[#212121] break-words">{formatDetail(profile?.assignedStores)}</dd>
+            </div>
+          </dl>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
