@@ -69,8 +69,16 @@ export const fetchShiftSummary = async (date: string): Promise<ShiftSummary> => 
   return data;
 };
 
-export const fetchShifts = async (date: string): Promise<Shift[]> => {
+export type StaffShiftListFilter = 'all' | 'checked-in' | 'absent';
+
+export const fetchShifts = async (
+  date: string,
+  filter: StaffShiftListFilter = 'all'
+): Promise<Shift[]> => {
   const params = new URLSearchParams({ date });
+  if (filter && filter !== 'all') {
+    params.set('filter', filter);
+  }
   const data = await apiRequest<Shift[]>(`${API_ENDPOINTS.staff.shifts}?${params}`);
   return Array.isArray(data) ? data : [];
 };

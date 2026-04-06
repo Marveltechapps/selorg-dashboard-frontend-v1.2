@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarClock, Plus, RefreshCw, Save, X, Edit, Trash2 } from 'lucide-react';
 import { RiderShift, fetchRiderShifts, createRiderShift, updateRiderShift, deleteRiderShift } from './riderShiftApi';
 import { Button } from '@/components/ui/button';
@@ -12,19 +12,25 @@ interface Props {
 
 type FormState = Partial<RiderShift>;
 
+type StatusFilter = 'all' | 'draft' | 'published' | 'cancelled';
+
 export function RiderShiftManagement({ searchQuery }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [shifts, setShifts] = useState<RiderShift[]>([]);
   const [date, setDate] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [editing, setEditing] = useState<FormState | null>(null);
   const [bookingsShift, setBookingsShift] = useState<RiderShift | null>(null);
   const [bookingsOpen, setBookingsOpen] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchRiderShifts({ date });
+      const data = await fetchRiderShifts({
+        date,
+        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+      });
       let items = data.items;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -40,11 +46,11 @@ export function RiderShiftManagement({ searchQuery }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [date, searchQuery, statusFilter]);
 
   useEffect(() => {
     void load();
-  }, [date, searchQuery]);
+  }, [load]);
 
   const openCreate = () => {
     setEditing({
@@ -134,6 +140,31 @@ export function RiderShiftManagement({ searchQuery }: Props) {
             New Shift
           </Button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { key: 'all' as const, label: 'All' },
+            { key: 'draft' as const, label: 'Draft' },
+            { key: 'published' as const, label: 'Published' },
+            { key: 'cancelled' as const, label: 'Cancelled' },
+          ] as const
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setStatusFilter(key)}
+            className={
+              'px-4 py-2 rounded-lg text-sm font-medium border transition-colors ' +
+              (statusFilter === key
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white text-[#374151] border-[#E5E7EB] hover:bg-[#F9FAFB]')
+            }
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] overflow-x-auto">

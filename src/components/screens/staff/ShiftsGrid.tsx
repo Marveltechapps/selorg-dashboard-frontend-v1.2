@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shift } from './shiftsApi';
+import { Shift, StaffShiftListFilter } from './shiftsApi';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { User, Zap, Clock } from 'lucide-react';
@@ -9,6 +9,7 @@ interface ShiftsGridProps {
   shifts: Shift[];
   loading: boolean;
   onShiftClick: (shift: Shift) => void;
+  listFilter?: StaffShiftListFilter;
 }
 
 const TIME_SLOTS = [
@@ -18,13 +19,13 @@ const TIME_SLOTS = [
   { label: '20:00 - 00:00', start: 20, end: 24 },
 ];
 
-export function ShiftsGrid({ shifts, loading, onShiftClick }: ShiftsGridProps) {
+export function ShiftsGrid({ shifts, loading, onShiftClick, listFilter = 'all' }: ShiftsGridProps) {
   // Group shifts by Rider
   const shiftsByRider = React.useMemo(() => {
-    const map = new Map<string, { name: string; shifts: Shift[] }>();
-    shifts.forEach(shift => {
+    const map = new Map<string, { riderId: string; name: string; shifts: Shift[] }>();
+    shifts.forEach((shift) => {
       if (!map.has(shift.riderId)) {
-        map.set(shift.riderId, { name: shift.riderName, shifts: [] });
+        map.set(shift.riderId, { riderId: shift.riderId, name: shift.riderName, shifts: [] });
       }
       map.get(shift.riderId)!.shifts.push(shift);
     });
@@ -46,11 +47,19 @@ export function ShiftsGrid({ shifts, loading, onShiftClick }: ShiftsGridProps) {
   }
 
   if (shifts.length === 0) {
+    const filterHint =
+      listFilter === 'checked-in'
+        ? 'No active or completed shifts for this date.'
+        : listFilter === 'absent'
+          ? 'No absent or late shifts for this date.'
+          : null;
     return (
       <div className="h-64 flex flex-col items-center justify-center text-gray-500 border rounded-lg bg-gray-50">
         <Clock size={48} className="mb-4 opacity-20" />
-        <p>No shifts scheduled for this date.</p>
-        <p className="text-sm">Use "Create Shift" to add the first one.</p>
+        <p>{filterHint ?? 'No shifts scheduled for this date.'}</p>
+        {!filterHint && (
+          <p className="text-sm text-center mt-1">Use &quot;Create Shift&quot; to add the first one.</p>
+        )}
       </div>
     );
   }
@@ -101,7 +110,7 @@ export function ShiftsGrid({ shifts, loading, onShiftClick }: ShiftsGridProps) {
         {shiftsByRider.map((rider) => {
           const status = getOverallStatus(rider.shifts);
           return (
-            <div key={rider.name} className="grid grid-cols-12 gap-px bg-white items-stretch min-h-[60px]">
+            <div key={rider.riderId} className="grid grid-cols-12 gap-px bg-white items-stretch min-h-[60px]">
               <div className="col-span-3 p-3 flex items-center gap-3 font-medium text-[#212121]">
                 <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                   <User size={16} />

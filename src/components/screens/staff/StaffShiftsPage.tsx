@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CalendarClock, Plus, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,13 @@ import { ShiftSummaryCards } from './ShiftSummaryCards';
 import { ShiftsGrid } from './ShiftsGrid';
 import { CreateShiftModal } from './CreateShiftModal';
 import { ShiftDetailsDrawer } from './ShiftDetailsDrawer';
-import { fetchShifts, fetchShiftSummary, Shift, ShiftSummary } from './shiftsApi';
+import {
+  fetchShifts,
+  fetchShiftSummary,
+  Shift,
+  ShiftSummary,
+  StaffShiftListFilter,
+} from './shiftsApi';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -16,7 +22,7 @@ interface StaffShiftsPageProps {
 
 export function StaffShiftsPage({ searchQuery = '' }: StaffShiftsPageProps) {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [activeFilter, setActiveFilter] = useState<'all' | 'checked-in' | 'absent'>('all');
+  const [activeFilter, setActiveFilter] = useState<StaffShiftListFilter>('checked-in');
   
   // Data State
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -27,46 +33,38 @@ export function StaffShiftsPage({ searchQuery = '' }: StaffShiftsPageProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [shiftsData, summaryData] = await Promise.all([
-        fetchShifts(selectedDate),
-        fetchShiftSummary(selectedDate)
+        fetchShifts(selectedDate, activeFilter),
+        fetchShiftSummary(selectedDate),
       ]);
       setShifts(shiftsData);
       setSummary(summaryData);
     } catch (error) {
-      toast.error("Failed to load shift data");
+      toast.error('Failed to load shift data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, activeFilter]);
 
   useEffect(() => {
-    loadData();
-  }, [selectedDate]);
+    void loadData();
+  }, [loadData]);
 
-  // Combine search and filter
+  // Status filter is applied server-side; search is client-side on the loaded slice
   const filteredShifts = React.useMemo(() => {
-    let result = shifts;
-    
-    // Apply search filter first
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(s => 
+    if (!searchQuery.trim()) return shifts;
+    const query = searchQuery.toLowerCase();
+    return shifts.filter(
+      (s) =>
         s.id.toLowerCase().includes(query) ||
         s.riderId.toLowerCase().includes(query) ||
         s.riderName.toLowerCase().includes(query) ||
-        s.hub?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Then apply status filter
-    if (activeFilter === 'checked-in') return result.filter(s => s.status === 'active' || s.status === 'completed');
-    if (activeFilter === 'absent') return result.filter(s => s.status === 'absent' || s.status === 'late');
-    return result;
-  }, [shifts, activeFilter, searchQuery]);
+        (s.hub && s.hub.toLowerCase().includes(query))
+    );
+  }, [shifts, searchQuery]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -113,10 +111,11 @@ export function StaffShiftsPage({ searchQuery = '' }: StaffShiftsPageProps) {
             </span>
         </div>
         
-        <ShiftsGrid 
-           shifts={filteredShifts} 
-           loading={loading} 
-           onShiftClick={setSelectedShift}
+        <ShiftsGrid
+          shifts={filteredShifts}
+          loading={loading}
+          onShiftClick={setSelectedShift}
+          listFilter={activeFilter}
         />
       </div>
 

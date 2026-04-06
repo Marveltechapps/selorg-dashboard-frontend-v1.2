@@ -1,12 +1,12 @@
 import React from 'react';
-import { CalendarClock, UserPlus, Users, Loader2 } from 'lucide-react';
-import { ShiftSummary } from './shiftsApi';
+import { CalendarClock, UserPlus, Users } from 'lucide-react';
+import { ShiftSummary, StaffShiftListFilter } from './shiftsApi';
 
 interface Props {
   summary: ShiftSummary | null;
   loading: boolean;
-  onFilter: (filter: 'all' | 'checked-in' | 'absent') => void;
-  activeFilter: string;
+  onFilter: (filter: StaffShiftListFilter) => void;
+  activeFilter: StaffShiftListFilter;
 }
 
 export function ShiftSummaryCards({ summary, loading, onFilter, activeFilter }: Props) {
@@ -31,7 +31,7 @@ export function ShiftSummaryCards({ summary, loading, onFilter, activeFilter }: 
     count: number; 
     icon: any; 
     color: string; 
-    filterKey: string; 
+    filterKey: StaffShiftListFilter; 
   }) => {
     const isActive = activeFilter === filterKey;
     const colorStyles = {
@@ -42,7 +42,7 @@ export function ShiftSummaryCards({ summary, loading, onFilter, activeFilter }: 
 
     return (
       <div 
-        onClick={() => onFilter(filterKey as any)}
+        onClick={() => onFilter(filterKey)}
         className={`bg-white p-6 rounded-xl border shadow-sm flex items-center gap-4 cursor-pointer transition-all ${
           isActive ? 'ring-2 ring-black border-transparent' : 'border-[#E0E0E0] hover:shadow-md'
         }`}
