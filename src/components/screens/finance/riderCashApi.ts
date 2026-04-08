@@ -21,10 +21,35 @@ export interface RiderPayout {
   incentiveAmount: number;
   status: string;
   method: string;
+  accountDetails?: {
+    accountNumber?: string;
+    ifscCode?: string;
+    upiId?: string;
+    walletId?: string;
+    bankName?: string;
+    accountHolderName?: string;
+  } | null;
   requestedAt: string;
   completedAt?: string;
   periodStart: string;
   periodEnd: string;
+}
+
+export interface RiderPaymentDetails {
+  riderId: string;
+  name?: string;
+  phoneNumber?: string;
+  bankDetails?: {
+    accountNumber?: string;
+    ifscCode?: string;
+    accountHolderName?: string;
+    bankName?: string;
+  } | null;
+  upiDetails?: {
+    upiId?: string;
+    accountHolderName?: string;
+  } | null;
+  updatedAt?: string;
 }
 
 interface ApiResponse<T> {
@@ -56,5 +81,10 @@ export async function fetchCodReconciliation(): Promise<{ codCollected: number; 
   const res = await apiRequest<ApiResponse<{ codCollected: number; codDeposited: number; codOutstanding: number }>>(
     API_ENDPOINTS.finance.riderCash.codReconciliation
   );
+  return res.data;
+}
+
+export async function fetchRiderPaymentDetails(riderId: string): Promise<RiderPaymentDetails | null> {
+  const res = await apiRequest<ApiResponse<RiderPaymentDetails | null>>(API_ENDPOINTS.finance.riderCash.riderPaymentDetails(riderId));
   return res.data;
 }

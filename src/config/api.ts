@@ -114,6 +114,7 @@ export const API_ENDPOINTS = {
       summary: '/finance/rider-cash/summary',
       payouts: '/finance/rider-cash/payouts',
       codReconciliation: '/finance/rider-cash/cod-reconciliation',
+      riderPaymentDetails: (riderId: string) => `/finance/rider-cash/riders/${riderId}/payment-details`,
     },
     pickerWithdrawals: {
       list: '/finance/picker-withdrawals',

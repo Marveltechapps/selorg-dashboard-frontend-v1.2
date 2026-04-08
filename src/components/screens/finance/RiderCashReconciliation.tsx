@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Wallet, TrendingUp, Banknote, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Wallet, TrendingUp, Banknote, AlertCircle, CheckCircle, XCircle, Eye } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner';
@@ -7,9 +7,12 @@ import {
   fetchRiderCashSummary,
   fetchRiderPayouts,
   fetchCodReconciliation,
+  fetchRiderPaymentDetails,
   type RiderCashSummary,
   type RiderPayout,
+  type RiderPaymentDetails,
 } from './riderCashApi';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 
 export function RiderCashReconciliation() {
   const [summary, setSummary] = useState<RiderCashSummary | null>(null);
@@ -20,6 +23,9 @@ export function RiderCashReconciliation() {
   const [payoutStatus, setPayoutStatus] = useState<string>('all');
   const [payoutPage, setPayoutPage] = useState(1);
   const [payoutTotal, setPayoutTotal] = useState(0);
+  const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
+  const [selectedRiderPaymentDetails, setSelectedRiderPaymentDetails] = useState<RiderPaymentDetails | null>(null);
+  const [isLoadingRiderPaymentDetails, setIsLoadingRiderPaymentDetails] = useState(false);
 
   const loadSummary = useCallback(async () => {
     setIsLoadingSummary(true);
@@ -85,6 +91,31 @@ export function RiderCashReconciliation() {
     };
     return styles[status] || 'bg-gray-100 text-gray-700';
   };
+
+  const formatAccountDetails = (p: RiderPayout) => {
+    const method = (p.method || '').toLowerCase();
+    if (method === 'upi') return p.accountDetails?.upiId || '—';
+    if (method === 'wallet') return p.accountDetails?.walletId || '—';
+    const acc = p.accountDetails?.accountNumber;
+    if (!acc) return '—';
+    const last4 = acc.slice(-4);
+    return `•••• ${last4}`;
+  };
+
+  const handleViewRiderPaymentDetails = useCallback(async (riderId: string) => {
+    setSelectedRiderId(riderId);
+    setIsLoadingRiderPaymentDetails(true);
+    try {
+      const data = await fetchRiderPaymentDetails(riderId);
+      setSelectedRiderPaymentDetails(data);
+    } catch (e) {
+      console.error('Failed to load rider payment details', e);
+      toast.error('Failed to load rider payment details');
+      setSelectedRiderPaymentDetails(null);
+    } finally {
+      setIsLoadingRiderPaymentDetails(false);
+    }
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -255,7 +286,9 @@ export function RiderCashReconciliation() {
                       <th className="px-6 py-3">Amount</th>
                       <th className="px-6 py-3">Status</th>
                       <th className="px-6 py-3">Method</th>
+                      <th className="px-6 py-3">Account</th>
                       <th className="px-6 py-3">Requested</th>
+                      <th className="px-6 py-3 text-right">Latest on file</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E0E0E0]">
@@ -274,8 +307,20 @@ export function RiderCashReconciliation() {
                           </span>
                         </td>
                         <td className="px-6 py-4 capitalize">{p.method?.replace('_', ' ')}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-[#616161]">{formatAccountDetails(p)}</td>
                         <td className="px-6 py-4 text-[#616161]">
                           {p.requestedAt ? new Date(p.requestedAt).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewRiderPaymentDetails(p.riderId)}
+                            className="gap-2"
+                          >
+                            <Eye size={14} />
+                            View
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -315,6 +360,72 @@ export function RiderCashReconciliation() {
           </p>
         </div>
       )}
+
+      <Dialog
+        open={!!selectedRiderId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedRiderId(null);
+            setSelectedRiderPaymentDetails(null);
+            setIsLoadingRiderPaymentDetails(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Rider Payment Details</DialogTitle>
+            <DialogDescription>Latest payout account details stored on the rider profile.</DialogDescription>
+          </DialogHeader>
+
+          {isLoadingRiderPaymentDetails ? (
+            <div className="text-sm text-[#757575]">Loading…</div>
+          ) : !selectedRiderPaymentDetails ? (
+            <div className="text-sm text-[#757575]">No payment details found for this rider.</div>
+          ) : (
+            <div className="space-y-5 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="p-3 bg-[#F5F7FA] rounded-lg">
+                  <div className="text-[#757575] text-xs">Rider ID</div>
+                  <div className="font-mono">{selectedRiderPaymentDetails.riderId}</div>
+                </div>
+                <div className="p-3 bg-[#F5F7FA] rounded-lg">
+                  <div className="text-[#757575] text-xs">Name</div>
+                  <div className="font-medium">{selectedRiderPaymentDetails.name || '—'}</div>
+                </div>
+                <div className="p-3 bg-[#F5F7FA] rounded-lg">
+                  <div className="text-[#757575] text-xs">Phone</div>
+                  <div className="font-medium">{selectedRiderPaymentDetails.phoneNumber || '—'}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border border-[#E0E0E0] rounded-lg p-4">
+                  <div className="font-semibold text-[#212121] mb-2">Bank account</div>
+                  <div className="space-y-1 text-[#616161]">
+                    <div><span className="text-[#757575]">Holder:</span> {selectedRiderPaymentDetails.bankDetails?.accountHolderName || '—'}</div>
+                    <div><span className="text-[#757575]">Bank:</span> {selectedRiderPaymentDetails.bankDetails?.bankName || '—'}</div>
+                    <div><span className="text-[#757575]">IFSC:</span> {selectedRiderPaymentDetails.bankDetails?.ifscCode || '—'}</div>
+                    <div className="font-mono"><span className="text-[#757575] font-sans">Account:</span> {selectedRiderPaymentDetails.bankDetails?.accountNumber || '—'}</div>
+                  </div>
+                </div>
+
+                <div className="border border-[#E0E0E0] rounded-lg p-4">
+                  <div className="font-semibold text-[#212121] mb-2">UPI</div>
+                  <div className="space-y-1 text-[#616161]">
+                    <div><span className="text-[#757575]">Holder:</span> {selectedRiderPaymentDetails.upiDetails?.accountHolderName || '—'}</div>
+                    <div className="font-mono"><span className="text-[#757575] font-sans">UPI ID:</span> {selectedRiderPaymentDetails.upiDetails?.upiId || '—'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-[#757575]">
+                Last updated:{' '}
+                {selectedRiderPaymentDetails.updatedAt ? new Date(selectedRiderPaymentDetails.updatedAt).toLocaleString() : '—'}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
