@@ -39,6 +39,36 @@ import { Plus, Pencil, Trash2, Loader2, Package, Search } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
+/** Match backend `parseCommaSeparatedImageUrls`: comma / semicolon / newline, trim, order preserved. */
+function parseCommaSeparatedImageUrls(raw: string): string[] {
+  return String(raw || '')
+    .split(/[,;\n\r]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function orderedUniqueImageUrls(urls: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const u of urls) {
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push(u);
+  }
+  return out;
+}
+
+/** Ordered list for edit: prefer `images` array (import / API), else imageUrl + additionalImages. */
+function productToImageUrlsText(p: Product): string {
+  const imgs = Array.isArray(p.images) ? p.images.filter((x): x is string => Boolean(x && String(x).trim())) : [];
+  if (imgs.length) return imgs.join(', ');
+  const primary = (p.imageUrl && String(p.imageUrl).trim()) || '';
+  const extras = Array.isArray(p.additionalImages)
+    ? p.additionalImages.filter((x): x is string => Boolean(x && String(x).trim()))
+    : [];
+  return orderedUniqueImageUrls([primary, ...extras].filter(Boolean)).join(', ');
+}
+
 export function ProductsIntroductionScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -71,6 +101,8 @@ export function ProductsIntroductionScreen() {
   const [descHealthBenefits, setDescHealthBenefits] = useState('');
   const [descNutrition, setDescNutrition] = useState('');
   const [descOriginOfPlace, setDescOriginOfPlace] = useState('');
+  /** Comma-separated image URLs; first = primary (`imageUrl`), rest = gallery order. */
+  const [imageUrlsText, setImageUrlsText] = useState('');
 
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
@@ -275,6 +307,7 @@ export function ProductsIntroductionScreen() {
       order: 0,
     });
     setAdvancedJson('{}');
+    setImageUrlsText('');
     setDialogOpen(true);
   };
 
@@ -310,6 +343,7 @@ export function ProductsIntroductionScreen() {
       setDescNutrition(String(o.nutrition ?? '').trim());
       setDescOriginOfPlace(String(o.originOfPlace ?? '').trim());
     }
+    setImageUrlsText(productToImageUrlsText(p));
     setFormData({
       name: p.name,
       sku: p.sku ?? '',
@@ -403,12 +437,14 @@ export function ProductsIntroductionScreen() {
         raw: rawCombined || descAbout.trim(),
       };
 
+      const imageList = orderedUniqueImageUrls(parseCommaSeparatedImageUrls(imageUrlsText));
       const payload: Record<string, unknown> = {
         name: formData.name?.trim(),
         sku: formData.sku?.trim() || undefined,
         description: descriptionPayload,
-        imageUrl: formData.imageUrl?.toString().trim() || undefined,
-        images: formData.imageUrl ? [formData.imageUrl] : formData.images ?? [],
+        imageUrl: imageList[0] || '',
+        images: imageList,
+        additionalImages: imageList.slice(1),
         price: formData.price,
         costPrice: formData.costPrice,
         originalPrice: formData.originalPrice,
@@ -437,7 +473,7 @@ export function ProductsIntroductionScreen() {
         }
       }
 
-      const finalPayload: Record<string, unknown> = { ...payload, ...advancedUpdates };
+      const finalPayload: Record<string, unknown> = { ...advancedUpdates, ...payload };
       Object.keys(finalPayload).forEach((k) => finalPayload[k] === undefined && delete finalPayload[k]);
       if (editingId) {
         const updated = await updateProduct(editingId, finalPayload as Partial<Product>);
@@ -855,13 +891,19 @@ export function ProductsIntroductionScreen() {
               </p>
             </div>
             <div>
-              <Label htmlFor="imageUrl">Product Image URL</Label>
-              <Input
-                id="imageUrl"
-                value={formData.imageUrl ?? ''}
-                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                placeholder="https://..."
+              <Label htmlFor="imageUrls">Product image URLs</Label>
+              <Textarea
+                id="imageUrls"
+                value={imageUrlsText}
+                onChange={(e) => setImageUrlsText(e.target.value)}
+                placeholder="https://primary.jpg, https://second.jpg, …"
+                rows={3}
+                className="resize-y min-h-[4.5rem] font-mono text-sm"
               />
+              <p className="text-xs text-[#71717a] mt-1">
+                Comma, semicolon, or newline separated. First URL is the primary image (index 0); order is preserved for
+                gallery / import parity with SKUimgURL.
+              </p>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>

@@ -258,7 +258,10 @@ export interface Product {
     udf9?: string;
     udf10?: string;
   };
-  importRaw?: unknown;
+  similarProducts?: string;
+  budf8?: string;
+  /** SKU Master columns not mapped to a typed field (header → value) */
+  additionalImportedFields?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -30,7 +30,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { uploadContentHubMaster } from '@/api/cmsAdminApi';
+import { fetchContentHubImportHistory, uploadContentHubMaster, type ContentHubImportRun } from '@/api/cmsAdminApi';
 
 interface ContentHubProps {
   setActiveTab: (tab: string) => void;
@@ -71,6 +71,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
   const totalModules = PICKER_ITEMS.length + CUSTOMER_ITEMS.length + SHARED_ITEMS.length;
   const [importing, setImporting] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
+  const [importHistory, setImportHistory] = React.useState<ContentHubImportRun[]>([]);
   const [lastImportResult, setLastImportResult] = React.useState<{
     success: boolean;
     counts?: Record<string, any>;
@@ -78,6 +79,11 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
     errors?: Array<{ sheet?: string; row?: number; message: string }>;
   } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const refreshHistory = React.useCallback(async () => {
+    const runs = await fetchContentHubImportHistory(15);
+    setImportHistory(runs);
+  }, []);
 
   const renderCard = (item: { id: string; label: string; desc: string; icon: React.ElementType }) => {
     const Icon = item.icon;
@@ -115,6 +121,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
       const result = await uploadContentHubMaster(file, true);
       setLastImportResult(result);
       setImportProgress(100);
+      void refreshHistory();
       if (result.success) {
         toast.success('Import complete');
       } else {
@@ -133,6 +140,10 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
       }, 350);
     }
   };
+
+  React.useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
 
   React.useEffect(() => {
     if (!importing) return;
@@ -207,6 +218,43 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
               Errors: {lastImportResult.errors.slice(0, 5).map((e) => `${e.sheet || 'Sheet'}${e.row ? ` row ${e.row}` : ''}: ${e.message}`).join(' | ')}
             </div>
           )}
+        </div>
+      )}
+
+      {!!importHistory.length && (
+        <div className="rounded-xl border border-[#e4e4e7] bg-white p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-[#18181b]">Import history</div>
+            <button
+              type="button"
+              className="text-xs text-[#71717a] hover:text-[#18181b]"
+              onClick={() => void refreshHistory()}
+              disabled={importing}
+            >
+              Refresh
+            </button>
+          </div>
+          <div className="space-y-1 text-xs text-[#71717a]">
+            {importHistory.slice(0, 10).map((r) => {
+              const createdAt = r.createdAt ? new Date(r.createdAt).toLocaleString() : '—';
+              const file = r.file?.originalName || '—';
+              const errCount = Array.isArray(r.errors) ? r.errors.length : 0;
+              const warnCount = Array.isArray(r.warnings) ? r.warnings.length : 0;
+              return (
+                <div key={r._id} className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f4f4f5] pt-2">
+                  <div className="min-w-0">
+                    <span className="font-medium text-[#18181b]">{r.success ? 'Success' : 'Issues'}</span>
+                    <span className="ml-2">{createdAt}</span>
+                    <span className="ml-2 text-[#a1a1aa] break-all">{file}</span>
+                  </div>
+                  <div className="shrink-0">
+                    <span className="text-[#71717a]">Warnings {warnCount}</span>
+                    <span className="ml-3 text-[#b91c1c]">Errors {errCount}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

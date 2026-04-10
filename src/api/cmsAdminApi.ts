@@ -19,6 +19,20 @@ export interface AdminCmsUploadResult {
   errors: Array<{ sheet?: string; row?: number; message: string }>;
 }
 
+export interface ContentHubImportRun {
+  _id: string;
+  source?: string;
+  uploadedBy?: string | null;
+  file?: { originalName?: string; mimeType?: string; sizeBytes?: number };
+  overwrite?: boolean;
+  success?: boolean;
+  durationMs?: number;
+  counts?: Record<string, any>;
+  warnings?: Array<{ sheet?: string; row?: number; message: string }>;
+  errors?: Array<{ sheet?: string; row?: number; message: string }>;
+  createdAt?: string;
+}
+
 export interface Page {
   _id: string;
   slug: string;
@@ -79,6 +93,13 @@ export async function uploadContentHubMaster(file: File, overwrite = true): Prom
     method: 'POST',
     body: formData,
   });
+}
+
+export async function fetchContentHubImportHistory(limit = 20): Promise<ContentHubImportRun[]> {
+  const res = await apiRequest<{ success: boolean; data: ContentHubImportRun[] }>(
+    `${PREFIX}/import-history/content-hub?limit=${encodeURIComponent(String(limit))}`
+  );
+  return Array.isArray(res?.data) ? res.data : [];
 }
 
 export async function fetchPages(): Promise<Page[]> {
