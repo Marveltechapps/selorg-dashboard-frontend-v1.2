@@ -221,43 +221,6 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
         </div>
       )}
 
-      {!!importHistory.length && (
-        <div className="rounded-xl border border-[#e4e4e7] bg-white p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-[#18181b]">Import history</div>
-            <button
-              type="button"
-              className="text-xs text-[#71717a] hover:text-[#18181b]"
-              onClick={() => void refreshHistory()}
-              disabled={importing}
-            >
-              Refresh
-            </button>
-          </div>
-          <div className="space-y-1 text-xs text-[#71717a]">
-            {importHistory.slice(0, 10).map((r) => {
-              const createdAt = r.createdAt ? new Date(r.createdAt).toLocaleString() : '—';
-              const file = r.file?.originalName || '—';
-              const errCount = Array.isArray(r.errors) ? r.errors.length : 0;
-              const warnCount = Array.isArray(r.warnings) ? r.warnings.length : 0;
-              return (
-                <div key={r._id} className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f4f4f5] pt-2">
-                  <div className="min-w-0">
-                    <span className="font-medium text-[#18181b]">{r.success ? 'Success' : 'Issues'}</span>
-                    <span className="ml-2">{createdAt}</span>
-                    <span className="ml-2 text-[#a1a1aa] break-all">{file}</span>
-                  </div>
-                  <div className="shrink-0">
-                    <span className="text-[#71717a]">Warnings {warnCount}</span>
-                    <span className="ml-3 text-[#b91c1c]">Errors {errCount}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
@@ -340,6 +303,43 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
           {SHARED_ITEMS.map(renderCard)}
         </div>
       </div>
+
+      {!!importHistory.length && (
+        <div className="rounded-xl border border-[#e4e4e7] bg-white p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-[#18181b]">Import history</div>
+            <button
+              type="button"
+              className="text-xs text-[#71717a] hover:text-[#18181b]"
+              onClick={() => void refreshHistory()}
+              disabled={importing}
+            >
+              Refresh
+            </button>
+          </div>
+          <div className="space-y-1 text-xs text-[#71717a]">
+            {importHistory.slice(0, 10).map((r) => {
+              const createdAt = r.createdAt ? new Date(r.createdAt).toLocaleString() : '—';
+              const file = r.file?.originalName || '—';
+              const errCount = Array.isArray(r.errors) ? r.errors.length : 0;
+              const warnCount = Array.isArray(r.warnings) ? r.warnings.length : 0;
+              return (
+                <div key={r._id} className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f4f4f5] pt-2">
+                  <div className="min-w-0">
+                    <span className="font-medium text-[#18181b]">{r.success ? 'Success' : 'Issues'}</span>
+                    <span className="ml-2">{createdAt}</span>
+                    <span className="ml-2 text-[#a1a1aa] break-all">{file}</span>
+                  </div>
+                  <div className="shrink-0">
+                    <span className="text-[#71717a]">Warnings {warnCount}</span>
+                    <span className="ml-3 text-[#b91c1c]">Errors {errCount}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
