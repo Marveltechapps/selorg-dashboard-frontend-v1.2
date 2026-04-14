@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  BarChart3, TrendingUp, PieChart, Download, Calendar, RefreshCw 
+  BarChart3, TrendingUp, PieChart, Download, Calendar, RefreshCw, Users
 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { fetchPickerWorkforceAnalytics, type PickerAnalyticsResponse } from '@/api/admin/pickerWorkforceAnalyticsApi';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -41,6 +43,8 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
   const [riderData, setRiderData] = useState<RiderPerformancePoint[]>([]);
   const [slaData, setSlaData] = useState<SlaAdherencePoint[]>([]);
   const [fleetData, setFleetData] = useState<FleetUtilizationPoint[]>([]);
+  const [pickerAnalytics, setPickerAnalytics] = useState<PickerAnalyticsResponse | null>(null);
+  const [pickerAnalyticsLoading, setPickerAnalyticsLoading] = useState(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -79,6 +83,25 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
   useEffect(() => {
     loadData(activeMetric, false);
   }, [activeMetric, granularity, dateRange]);
+
+  const loadPickerAnalytics = async () => {
+    setPickerAnalyticsLoading(true);
+    try {
+      const period = dateRange === '30d' || dateRange === '90d' ? 'month' : 'week';
+      const data = await fetchPickerWorkforceAnalytics({ period });
+      if (isMountedRef.current) setPickerAnalytics(data);
+    } catch (e: any) {
+      if (isMountedRef.current) {
+        toast.error('Picker analytics unavailable', { description: e?.message });
+      }
+    } finally {
+      if (isMountedRef.current) setPickerAnalyticsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPickerAnalytics();
+  }, [dateRange]);
 
   const loadData = async (metric: MetricType, silent: boolean = false) => {
     if (!silent) {
@@ -285,6 +308,100 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
                {activeMetric === 'fleet' && <FleetUtilizationCharts data={fleetData} loading={loading} />}
              </div>
           </div>
+      </div>
+
+      {/* Picker workforce performance */}
+      <div className="space-y-4 border-t border-[#E0E0E0] pt-8">
+        <div className="flex items-center gap-2">
+          <Users className="text-[#F97316]" size={22} />
+          <div>
+            <h2 className="text-lg font-bold text-[#212121]">Picker performance</h2>
+            <p className="text-xs text-[#757575]">Workforce metrics from picker attendance and issues</p>
+          </div>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={loadPickerAnalytics} disabled={pickerAnalyticsLoading}>
+            <RefreshCw size={14} className={cn(pickerAnalyticsLoading && 'animate-spin')} />
+          </Button>
+        </div>
+        {pickerAnalytics && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Active pickers', value: pickerAnalytics.summary.totalActivePickers },
+                { label: 'Avg picks / hr', value: pickerAnalytics.summary.avgPicksPerHour },
+                { label: 'Avg accuracy %', value: pickerAnalytics.summary.avgAccuracy },
+                { label: 'Attendance rate %', value: pickerAnalytics.summary.avgAttendanceRate },
+              ].map((c) => (
+                <div key={c.label} className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm">
+                  <p className="text-xs text-[#757575] font-medium">{c.label}</p>
+                  <p className="text-2xl font-bold text-[#212121] mt-1">{c.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm">
+              <h3 className="text-sm font-semibold text-[#212121] mb-4">Daily picks (range)</h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={pickerAnalytics.dailyTrend.slice(-7)}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Bar dataKey="totalPicks" fill="#F97316" radius={[4, 4, 0, 0]} name="Picks" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#E0E0E0] font-semibold text-sm">Top performers</div>
+                <table className="w-full text-sm">
+                  <thead className="bg-[#fafafa] text-[#757575] text-left">
+                    <tr>
+                      <th className="px-4 py-2">Name</th>
+                      <th className="px-4 py-2">Picks/hr</th>
+                      <th className="px-4 py-2">Accuracy</th>
+                      <th className="px-4 py-2">Shifts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pickerAnalytics.topPerformers.map((p) => (
+                      <tr key={p.pickerId} className="border-t border-[#f0f0f0]">
+                        <td className="px-4 py-2 font-medium">{p.name}</td>
+                        <td className="px-4 py-2">{p.picksPerHour}</td>
+                        <td className="px-4 py-2">{p.accuracy}%</td>
+                        <td className="px-4 py-2">{p.shiftsThisMonth}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#E0E0E0] font-semibold text-sm">By location</div>
+                <table className="w-full text-sm">
+                  <thead className="bg-[#fafafa] text-[#757575] text-left">
+                    <tr>
+                      <th className="px-4 py-2">Location</th>
+                      <th className="px-4 py-2">Active</th>
+                      <th className="px-4 py-2">Avg picks/hr</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pickerAnalytics.locationBreakdown.map((l) => (
+                      <tr key={l.locationId || l.locationName} className="border-t border-[#f0f0f0]">
+                        <td className="px-4 py-2">{l.locationName}</td>
+                        <td className="px-4 py-2">{l.activePickers}</td>
+                        <td className="px-4 py-2">{l.avgPicksPerHour}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+        {pickerAnalyticsLoading && !pickerAnalytics && (
+          <div className="flex justify-center py-12 text-[#757575] text-sm">Loading picker metrics…</div>
+        )}
       </div>
 
       <ExportReportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />

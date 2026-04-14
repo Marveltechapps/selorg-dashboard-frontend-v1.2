@@ -17,6 +17,7 @@ import { NotificationHandler } from './components/NotificationHandler';
 import { useDynamicFavicon } from './hooks/useDynamicFavicon';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { LegalManagerPage } from './components/screens/legal/LegalManagerPage';
 
 const VALID_DASHBOARDS = ['darkstore', 'production', 'merch', 'rider', 'finance', 'vendor', 'warehouse', 'admin'] as const;
 
@@ -102,6 +103,15 @@ function App() {
 
           {/* Public vendor self-onboarding (invite token required) */}
           <Route path="/vendor-signup" element={<VendorSignup />} />
+
+          <Route
+            path="/legal"
+            element={
+              <ProtectedRoute>
+                <LegalManagerPage />
+              </ProtectedRoute>
+            }
+          />
           
           <Route 
             path="/darkstore/:screen?" 

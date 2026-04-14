@@ -39,13 +39,29 @@ export interface PickerApprovalDetails extends Omit<PickerApprovalListItem, 'tra
   createdAt?: string;
   updatedAt?: string;
   documents?: {
-    aadhar?: { front: string | null; back: string | null };
-    pan?: { front: string | null; back: string | null };
+    aadhar?: {
+      front: { url: string | null; status?: string; rejectionReason?: string | null; reviewedAt?: string | null } | null;
+      back: { url: string | null; status?: string; rejectionReason?: string | null; reviewedAt?: string | null } | null;
+    };
+    pan?: {
+      front: { url: string | null; status?: string; rejectionReason?: string | null; reviewedAt?: string | null } | null;
+      back: { url: string | null; status?: string; rejectionReason?: string | null; reviewedAt?: string | null } | null;
+    };
   };
   hhdUserId?: string | null;
+  faceVerificationRecord?: {
+    status?: string;
+    verifiedAt?: string | null;
+    confidence?: number | null;
+    overrideBy?: string | null;
+    overrideReason?: string;
+    overrideAt?: string | null;
+  };
   bankDetails?: Array<{
+    id: string;
     accountHolder: string;
     accountNumber: string | null;
+    rawAccountNumber?: string | null;
     ifscCode: string;
     bankName?: string;
     branch?: string;
@@ -142,3 +158,42 @@ export const updatePickerStatus = async (
   );
   return res.data;
 };
+
+export const approveDocument = async (pickerId: string, docType: string, side?: string) =>
+  apiRequest(API_ENDPOINTS.admin.pickers.approveDocument(pickerId), {
+    method: 'PATCH',
+    body: JSON.stringify({ docType, side, action: 'approve' }),
+  });
+
+export const rejectDocument = async (pickerId: string, docType: string, reason: string, side?: string) =>
+  apiRequest(API_ENDPOINTS.admin.pickers.approveDocument(pickerId), {
+    method: 'PATCH',
+    body: JSON.stringify({ docType, side, action: 'reject', reason }),
+  });
+
+export const fetchPickerTrainingProgress = async (pickerId: string) =>
+  apiRequest<{ success: boolean; data: { overallCompleted: boolean; videos: Array<{ videoId: string; title: string; watchedSeconds: number; duration: number; progress: number; completed: boolean; completedAt: string | null }> } }>(
+    API_ENDPOINTS.admin.pickers.trainingProgress(pickerId)
+  );
+
+export const reviewBankAccount = async (
+  pickerId: string,
+  accountId: string,
+  action: 'approve' | 'reject',
+  reason?: string
+) =>
+  apiRequest(API_ENDPOINTS.admin.pickers.reviewBankAccount(pickerId, accountId), {
+    method: 'PATCH',
+    body: JSON.stringify({ action, reason }),
+  });
+
+export const fetchPickerFaceVerification = async (pickerId: string) =>
+  apiRequest<{ success: boolean; data: { status: string; verifiedAt: string | null; confidence: number | null; faceVerification: boolean } }>(
+    API_ENDPOINTS.admin.pickers.faceVerification(pickerId)
+  );
+
+export const overrideFaceVerification = async (pickerId: string, action: 'approve' | 'reject', reason: string) =>
+  apiRequest(API_ENDPOINTS.admin.pickers.overrideFaceVerification(pickerId), {
+    method: 'PATCH',
+    body: JSON.stringify({ action, reason }),
+  });

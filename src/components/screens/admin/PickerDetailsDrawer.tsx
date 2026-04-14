@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,12 @@ import {
   fetchPickerActionLogs,
   linkPickerHhd,
   unlinkPickerHhd,
+  approveDocument,
+  rejectDocument,
+  fetchPickerTrainingProgress,
+  reviewBankAccount,
+  fetchPickerFaceVerification,
+  overrideFaceVerification,
   PickerStatus,
 } from './pickerApprovalsApi';
 import { toast } from 'sonner';
@@ -42,6 +48,14 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
   const [rejectReason, setRejectReason] = useState('');
   const [actionLogs, setActionLogs] = useState<any[]>([]);
   const [actionLogsLoading, setActionLogsLoading] = useState(false);
+  const [trainingRows, setTrainingRows] = useState<Array<{ videoId: string; title: string; watchedSeconds: number; duration: number; progress: number; completed: boolean; completedAt: string | null }>>([]);
+  const [faceVerification, setFaceVerification] = useState<{ status: string; verifiedAt: string | null; confidence: number | null; faceVerification: boolean } | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+
+  const overallTrainingCompleted = useMemo(
+    () => trainingRows.length > 0 && trainingRows.every((row) => row.completed),
+    [trainingRows]
+  );
 
   const handleStatusUpdate = async (status: PickerStatus, reason?: string) => {
     if (!picker) return;
@@ -107,6 +121,68 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
 
   if (!picker && !open) return null;
 
+  const docThumb = (
+    label: string,
+    docType: 'aadhar' | 'pan',
+    side: 'front' | 'back',
+    payload?: { url: string | null; status?: string; rejectionReason?: string | null } | null
+  ) => (
+    <div className="border rounded-lg p-3 space-y-2" key={`${docType}-${side}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">{label}</p>
+        <Badge variant="outline" className="capitalize">
+          {payload?.status || 'pending'}
+        </Badge>
+      </div>
+      {payload?.url ? (
+        <a href={payload.url} target="_blank" rel="noreferrer">
+          <img src={payload.url} alt={`${docType}-${side}`} className="h-24 w-24 rounded object-cover border" />
+        </a>
+      ) : (
+        <p className="text-xs text-gray-500">Not uploaded</p>
+      )}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={reviewLoading || !payload?.url}
+          onClick={async () => {
+            if (!picker) return;
+            setReviewLoading(true);
+            try {
+              await approveDocument(picker.pickerId, docType, side);
+              toast.success('Document approved');
+              onRefresh();
+            } finally {
+              setReviewLoading(false);
+            }
+          }}
+        >
+          Approve
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={reviewLoading || !payload?.url}
+          onClick={async () => {
+            if (!picker) return;
+            const reason = window.prompt('Rejection reason') || 'Rejected by admin';
+            setReviewLoading(true);
+            try {
+              await rejectDocument(picker.pickerId, docType, reason, side);
+              toast.success('Document rejected');
+              onRefresh();
+            } finally {
+              setReviewLoading(false);
+            }
+          }}
+        >
+          Reject
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
       <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col h-full bg-white">
@@ -141,8 +217,32 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
 
         <Tabs defaultValue="profile" className="flex flex-col flex-1 overflow-hidden">
           <div className="px-6 pt-2 border-b border-gray-100">
-            <TabsList className="bg-gray-100">
+            <TabsList className="bg-gray-100 flex-wrap h-auto">
               <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger
+                value="training"
+                onClick={() => {
+                  if (!picker?.pickerId) return;
+                  fetchPickerTrainingProgress(picker.pickerId)
+                    .then((res) => setTrainingRows(res.data.videos || []))
+                    .catch(() => setTrainingRows([]));
+                }}
+              >
+                Training
+              </TabsTrigger>
+              <TabsTrigger value="bank">Bank</TabsTrigger>
+              <TabsTrigger
+                value="face"
+                onClick={() => {
+                  if (!picker?.pickerId) return;
+                  fetchPickerFaceVerification(picker.pickerId)
+                    .then((res) => setFaceVerification(res.data))
+                    .catch(() => setFaceVerification(null));
+                }}
+              >
+                Face Verification
+              </TabsTrigger>
               <TabsTrigger
                 value="audit"
                 onClick={() => {
@@ -218,66 +318,6 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
               </div>
             </div>
 
-            {/* Documents */}
-            <div className="space-y-4">
-              <h4 className="font-semibold flex items-center gap-2">
-                <FileText size={18} /> Documents
-              </h4>
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm">
-                {picker.documents ? (
-                  <div className="space-y-2">
-                    {picker.documents.aadhar && (
-                      <div>
-                        <span className="text-gray-500">Aadhar: </span>
-                        {picker.documents.aadhar.front || picker.documents.aadhar.back ? (
-                          <span className="text-green-600">Uploaded</span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </div>
-                    )}
-                    {picker.documents.pan && (
-                      <div>
-                        <span className="text-gray-500">PAN: </span>
-                        {picker.documents.pan.front || picker.documents.pan.back ? (
-                          <span className="text-green-600">Uploaded</span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No documents</p>
-                )}
-              </div>
-            </div>
-
-            {/* Bank Details */}
-            {picker.bankDetails && picker.bankDetails.length > 0 && (
-              <div className="space-y-4">
-                <h4 className="font-semibold flex items-center gap-2">
-                  <CreditCard size={18} /> Bank
-                </h4>
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-2 text-sm">
-                  {picker.bankDetails.map((b, i) => (
-                    <div key={i}>
-                      <span className="font-medium">{b.accountHolder}</span>
-                      {b.accountNumber && (
-                        <span className="text-gray-500 ml-2">…{b.accountNumber.slice(-4)}</span>
-                      )}
-                      <Badge
-                        variant="outline"
-                        className={`ml-2 text-xs ${b.isVerified ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}
-                      >
-                        {b.isVerified ? 'Verified' : 'Not verified'}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* HHD Device Linking */}
             <div className="space-y-4">
               <h4 className="font-semibold flex items-center gap-2">
@@ -351,6 +391,124 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
           )}
           </div>
         </ScrollArea>
+          </TabsContent>
+          <TabsContent value="documents" className="flex-1 overflow-y-auto mt-0 p-6">
+            <h4 className="font-semibold text-gray-900 mb-4">Documents Review</h4>
+            <div className="grid grid-cols-2 gap-3">
+              {docThumb('Aadhar Front', 'aadhar', 'front', picker?.documents?.aadhar?.front || null)}
+              {docThumb('Aadhar Back', 'aadhar', 'back', picker?.documents?.aadhar?.back || null)}
+              {docThumb('PAN Front', 'pan', 'front', picker?.documents?.pan?.front || null)}
+              {docThumb('PAN Back', 'pan', 'back', picker?.documents?.pan?.back || null)}
+            </div>
+          </TabsContent>
+          <TabsContent value="training" className="flex-1 overflow-y-auto mt-0 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-semibold text-gray-900">Training Progress</h4>
+              <Badge variant="outline" className={overallTrainingCompleted ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}>
+                {overallTrainingCompleted ? 'Completed' : 'In Progress'}
+              </Badge>
+            </div>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Video Title</th>
+                    <th className="px-3 py-2 text-left">Progress</th>
+                    <th className="px-3 py-2 text-left">Watch %</th>
+                    <th className="px-3 py-2 text-left">Completed</th>
+                    <th className="px-3 py-2 text-left">Completed At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trainingRows.map((row) => (
+                    <tr key={row.videoId} className="border-t">
+                      <td className="px-3 py-2">{row.title}</td>
+                      <td className="px-3 py-2">{row.watchedSeconds}s / {row.duration}s</td>
+                      <td className="px-3 py-2">{row.progress}%</td>
+                      <td className="px-3 py-2">{row.completed ? 'Yes' : 'No'}</td>
+                      <td className="px-3 py-2">{row.completedAt ? new Date(row.completedAt).toLocaleString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+          <TabsContent value="bank" className="flex-1 overflow-y-auto mt-0 p-6">
+            <h4 className="font-semibold text-gray-900 mb-4">Bank Accounts</h4>
+            <div className="space-y-3">
+              {(picker?.bankDetails || []).map((bank) => (
+                <div key={bank.id} className="border rounded-lg p-3 text-sm">
+                  <div className="font-medium">{bank.accountHolder}</div>
+                  <div className="text-gray-600">A/C: {bank.accountNumber || '—'}</div>
+                  <div className="text-gray-600">IFSC: {bank.ifscCode}</div>
+                  <div className="text-gray-600">Bank: {bank.bankName || '—'}</div>
+                  <Badge variant="outline" className={bank.isVerified ? 'bg-green-50 text-green-700 mt-2' : 'bg-gray-50 text-gray-700 mt-2'}>
+                    {bank.isVerified ? 'Verified' : 'Not verified'}
+                  </Badge>
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        if (!picker) return;
+                        await reviewBankAccount(picker.pickerId, bank.id, 'approve');
+                        toast.success('Bank approved');
+                        onRefresh();
+                      }}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={async () => {
+                        if (!picker) return;
+                        const reason = window.prompt('Rejection reason') || 'Rejected by admin';
+                        await reviewBankAccount(picker.pickerId, bank.id, 'reject', reason);
+                        toast.success('Bank rejected');
+                        onRefresh();
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+          <TabsContent value="face" className="flex-1 overflow-y-auto mt-0 p-6">
+            <h4 className="font-semibold text-gray-900 mb-4">Face Verification</h4>
+            <div className="space-y-2 text-sm">
+              <div>Status: <span className="font-medium capitalize">{faceVerification?.status || (picker?.faceVerification ? 'verified' : 'pending')}</span></div>
+              <div>Verified At: {faceVerification?.verifiedAt ? new Date(faceVerification.verifiedAt).toLocaleString() : '—'}</div>
+              <div>Confidence: {faceVerification?.confidence ?? '—'}</div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  if (!picker) return;
+                  await overrideFaceVerification(picker.pickerId, 'approve', 'Approved by admin');
+                  toast.success('Face verification approved');
+                  onRefresh();
+                }}
+              >
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={async () => {
+                  if (!picker) return;
+                  const reason = window.prompt('Override reason') || 'Rejected by admin';
+                  await overrideFaceVerification(picker.pickerId, 'reject', reason);
+                  toast.success('Face verification rejected');
+                  onRefresh();
+                }}
+              >
+                Reject
+              </Button>
+            </div>
           </TabsContent>
           <TabsContent value="audit" className="flex-1 overflow-y-auto mt-0 p-6">
             <h4 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Clock, Zap, UserCheck, X, Download, Search, Plus, Calendar, TrendingUp, Award, AlertCircle, CheckCircle2, XCircle, Coffee } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Users, Clock, Zap, UserCheck, X, Download, Search, Plus, Calendar, TrendingUp, Award, AlertCircle, CheckCircle2, XCircle, Coffee, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState, LoadingState } from '../../ui/ux-components';
 import { toast } from 'sonner';
@@ -60,13 +60,9 @@ export function WorkforceShifts() {
   const [newLeave, setNewLeave] = useState({ staffId: '', leaveType: 'casual' as const, startDate: '', endDate: '', reason: '' });
   const [newTraining, setNewTraining] = useState({ title: '', type: '', date: '', duration: '', instructor: '', capacity: '' });
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, activeTab === 'live-attendance' ? 15000 : 10000);
-    return () => clearInterval(interval);
-  }, [activeTab, liveDate, liveSite]);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'overview') {
@@ -96,7 +92,26 @@ export function WorkforceShifts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, liveDate, liveSite]);
+
+  useEffect(() => {
+    void loadData();
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (activeTab === 'live-attendance') {
+      intervalRef.current = setInterval(() => {
+        void loadData();
+      }, 30000);
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [activeTab, liveDate, liveSite, loadData]);
 
   const createSchedule = async () => {
     if (newSchedule.date && newSchedule.requiredStaff) {
@@ -351,6 +366,16 @@ export function WorkforceShifts() {
         title="Workforce & Shifts"
         subtitle="Shift rostering, staff performance, and labor productivity"
         actions={[
+          <button
+            key="refresh"
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC] flex items-center gap-2 disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>,
           <button 
             key="export"
             onClick={exportData}

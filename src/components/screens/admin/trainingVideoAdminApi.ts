@@ -76,3 +76,40 @@ export async function deleteTrainingVideo(id: string): Promise<void> {
     method: 'DELETE',
   });
 }
+
+export interface PickerTrainingOverviewFilters {
+  videoId?: string;
+  status?: 'completed' | 'in_progress' | 'not_started';
+  page?: number;
+  limit?: number;
+}
+
+export interface PickerTrainingOverviewRow {
+  pickerId: string;
+  pickerName: string;
+  phone: string;
+  videoId: string;
+  videoTitle: string;
+  watchPercent: number;
+  completed: boolean;
+  completedAt: string | null;
+  lastSeen: string | null;
+  status: 'completed' | 'in_progress' | 'not_started';
+}
+
+export async function fetchPickerTrainingOverview(filters: PickerTrainingOverviewFilters) {
+  const params = new URLSearchParams(
+    Object.entries(filters)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => [key, String(value)])
+  );
+  const query = params.toString();
+  return apiRequest<{
+    success: boolean;
+    data: PickerTrainingOverviewRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>(`${API_ENDPOINTS.admin.trainingVideos.pickerProgress}${query ? `?${query}` : ''}`);
+}

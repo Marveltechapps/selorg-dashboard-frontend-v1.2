@@ -14,6 +14,8 @@ import { User, CreditCard, Clock, CheckCircle2, XCircle, CircleDot } from 'lucid
 import {
   PickerWithdrawalDetails,
   updatePickerWithdrawal,
+  fetchPickerEarningsBreakdown,
+  fetchPickerWalletBalance,
 } from './pickerWithdrawalsApi';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -40,6 +42,19 @@ export function PickerPayoutDetailsDrawer({
   const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | 'mark_paid' | null>(null);
   const [showRejectReason, setShowRejectReason] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [earnings, setEarnings] = useState<any | null>(null);
+  const [walletBalance, setWalletBalance] = useState<{ availableBalance: number; pendingBalance: number; totalEarnings: number; currency: string } | null>(null);
+
+  React.useEffect(() => {
+    if (!withdrawal?.pickerId || !open) return;
+    Promise.all([
+      fetchPickerEarningsBreakdown(withdrawal.pickerId).catch(() => null),
+      fetchPickerWalletBalance(withdrawal.pickerId).catch(() => null),
+    ]).then(([earningsRes, balanceRes]) => {
+      setEarnings(earningsRes);
+      setWalletBalance(balanceRes);
+    });
+  }, [open, withdrawal?.pickerId]);
 
   const handleApprove = async () => {
     if (!withdrawal) return;
@@ -258,6 +273,24 @@ export function PickerPayoutDetailsDrawer({
 
             {withdrawal.walletLedger && withdrawal.walletLedger.length > 0 && (
               <div className="space-y-4">
+                <h4 className="font-semibold">Earnings This Month</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="border rounded-lg p-3 text-sm">Base Pay: ₹{earnings?.basePay ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">Overtime: ₹{earnings?.overtime ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">Performance Bonus: ₹{earnings?.performance ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">Attendance Bonus: ₹{earnings?.attendance ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">Gross Pay: ₹{earnings?.grossPay ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">TDS: ₹{earnings?.deductions?.tds ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm col-span-2 font-semibold">
+                    Net Payout: ₹{earnings?.netPayout ?? 0}
+                  </div>
+                </div>
+                <h4 className="font-semibold mt-2">Wallet Balance</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="border rounded-lg p-3 text-sm">Available: ₹{walletBalance?.availableBalance ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">Pending: ₹{walletBalance?.pendingBalance ?? 0}</div>
+                  <div className="border rounded-lg p-3 text-sm">All-time: ₹{walletBalance?.totalEarnings ?? 0}</div>
+                </div>
                 <h4 className="font-semibold">Wallet Ledger (Recent)</h4>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">

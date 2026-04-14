@@ -1,5 +1,6 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../../config/api';
 import { getAuthToken } from '../../../contexts/AuthContext';
+// TODO: delete warehouseMockData.ts after UAT
 
 function authHeaders(): Record<string, string> {
   const token = getAuthToken();
@@ -243,17 +244,17 @@ export async function assignPickerToOrder(id: string, pickerName: string): Promi
 }
 
 export async function fetchPickers(): Promise<PickerAssignment[]> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.outbound.pickers}`, { headers: authHeaders() });
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.admin.pickers.list}?status=ACTIVE&shiftActive=true`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch pickers');
   const result = await response.json();
-  const list = result.data ?? result ?? [];
+  const list = result.data?.data ?? result.data ?? result ?? [];
   const arr = Array.isArray(list) ? list : [];
   return arr.map((p: any) => {
     const activeOrders = p.activeOrders ?? p.currentOrders ?? 0;
-    const rawStatus = (p.status ?? 'available').toString().toLowerCase();
-    const status = rawStatus === 'break' ? 'break' : rawStatus === 'active' ? (activeOrders > 0 ? 'busy' : 'available') : (activeOrders > 0 ? 'busy' : 'available');
+    const rawStatus = (p.status ?? 'ACTIVE').toString().toLowerCase();
+    const status = rawStatus === 'active' ? (activeOrders > 0 ? 'busy' : 'available') : rawStatus;
     return {
-      id: p.id ?? p.pickerId,
+      id: p.pickerId ?? p.id,
       pickerId: p.pickerId ?? p.id,
       pickerName: p.pickerName ?? p.name,
       status,

@@ -13,7 +13,13 @@ export interface PickerWithdrawalListItem {
   bankDetails: { last4: string; bankName?: string } | null;
 }
 
-export interface PickerWithdrawalDetails extends PickerWithdrawalListItem {
+export interface PickerWithdrawalDetails {
+  id: string;
+  pickerId: string;
+  pickerName: string;
+  amount: number;
+  status: WithdrawalStatus;
+  requestedAt: string;
   pickerPhone?: string;
   pickerEmail?: string;
   approvedAt?: string;
@@ -88,4 +94,54 @@ export async function updatePickerWithdrawal(
     }
   );
   return res.data;
+}
+
+export async function fetchPickerEarningsBreakdown(pickerId: string) {
+  const res = await apiRequest<{ success: boolean; data: any }>(
+    API_ENDPOINTS.finance.pickerWithdrawals.earningsBreakdown(pickerId)
+  );
+  return res.data;
+}
+
+export async function fetchPickerWalletBalance(pickerId: string) {
+  const res = await apiRequest<{ success: boolean; data: { availableBalance: number; pendingBalance: number; totalEarnings: number; currency: string } }>(
+    API_ENDPOINTS.finance.pickerWithdrawals.walletBalance(pickerId)
+  );
+  return res.data;
+}
+
+export interface PickerTransactionRow {
+  id: string;
+  pickerId: string;
+  pickerName: string;
+  pickerPhone: string;
+  type: string;
+  amount: number;
+  description: string;
+  status: string;
+  createdAt: string;
+}
+
+export async function fetchAllPickerTransactions(filters: {
+  search?: string;
+  startDate?: string;
+  endDate?: string;
+  type?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams(
+    Object.entries(filters)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => [key, String(value)])
+  );
+  const query = params.toString();
+  return apiRequest<{
+    success: boolean;
+    data: PickerTransactionRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>(`${API_ENDPOINTS.finance.pickerTransactions}${query ? `?${query}` : ''}`);
 }

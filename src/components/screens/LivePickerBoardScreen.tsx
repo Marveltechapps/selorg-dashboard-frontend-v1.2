@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { websocketService } from '@/utils/websocket';
 import { RefreshCw, Loader2, Zap, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getPickersLive, type LivePicker } from '../../api/darkstore/pickers.api';
 import { PageHeader } from '../ui/page-header';
+import { useAuth } from '../../contexts/AuthContext';
 
 function formatLastActivity(d: string | null | undefined): string {
   if (!d) return '—';
@@ -49,9 +50,11 @@ function WorkerStatusBadge({ online, derivedStatus }: { online: boolean; derived
 }
 
 export function LivePickerBoardScreen() {
+  const { isAuthenticated } = useAuth();
   const [pickers, setPickers] = useState<LivePicker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchPickers = useCallback(async () => {
     try {
@@ -66,20 +69,34 @@ export function LivePickerBoardScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchPickers();
+  const debouncedFetch = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void fetchPickers();
+    }, 3000);
   }, [fetchPickers]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    void fetchPickers();
+  }, [isAuthenticated, fetchPickers]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     websocketService.connect();
-    const handler = () => fetchPickers();
-    websocketService.on('order:updated', handler);
-    websocketService.on('picker:updated', handler);
+    websocketService.on('order:updated', debouncedFetch);
+    websocketService.on('picker:updated', debouncedFetch);
     return () => {
-      websocketService.off('order:updated', handler);
-      websocketService.off('picker:updated', handler);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      websocketService.off('order:updated', debouncedFetch);
+      websocketService.off('picker:updated', debouncedFetch);
+      // Do not call disconnect(): shared service; disconnect() clears all listeners app-wide.
     };
-  }, [fetchPickers]);
+  }, [isAuthenticated, debouncedFetch]);
 
   return (
     <div className="space-y-6">

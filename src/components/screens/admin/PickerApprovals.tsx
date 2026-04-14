@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { PickerApprovalsTable } from './PickerApprovalsTable';
 import { PickerDetailsDrawer } from './PickerDetailsDrawer';
@@ -9,12 +9,12 @@ import {
   fetchPickerApprovalsList,
   fetchPickerDetails,
 } from './pickerApprovalsApi';
-import { fetchPickersWithMetrics } from '@/api/darkstore/pickers.api';
+import { fetchPickersWithMetrics, type PickerPerformanceItem } from '@/api/darkstore/pickers.api';
 
 export function PickerApprovals() {
   const [data, setData] = useState<PickerApprovalListItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [riskMap, setRiskMap] = useState<Record<string, { riskScore: number; riskLevel: 'low' | 'medium' | 'high' }>>({});
+  const [rawPickersMetrics, setRawPickersMetrics] = useState<PickerPerformanceItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<PickerApprovalsFilter>({
     page: 1,
@@ -24,27 +24,29 @@ export function PickerApprovals() {
   const [selectedPicker, setSelectedPicker] = useState<PickerApprovalDetails | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  const riskMap = useMemo(() => {
+    const map: Record<string, { riskScore: number; riskLevel: 'low' | 'medium' | 'high' }> = {};
+    for (const p of rawPickersMetrics) {
+      map[p.pickerId] = { riskScore: p.riskScore, riskLevel: p.riskLevel };
+    }
+    return map;
+  }, [rawPickersMetrics]);
+
   const loadList = useCallback(async () => {
     setIsLoading(true);
     try {
       const [result, pickersRes] = await Promise.all([
         fetchPickerApprovalsList(filters),
-        fetchPickersWithMetrics({ risk: undefined }).catch(() => ({ success: false, data: [] })),
+        fetchPickersWithMetrics({ risk: undefined }).catch(() => ({ success: false, data: [] as PickerPerformanceItem[] })),
       ]);
       setData(result.data);
       setTotal(result.total);
-      const map: Record<string, { riskScore: number; riskLevel: 'low' | 'medium' | 'high' }> = {};
-      if (pickersRes.success && pickersRes.data) {
-        for (const p of pickersRes.data) {
-          map[p.pickerId] = { riskScore: p.riskScore, riskLevel: p.riskLevel };
-        }
-      }
-      setRiskMap(map);
+      setRawPickersMetrics(pickersRes.success && pickersRes.data ? pickersRes.data : []);
     } catch (e) {
       toast.error('Failed to load picker approvals');
       setData([]);
       setTotal(0);
-      setRiskMap({});
+      setRawPickersMetrics([]);
     } finally {
       setIsLoading(false);
     }

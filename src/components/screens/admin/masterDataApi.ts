@@ -1,4 +1,5 @@
 import { apiRequest } from '@/api/apiClient';
+import { getPickers, type AdminPickerListRow } from '@/api/admin/pickerApi';
 
 export interface City {
   id: string;
@@ -397,4 +398,50 @@ export async function updateRiderStatus(id: string, payload: { status?: string; 
     cityId: r.cityId,
     stats: r.stats,
   };
+}
+
+/** Picker workforce row (admin GET /admin/pickers list) */
+export type MasterPickerRow = AdminPickerListRow;
+
+export interface MasterPickerDetail extends MasterPickerRow {
+  email?: string;
+  docsStatus?: string;
+  onboardingStage?: string;
+  attendanceSummary?: { daysWorkedThisMonth: number; shiftsRecorded: number; ordersCompletedThisMonth: number };
+  device?: { deviceId: string; serial: string; status: string; assignedAt: string | null } | null;
+  documents?: Record<string, unknown>;
+  deletionRequestedAt?: string | null;
+}
+
+export async function fetchMasterPickers(params?: {
+  status?: string;
+  locationId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ data: MasterPickerRow[]; total: number; page: number; pageSize: number }> {
+  const res = await getPickers({
+    page: params?.page,
+    limit: params?.limit,
+    locationId: params?.locationId,
+    search: params?.search,
+    status: params?.status && params.status !== 'all' ? params.status : undefined,
+  });
+  if (!res?.success || !res.data) throw new Error('Failed to load pickers');
+  return res.data;
+}
+
+export async function getMasterPickerDetail(id: string): Promise<MasterPickerDetail> {
+  const res = await apiRequest<{ success: boolean; data: MasterPickerDetail }>(`/admin/pickers/${id}`);
+  if (!res?.success || !res.data) throw new Error('Picker not found');
+  return res.data;
+}
+
+export async function updateMasterPickerStatus(id: string, status: string): Promise<MasterPickerDetail> {
+  const res = await apiRequest<{ success: boolean; data: MasterPickerDetail }>(`/admin/pickers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  if (!res?.success || !res.data) throw new Error('Failed to update picker');
+  return res.data;
 }

@@ -97,6 +97,7 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       { id: 'notifications', label: 'Notifications', icon: Bell },
       { id: 'geofence', label: 'Geofence Manager', icon: Map },
       { id: 'compliance', label: 'Compliance', icon: FileCheck },
+      { id: 'legal-documents', label: 'Legal Documents', icon: FileText, href: '/legal' },
     ]},
     { category: "System & App", items: [
       { id: 'content-hub', label: 'CMS', icon: LayoutGrid },

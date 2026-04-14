@@ -131,3 +131,12 @@ export async function fetchPickerPerformance(
   const query = q.toString();
   return apiRequest(`/darkstore/pickers/${pickerId}/performance${query ? `?${query}` : ''}`);
 }
+
+export async function fetchPickerDrilldown(
+  pickerId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ success: boolean; data: any }> {
+  const q = new URLSearchParams({ startDate, endDate }).toString();
+  return apiRequest(`/admin/analytics/picker-drilldown/${pickerId}?${q}`);
+}

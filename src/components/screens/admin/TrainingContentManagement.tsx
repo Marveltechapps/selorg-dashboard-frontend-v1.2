@@ -35,11 +35,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import {
   type TrainingVideo,
   type TrainingVideoFormData,
+  type PickerTrainingOverviewRow,
   fetchTrainingVideos,
+  fetchPickerTrainingOverview,
   createTrainingVideo,
   updateTrainingVideo,
   deleteTrainingVideo,
@@ -77,6 +80,13 @@ export function TrainingContentManagement() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [reordering, setReordering] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'videos' | 'picker-progress'>('videos');
+  const [pickerProgressRows, setPickerProgressRows] = useState<PickerTrainingOverviewRow[]>([]);
+  const [pickerProgressLoading, setPickerProgressLoading] = useState(false);
+  const [progressFilters, setProgressFilters] = useState<{
+    videoId?: string;
+    status?: 'completed' | 'in_progress' | 'not_started';
+  }>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +104,30 @@ export function TrainingContentManagement() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadPickerProgress = useCallback(async () => {
+    setPickerProgressLoading(true);
+    try {
+      const res = await fetchPickerTrainingOverview({
+        videoId: progressFilters.videoId,
+        status: progressFilters.status,
+        page: 1,
+        limit: 100,
+      });
+      setPickerProgressRows(res.data || []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load picker progress');
+      setPickerProgressRows([]);
+    } finally {
+      setPickerProgressLoading(false);
+    }
+  }, [progressFilters.status, progressFilters.videoId]);
+
+  useEffect(() => {
+    if (activeTab === 'picker-progress') {
+      loadPickerProgress();
+    }
+  }, [activeTab, loadPickerProgress]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -280,6 +314,12 @@ export function TrainingContentManagement() {
         </div>
       </div>
 
+      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'videos' | 'picker-progress')}>
+        <TabsList>
+          <TabsTrigger value="videos">Videos</TabsTrigger>
+          <TabsTrigger value="picker-progress">Picker Progress</TabsTrigger>
+        </TabsList>
+        <TabsContent value="videos" className="mt-4">
       <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16">
@@ -398,6 +438,77 @@ export function TrainingContentManagement() {
           </Table>
         )}
       </div>
+        </TabsContent>
+        <TabsContent value="picker-progress" className="mt-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded border px-3 text-sm"
+              value={progressFilters.videoId || ''}
+              onChange={(e) => setProgressFilters((prev) => ({ ...prev, videoId: e.target.value || undefined }))}
+            >
+              <option value="">All videos</option>
+              {videos.map((video) => (
+                <option key={video.videoId} value={video.videoId}>
+                  {video.title}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 rounded border px-3 text-sm"
+              value={progressFilters.status || ''}
+              onChange={(e) =>
+                setProgressFilters((prev) => ({
+                  ...prev,
+                  status: (e.target.value as 'completed' | 'in_progress' | 'not_started') || undefined,
+                }))
+              }
+            >
+              <option value="">All</option>
+              <option value="completed">Completed</option>
+              <option value="in_progress">In Progress</option>
+              <option value="not_started">Not Started</option>
+            </select>
+            <Button variant="outline" size="sm" onClick={loadPickerProgress} disabled={pickerProgressLoading}>
+              {pickerProgressLoading ? 'Loading...' : 'Apply'}
+            </Button>
+          </div>
+          <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-[#f4f4f5]">
+                  <TableHead>Picker Name</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Video</TableHead>
+                  <TableHead>Watch %</TableHead>
+                  <TableHead>Completed</TableHead>
+                  <TableHead>Completed At</TableHead>
+                  <TableHead>Last Seen</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pickerProgressRows.map((row) => (
+                  <TableRow key={`${row.pickerId}-${row.videoId}`}>
+                    <TableCell>{row.pickerName}</TableCell>
+                    <TableCell>{row.phone}</TableCell>
+                    <TableCell>{row.videoTitle}</TableCell>
+                    <TableCell>{row.watchPercent}%</TableCell>
+                    <TableCell>{row.completed ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{row.completedAt ? new Date(row.completedAt).toLocaleString() : '—'}</TableCell>
+                    <TableCell>{row.lastSeen ? new Date(row.lastSeen).toLocaleString() : '—'}</TableCell>
+                  </TableRow>
+                ))}
+                {!pickerProgressLoading && pickerProgressRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-[#71717a] py-8">
+                      No picker progress rows.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Create/Edit Form Modal */}
       <Dialog open={showForm} onOpenChange={setShowForm}>

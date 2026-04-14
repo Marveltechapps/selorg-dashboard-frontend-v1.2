@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Store, RefreshCw, MapPinned, Building2 } from 'lucide-react';
+import { Store, RefreshCw, MapPinned, Building2, Users } from 'lucide-react';
 import { CitiesTab } from './tabs/CitiesTab';
 import { ZonesTab } from './tabs/ZonesTab';
 import { StoresTab } from './tabs/StoresTab';
+import { PickersTab } from './tabs/PickersTab';
 import { WarehousesTab } from './tabs/WarehousesTab';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -13,6 +14,7 @@ const TABS = [
   { value: 'cities', label: 'Cities', icon: MapPinned },
   { value: 'zones', label: 'Zones', icon: MapPinned },
   { value: 'stores', label: 'Stores', icon: Store },
+  { value: 'pickers', label: 'Pickers', icon: Users },
 ] as const;
 
 export function MasterData() {
@@ -71,6 +73,11 @@ export function MasterData() {
               openAddModal={addStoreOpen}
               onAddModalClose={() => setAddStoreOpen(false)}
             />
+          </div>
+        </TabsContent>
+        <TabsContent value="pickers">
+          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm min-h-[320px]">
+            <PickersTab />
           </div>
         </TabsContent>
       </Tabs>

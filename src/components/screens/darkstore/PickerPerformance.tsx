@@ -12,10 +12,13 @@ import {
 import {
   fetchPickerPerformanceSummary,
   fetchPickersWithMetrics,
+  fetchPickerDrilldown,
   PickerPerformanceSummary,
   PickerPerformanceItem,
 } from '@/api/darkstore/pickers.api';
 import { toast } from 'sonner';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const defaultStart = new Date();
 defaultStart.setDate(defaultStart.getDate() - 30);
@@ -43,6 +46,10 @@ export function PickerPerformance() {
   const [startDate, setStartDate] = useState(DEFAULT_START);
   const [endDate, setEndDate] = useState(DEFAULT_END);
   const [riskFilter, setRiskFilter] = useState<'all' | 'high'>('all');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedPicker, setSelectedPicker] = useState<PickerPerformanceItem | null>(null);
+  const [drilldown, setDrilldown] = useState<any>(null);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
 
   const loadData = useCallback(async (e?: React.MouseEvent) => {
     if (e) {
@@ -74,6 +81,21 @@ export function PickerPerformance() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const openDrilldown = async (picker: PickerPerformanceItem) => {
+    setSelectedPicker(picker);
+    setDrawerOpen(true);
+    setDrilldownLoading(true);
+    try {
+      const res = await fetchPickerDrilldown(picker.pickerId, startDate, endDate);
+      setDrilldown(res.data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load picker drilldown');
+      setDrilldown(null);
+    } finally {
+      setDrilldownLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-8">
@@ -234,7 +256,7 @@ export function PickerPerformance() {
               </thead>
               <tbody className="divide-y divide-[#E0E0E0]">
                 {pickers.map((p) => (
-                  <tr key={p.pickerId} className="hover:bg-[#FAFAFA]">
+                  <tr key={p.pickerId} className="hover:bg-[#FAFAFA] cursor-pointer" onClick={() => openDrilldown(p)}>
                     <td className="px-6 py-4 font-medium text-[#212121]">{p.pickerName || '—'}</td>
                     <td className="px-6 py-4">{p.ordersPerDay.toFixed(2)}</td>
                     <td className="px-6 py-4">{p.avgPickTimeSec.toFixed(1)}</td>
@@ -254,6 +276,95 @@ export function PickerPerformance() {
           </div>
         )}
       </div>
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent className="w-[700px] sm:max-w-[700px]">
+          <SheetHeader>
+            <SheetTitle>{selectedPicker?.pickerName || 'Picker'} Drilldown</SheetTitle>
+          </SheetHeader>
+          {drilldownLoading ? (
+            <div className="py-10 text-center text-sm text-[#757575]">Loading...</div>
+          ) : (
+            <Tabs defaultValue="performance" className="mt-4">
+              <TabsList>
+                <TabsTrigger value="performance">Performance</TabsTrigger>
+                <TabsTrigger value="training">Training</TabsTrigger>
+                <TabsTrigger value="issues">Issues</TabsTrigger>
+                <TabsTrigger value="shifts">Shifts</TabsTrigger>
+              </TabsList>
+              <TabsContent value="performance" className="space-y-2 mt-4 text-sm">
+                <div>Orders Picked: {drilldown?.performance?.ordersPicked ?? 0}</div>
+                <div>Avg Pick Time: {drilldown?.performance?.avgPickTimeSec ?? 0}s</div>
+                <div>Missing Rate: {drilldown?.performance?.missingRate ?? 0}%</div>
+                <div>SLA Breach Rate: {drilldown?.performance?.slaBreachRate ?? 0}%</div>
+              </TabsContent>
+              <TabsContent value="training" className="mt-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 py-2 text-left">Video</th>
+                      <th className="px-2 py-2 text-left">Progress</th>
+                      <th className="px-2 py-2 text-left">Completed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(drilldown?.training || []).map((row: any) => (
+                      <tr key={row.videoId} className="border-t">
+                        <td className="px-2 py-2">{row.title}</td>
+                        <td className="px-2 py-2">{row.progress}%</td>
+                        <td className="px-2 py-2">{row.completed ? 'Yes' : 'No'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TabsContent>
+              <TabsContent value="issues" className="mt-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 py-2 text-left">Type</th>
+                      <th className="px-2 py-2 text-left">Severity</th>
+                      <th className="px-2 py-2 text-left">Status</th>
+                      <th className="px-2 py-2 text-left">Reported At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(drilldown?.issues || []).map((row: any) => (
+                      <tr key={row.id} className="border-t">
+                        <td className="px-2 py-2">{row.issueType}</td>
+                        <td className="px-2 py-2 capitalize">{row.severity}</td>
+                        <td className="px-2 py-2 capitalize">{row.status}</td>
+                        <td className="px-2 py-2">{row.reportedAt ? new Date(row.reportedAt).toLocaleString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TabsContent>
+              <TabsContent value="shifts" className="mt-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 py-2 text-left">Punch In</th>
+                      <th className="px-2 py-2 text-left">Punch Out</th>
+                      <th className="px-2 py-2 text-left">Worked (min)</th>
+                      <th className="px-2 py-2 text-left">Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(drilldown?.shifts || []).map((row: any) => (
+                      <tr key={row.id} className="border-t">
+                        <td className="px-2 py-2">{row.punchIn ? new Date(row.punchIn).toLocaleString() : '—'}</td>
+                        <td className="px-2 py-2">{row.punchOut ? new Date(row.punchOut).toLocaleString() : '—'}</td>
+                        <td className="px-2 py-2">{row.totalWorkedMinutes || 0}</td>
+                        <td className="px-2 py-2">{row.ordersCompleted || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TabsContent>
+            </Tabs>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
