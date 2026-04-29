@@ -4,6 +4,7 @@
  */
 
 import { getActiveStoreId } from '../../contexts/AuthContext';
+import { getAuthToken } from '../../contexts/AuthContext';
 
 const API_BASE_URL = (() => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
@@ -13,6 +14,29 @@ const API_BASE_URL = (() => {
   return '';
 })();
 const UTILITIES_ENDPOINT = `${API_BASE_URL}/api/v1/darkstore/utilities`;
+
+function getAuthHeaders(contentType = true): HeadersInit {
+  const token = getAuthToken();
+  return {
+    ...(contentType ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function resolveErrorMessage(raw: unknown, fallback: string): string {
+  if (typeof raw === 'string' && raw.trim()) return raw;
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    const nested = obj.message ?? obj.error ?? obj.details;
+    if (typeof nested === 'string' && nested.trim()) return nested;
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
 
 export interface GenerateLabelRequest {
   searchTerm: string;
@@ -105,7 +129,7 @@ export interface ExportAuditLogsResponse {
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
   const defaultOptions: RequestInit = {
     headers: {
-      'Content-Type': 'application/json',
+      ...getAuthHeaders(true),
     },
     ...options,
   };
@@ -114,8 +138,15 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
     const response = await fetch(endpoint, defaultOptions);
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+      const errorData = await response.json().catch(() => null);
+      const fallback = `HTTP error! status: ${response.status}`;
+      const message = resolveErrorMessage(
+        (errorData as Record<string, unknown> | null)?.error ??
+          (errorData as Record<string, unknown> | null)?.message ??
+          errorData,
+        fallback
+      );
+      throw new Error(message);
     }
     
     return await response.json();
@@ -125,7 +156,8 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
       console.error(`Network error: Backend may not be running at ${API_BASE_URL}`);
       throw new Error('Unable to connect to backend. Please ensure the server is running on port 5000.');
     }
-    throw error;
+    if (error instanceof Error) throw error;
+    throw new Error(resolveErrorMessage(error, 'Request failed'));
   }
 }
 
@@ -166,17 +198,24 @@ export async function bulkUpload(
 
   const response = await fetch(`${UTILITIES_ENDPOINT}/inventory/bulk-upload`, {
     method: 'POST',
+    headers: getAuthHeaders(false),
     body: formData,
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.message || 'Failed to upload file');
+    const errorData = await response.json().catch(() => null);
+    const message = resolveErrorMessage(
+      (errorData as Record<string, unknown> | null)?.error ??
+        (errorData as Record<string, unknown> | null)?.message ??
+        errorData,
+      'Failed to upload file'
+    );
+    throw new Error(message);
   }
 
   const data = await response.json() as BulkUploadResponse;
   if (!data.success) {
-    throw new Error('Failed to upload file');
+    throw new Error(resolveErrorMessage((data as unknown as Record<string, unknown>)?.message, 'Failed to upload file'));
   }
 
   return data;
@@ -187,12 +226,25 @@ export async function bulkUpload(
  * GET /api/v1/darkstore/utilities/inventory/upload-template
  */
 export async function downloadUploadTemplate(format: 'csv' | 'xlsx' = 'csv'): Promise<Blob> {
-  const response = await fetch(`${UTILITIES_ENDPOINT}/inventory/upload-template?format=${format}`);
+  const response = await fetch(`${UTILITIES_ENDPOINT}/inventory/upload-template?format=${format}`, {
+    headers: getAuthHeaders(false),
+  });
   
   if (!response.ok) {
-    throw new Error('Failed to download template');
+    const errorData = await response.json().catch(() => null);
+    const message = resolveErrorMessage(
+      (errorData as Record<string, unknown> | null)?.error ??
+        (errorData as Record<string, unknown> | null)?.message ??
+        errorData,
+      'Failed to download template'
+    );
+    throw new Error(message);
   }
-  
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const json = await response.json().catch(() => null);
+    throw new Error(resolveErrorMessage(json, 'Failed to download template'));
+  }
   return await response.blob();
 }
 
@@ -312,7 +364,7 @@ export async function exportAuditLogs(payload: {
     const response = await fetch(`${UTILITIES_ENDPOINT}/audit-logs/export`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...getAuthHeaders(true),
       },
       body: JSON.stringify({
         module: payload.module || 'all',
@@ -323,8 +375,14 @@ export async function exportAuditLogs(payload: {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'Failed to export audit logs');
+      const errorData = await response.json().catch(() => null);
+      const message = resolveErrorMessage(
+        (errorData as Record<string, unknown> | null)?.error ??
+          (errorData as Record<string, unknown> | null)?.message ??
+          errorData,
+        'Failed to export audit logs'
+      );
+      throw new Error(message);
     }
 
     // Return blob for CSV download

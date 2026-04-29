@@ -274,6 +274,36 @@ export const vendorInventoryApi = {
 
     return response.json();
   },
+
+  async bulkReorder(vendorId: string, payload?: { stockoutIds?: string[] }) {
+    const response = await fetch(`${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/stockouts/bulk-reorder`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken() || ''}`,
+      },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to bulk reorder stockouts');
+    }
+    return response.json();
+  },
+
+  async alertAllVendors(vendorId: string, payload?: { message?: string }) {
+    const response = await fetch(`${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/stockouts/alert-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken() || ''}`,
+      },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to alert vendors for stockouts');
+    }
+    return response.json();
+  },
 };
 
 // Named exports for direct imports
@@ -289,5 +319,7 @@ export const getJobStatus = vendorInventoryApi.getJobStatus.bind(vendorInventory
 export const getKPIs = vendorInventoryApi.getKPIs.bind(vendorInventoryApi);
 export const getStockouts = vendorInventoryApi.getStockouts.bind(vendorInventoryApi);
 export const getAgingInventory = vendorInventoryApi.getAgingInventory.bind(vendorInventoryApi);
+export const bulkReorder = vendorInventoryApi.bulkReorder.bind(vendorInventoryApi);
+export const alertAllVendors = vendorInventoryApi.alertAllVendors.bind(vendorInventoryApi);
 
 export default vendorInventoryApi;

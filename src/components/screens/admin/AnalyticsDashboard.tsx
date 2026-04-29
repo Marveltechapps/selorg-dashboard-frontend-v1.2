@@ -348,7 +348,7 @@ export function AnalyticsDashboard() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-[#71717a]">Total Revenue</p>
@@ -433,9 +433,9 @@ export function AnalyticsDashboard() {
 
         {/* Overview Tab */}
         <TabsContent value="overview">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
             {/* Revenue & Orders Timeline */}
-            <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm col-span-2">
+            <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm xl:col-span-2 min-w-0 overflow-hidden">
               <h3 className="font-bold text-[#18181b] mb-4">Revenue & Orders Over Time</h3>
               {timeSeriesData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -529,7 +529,7 @@ export function AnalyticsDashboard() {
             </div>
 
             {/* Conversion Funnel */}
-            <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm col-span-2">
+            <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm xl:col-span-2 min-w-0 overflow-hidden">
               <h3 className="font-bold text-[#18181b] mb-4">Conversion Funnel</h3>
               {conversionFunnel.length > 0 ? (
               <div className="space-y-3">

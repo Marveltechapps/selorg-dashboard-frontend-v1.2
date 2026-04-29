@@ -390,11 +390,18 @@ export function WarehouseUtilities() {
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2] disabled:opacity-60"
                 >
                   <option value="">{zonesLoading ? 'Loading zones...' : 'Select zone'}</option>
-                  {zones.map((z) => (
+                  {zones.filter((z) => z !== reassignConfig.fromZone).map((z) => (
                     <option key={z} value={z}>{z}</option>
                   ))}
                 </select>
               </div>
+              {!zonesLoading && zones.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-900 font-medium">
+                    No zones are available yet. Seed warehouse zones (storage locations or operational zones) and reopen this tool.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">SKU Filter (Optional)</label>
                 <input 
@@ -418,7 +425,8 @@ export function WarehouseUtilities() {
               </button>
               <button 
                 onClick={processReassignment}
-                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4]"
+                disabled={!reassignConfig.fromZone || !reassignConfig.toZone || reassignConfig.fromZone === reassignConfig.toZone || zones.length === 0}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Process Reassignment
               </button>

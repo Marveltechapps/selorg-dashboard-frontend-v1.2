@@ -10,30 +10,46 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+async function getErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const json = await response.json();
+    const raw = json?.error ?? json?.message;
+    if (typeof raw === 'string' && raw.trim()) return raw;
+    if (raw && typeof raw === 'object') {
+      const nested = (raw as Record<string, unknown>).message;
+      if (typeof nested === 'string' && nested.trim()) return nested;
+      return JSON.stringify(raw);
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return fallback;
+}
+
 export const merchApi = {
   // --- Overview Endpoints ---
   getMerchStats: async () => {
     const response = await fetch(`${API_BASE_URL}/overview/stats`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch stats');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch stats'));
     return response.json();
   },
 
   getStockConflicts: async () => {
     const response = await fetch(`${API_BASE_URL}/overview/conflicts`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch conflicts');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch conflicts'));
     return response.json();
   },
 
   getPromoUplift: async () => {
     const response = await fetch(`${API_BASE_URL}/overview/uplift`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch uplift data');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch uplift data'));
     return response.json();
   },
 
   // --- Campaign Endpoints ---
   getCampaigns: async () => {
     const response = await fetch(`${API_BASE_URL}/campaigns`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch campaigns');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch campaigns'));
     return response.json();
   },
 
@@ -44,7 +60,7 @@ export const merchApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(campaignData),
     });
-    if (!response.ok) throw new Error('Failed to create campaign');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to create campaign'));
     return response.json();
   },
 
@@ -55,7 +71,7 @@ export const merchApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(updateData),
     });
-    if (!response.ok) throw new Error('Failed to update campaign');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to update campaign'));
     return response.json();
   },
 
@@ -65,7 +81,7 @@ export const merchApi = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to delete campaign');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to delete campaign'));
     return response.json();
   }
 };

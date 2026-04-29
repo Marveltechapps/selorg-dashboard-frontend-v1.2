@@ -63,7 +63,8 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
       }
     } catch (err: unknown) {
       console.error('Failed to load pricing data', err);
-      toast.error('Failed to load pricing data');
+      const message = err instanceof Error ? err.message : 'Failed to load pricing data';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +147,7 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
       toast.success(`${updatedSku.name} updated successfully`);
     } catch (err) {
       console.error('Failed to update SKU price', err);
-      toast.error('Failed to update price');
+      toast.error(err instanceof Error ? err.message : 'Failed to update price');
     }
   };
 
@@ -160,11 +161,11 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
         }
         toast.success(`Rule "${rule.name}" created successfully`);
       } else {
-        toast.error("Failed to create rule");
+        toast.error(response?.error || "Failed to create rule");
       }
     } catch (error) {
       console.error('Error creating rule:', error);
-      toast.error("Failed to create rule");
+      toast.error(error instanceof Error ? error.message : "Failed to create rule");
     }
     setIsWizardOpen(false);
   };

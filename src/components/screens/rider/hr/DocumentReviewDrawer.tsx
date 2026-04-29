@@ -22,7 +22,7 @@ import { RiderDocument, Rider } from "./types";
 import { format } from "date-fns";
 import { CheckCircle2, XCircle, Download, FileText, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { approveDocument, rejectDocument } from "./hrApi";
+import { approveDocument, rejectDocument, fetchDocumentDownloadUrl } from "./hrApi";
 
 interface DocumentReviewDrawerProps {
   document: RiderDocument | null;
@@ -43,6 +43,7 @@ export function DocumentReviewDrawer({
   const [notes, setNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const handleApprove = async () => {
     if (!document) return;
@@ -56,6 +57,19 @@ export function DocumentReviewDrawer({
       toast.error(err instanceof Error ? err.message : "Approval failed");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!document) return;
+    try {
+      setDownloading(true);
+      const fileUrl = await fetchDocumentDownloadUrl(document.id);
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -171,8 +185,8 @@ export function DocumentReviewDrawer({
                alt="Document Preview" 
                className="max-h-[300px] object-contain rounded shadow-sm mb-4"
              />
-             <Button variant="outline" size="sm" className="gap-2">
-               <Download size={14} /> Download File
+             <Button variant="outline" size="sm" className="gap-2" onClick={handleDownload} disabled={downloading}>
+               <Download size={14} /> {downloading ? 'Downloading...' : 'Download File'}
              </Button>
           </div>
 

@@ -8,6 +8,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { toast } from 'sonner';
 import { createPDFBlob, createPDFViewHTML } from '../../../utils/pdfHelper';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
+import * as purchaseOrdersApi from '../../../api/vendor/purchaseOrders.api';
 
 interface VendorProfileOverviewProps {
   vendorId: string;
@@ -31,6 +32,7 @@ export function VendorProfileOverview({
   const [documents, setDocuments] = useState<
     { name: string; uploadDate: string; expiryDate: string; status: string }[]
   >([]);
+  const [profileActionLoading, setProfileActionLoading] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -196,14 +198,51 @@ export function VendorProfileOverview({
 
           <div className="flex gap-2">
             <button
-              onClick={() => toast.info('Purchase Order creation coming soon')}
+              onClick={async () => {
+                try {
+                  setProfileActionLoading(true);
+                  const payload = {
+                    vendorId,
+                    vendorName,
+                    items: [
+                      {
+                        sku: `SKU-${Date.now()}`,
+                        description: 'Auto-generated item from Vendor Profile',
+                        quantity: 1,
+                        unit: 'unit',
+                        unitPrice: 0,
+                      },
+                    ],
+                    expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    reference: `VP-${Date.now()}`,
+                    notes: `Created from vendor profile for ${vendorName}`,
+                  };
+                  await purchaseOrdersApi.createPurchaseOrder(payload);
+                  toast.success('Purchase order created successfully');
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to create purchase order');
+                } finally {
+                  setProfileActionLoading(false);
+                }
+              }}
+              disabled={profileActionLoading}
               className="px-4 py-2 bg-[#1677FF] text-white text-sm font-medium 
                          rounded-lg hover:bg-[#409EFF] flex items-center gap-2 transition-colors"
             >
-              <Package size={15} /> Create PO
+              <Package size={15} /> {profileActionLoading ? 'Creating...' : 'Create PO'}
             </button>
             <button
-              onClick={() => toast.info('Messaging coming soon')}
+              onClick={async () => {
+                try {
+                  await vendorApi.vendorAction(vendorId, 'send_message', {
+                    subject: 'Message from Vendor Profile',
+                    message: `Hello ${vendorName}, this message was sent from your profile.`,
+                  });
+                  toast.success('Message sent successfully');
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to send message');
+                }
+              }}
               className="px-4 py-2 border border-[#E0E0E0] text-[#616161] text-sm 
                          font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2 transition-colors"
             >

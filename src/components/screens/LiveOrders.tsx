@@ -33,13 +33,27 @@ import { exportToCSV } from '../../utils/csvExport';
 import { getPendingOrderSearch } from '../../utils/pendingOrderSearch';
 import { getPaymentDisplay } from '../../utils/orderPaymentDisplay';
 
+const UI_TO_API_STATUS: Record<string, string> = {
+  Queued: 'Queued',
+  Picking: 'Picking',
+  Packing: 'Packing',
+  Assigned: 'ASSIGNED',
+  'Ready for Dispatch': 'READY_FOR_DISPATCH',
+};
+
+function toApiStatus(status: string): string {
+  return UI_TO_API_STATUS[status] || status;
+}
+
 function AssignPickerContent({
   orderId,
+  storeId,
   onAssign,
   onAutoAssign,
   onClose,
 }: {
   orderId: string;
+  storeId: string;
   onAssign: (pickerId: string, pickerName: string) => Promise<void>;
   onAutoAssign: () => Promise<void>;
   onClose: () => void;
@@ -51,7 +65,7 @@ function AssignPickerContent({
     let cancelled = false;
     (async () => {
       try {
-        const res = await getAvailablePickers({ storeId: '' });
+        const res = await getAvailablePickers({ storeId });
         if (!cancelled && res?.data) setPickers(res.data);
       } catch {
         if (!cancelled) setPickers([]);
@@ -60,7 +74,7 @@ function AssignPickerContent({
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [storeId]);
   if (loading) return <div className="p-6 text-sm text-gray-500">Loading pickers...</div>;
   return (
     <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
@@ -564,7 +578,7 @@ export function LiveOrders() {
   const confirmStatusUpdate = async () => {
     const rawId = statusDialog.orderId.replace(/^#/, '');
     try {
-      await updateOrder(rawId, { status: statusDialog.newStatus });
+      await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
       setOrders(prev => prev.map(o => {
         if (o.id === statusDialog.orderId) return { ...o, status: statusDialog.newStatus };
         return o;
@@ -1378,7 +1392,8 @@ export function LiveOrders() {
                       className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                       onClick={async () => {
                         try {
-                          await updateOrder(selectedOrder.order_id || selectedOrder.id.replace('#', ''), { status: 'processing' });
+                          const rawId = selectedOrder.order_id || selectedOrder.id.replace('#', '');
+                          await updateOrder(rawId, { status: toApiStatus('Picking') });
                           setOrders(prev => prev.map(o =>
                             o.id === selectedOrder.id ? { ...o, status: 'Picking' } : o
                           ));
@@ -1482,6 +1497,7 @@ export function LiveOrders() {
           </SheetHeader>
           <AssignPickerContent
             orderId={assignDialog.orderId}
+            storeId={storeId}
             onAssign={async (pickerId, pickerName) => {
               try {
                 await assignOrder(assignDialog.orderId, { pickerId, pickerName });
@@ -1501,6 +1517,10 @@ export function LiveOrders() {
             }}
             onAutoAssign={async () => {
               try {
+                const available = await getAvailablePickers({ storeId });
+                if (!available?.data || available.data.length === 0) {
+                  throw new Error('No available picker in the selected store. Try manual assignment after picker login.');
+                }
                 await assignOrder(assignDialog.orderId, { autoAssign: true });
                 await loadOrders();
                 if (selectedOrder?.order_id === assignDialog.orderId) {

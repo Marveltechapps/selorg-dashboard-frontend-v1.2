@@ -29,7 +29,7 @@ export function ProductionStaff() {
 
   const { data: allStaff = [] } = useQuery({
     queryKey: ['production', 'staff', 'roster', selectedFactoryId],
-    queryFn: () => fetchProductionStaffRoster(selectedFactoryId || undefined),
+    queryFn: () => fetchProductionStaffRoster({ storeId: selectedFactoryId || undefined }),
     enabled: !!selectedFactoryId,
   });
 

@@ -294,18 +294,18 @@ export function WarehouseOverview() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E2E8F0]">
-                  {orderFlow.map((order) => (
-                    <tr key={order.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-6 py-4 font-mono text-[#475569]">{order.orderId}</td>
-                      <td className="px-6 py-4 font-medium text-[#1E293B]">{order.customer}</td>
-                      <td className="px-6 py-4 text-[#64748B]">{order.items}</td>
+                  {orderFlow.map((order, index) => (
+                    <tr key={order.id || order.orderId || `order-row-${index}`} className="hover:bg-[#F8FAFC]">
+                      <td className="px-6 py-4 font-mono text-[#475569]">{order.orderId || '—'}</td>
+                      <td className="px-6 py-4 font-medium text-[#1E293B]">{order.customer || '—'}</td>
+                      <td className="px-6 py-4 text-[#64748B]">{Number.isFinite(Number(order.items)) ? order.items : '—'}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           order.status === 'picking' ? 'bg-[#E0F2FE] text-[#0284C7]' :
                           order.status === 'dispatching' ? 'bg-[#FFEDD5] text-[#C2410C]' :
                           'bg-[#F1F5F9] text-[#64748B]'
                         }`}>
-                          {order.status}
+                          {order.status || 'pending'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -314,7 +314,7 @@ export function WarehouseOverview() {
                           order.priority === 'medium' ? 'text-amber-600' :
                           'text-blue-600'
                         }`}>
-                          {order.priority.toUpperCase()}
+                          {(order.priority || 'standard').toUpperCase()}
                         </span>
                       </td>
                     </tr>

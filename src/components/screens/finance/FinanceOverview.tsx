@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { apiRequest } from '@/api/apiClient';
 import websocketService from '@/utils/websocket';
+import { getActiveStoreId, getAuthUser } from '@/contexts/AuthContext';
 
 export function FinanceOverview() {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
@@ -29,6 +30,7 @@ export function FinanceOverview() {
 
   const [walletLiability, setWalletLiability] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const resolvedEntityId = getActiveStoreId() || getAuthUser()?.primaryStoreId || getAuthUser()?.assignedStores?.[0] || 'default';
 
   const loadData = async (e?: React.MouseEvent) => {
     if (e) {
@@ -40,8 +42,8 @@ export function FinanceOverview() {
     try {
       const dateStr = new Date().toISOString();
       const [summaryData, splitData] = await Promise.all([
-        fetchFinanceSummary("default", dateStr),
-        fetchPaymentMethodSplit("default", dateStr)
+        fetchFinanceSummary(resolvedEntityId, dateStr),
+        fetchPaymentMethodSplit(resolvedEntityId, dateStr)
       ]);
       setSummary(summaryData);
       setSplit(splitData ?? []);
@@ -177,6 +179,27 @@ export function FinanceOverview() {
     toast.success("Opening Cash Flow Analysis");
   };
 
+  const handleViewReconciliation = (txn: LiveTransaction) => {
+    const event = new CustomEvent('navigateToTab', {
+      detail: { tab: 'reconciliation', txnId: txn.txnId, orderId: txn.orderId },
+    });
+    window.dispatchEvent(event);
+    toast.success('Opening Reconciliation');
+  };
+
+  const handleViewCustomerHistory = (txn: LiveTransaction) => {
+    const event = new CustomEvent('navigateToTab', {
+      detail: {
+        tab: 'customer-payments',
+        customerName: txn.customerName,
+        orderId: txn.orderId,
+        txnId: txn.txnId,
+      },
+    });
+    window.dispatchEvent(event);
+    toast.success('Opening Customer Payments history');
+  };
+
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
@@ -266,7 +289,7 @@ export function FinanceOverview() {
          {/* Live Transactions */}
          <div className="lg:col-span-2 h-full">
             <LiveTransactionsTable 
-               entityId="default" 
+               entityId={resolvedEntityId}
                onTransactionClick={setSelectedTxn}
                filterMethod={filterMethod}
             />
@@ -282,6 +305,8 @@ export function FinanceOverview() {
       <TransactionDetailsDrawer 
         transaction={selectedTxn} 
         onClose={() => setSelectedTxn(null)} 
+        onViewReconciliation={handleViewReconciliation}
+        onViewCustomerHistory={handleViewCustomerHistory}
       />
     </div>
   );

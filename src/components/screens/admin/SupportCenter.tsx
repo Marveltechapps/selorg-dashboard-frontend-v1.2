@@ -32,6 +32,7 @@ import {
   fetchAgents,
   fetchSLAMetrics,
   fetchLiveChats,
+  acceptLiveChat,
   updateTicket,
   assignTicket,
   addTicketNote,
@@ -755,7 +756,20 @@ export function SupportCenter() {
                     </div>
 
                     {chat.status === 'waiting' && (
-                      <Button size="sm" className="w-full">
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={async () => {
+                          try {
+                            const user = getCurrentUser();
+                            await acceptLiveChat(chat.id, user?.id, user?.name);
+                            toast.success('Chat accepted');
+                            await loadData();
+                          } catch {
+                            toast.error('Failed to accept chat');
+                          }
+                        }}
+                      >
                         <UserPlus size={14} className="mr-1.5" /> Accept Chat
                       </Button>
                     )}

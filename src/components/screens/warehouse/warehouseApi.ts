@@ -9,6 +9,12 @@ function authHeaders(): Record<string, string> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
+
+async function parseApiError(response: Response, fallbackMessage: string): Promise<Error> {
+  const err = await response.json().catch(() => ({} as any));
+  const message = err?.message || err?.error || fallbackMessage;
+  return new Error(message);
+}
 export interface WarehouseMetrics {
   inboundQueue: number;
   outboundQueue: number;
@@ -54,7 +60,19 @@ export async function fetchOrderFlow(): Promise<PicklistFlow[]> {
   if (!response.ok) throw new Error('Failed to fetch order flow');
   const result = await response.json();
   const data = result.data ?? result ?? [];
-  return Array.isArray(data) ? data : [];
+  if (!Array.isArray(data)) return [];
+  return data.map((entry: any, index: number) => ({
+    id: entry.id ?? entry.orderId ?? entry.order_id ?? `flow-${index}`,
+    orderId: entry.orderId ?? entry.order_id ?? entry.id ?? `N/A-${index + 1}`,
+    customer: entry.customer ?? entry.customerName ?? entry.customer_name ?? 'Unknown destination',
+    items: Number.isFinite(Number(entry.items))
+      ? Number(entry.items)
+      : (Array.isArray(entry.items) ? entry.items.length : 0),
+    priority: entry.priority ?? 'standard',
+    status: entry.status ?? 'pending',
+    zone: entry.zone ?? 'General',
+    updatedAt: entry.updatedAt,
+  }));
 }
 
 export async function fetchWarehouseAnalytics(): Promise<any> {
@@ -541,8 +559,9 @@ export interface WarehouseTransfer {
   items?: number;
 }
 
-export async function fetchWarehouseTransfers(): Promise<WarehouseTransfer[]> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.transfers.list}`, { headers: authHeaders() });
+export async function fetchWarehouseTransfers(bypassCache = false): Promise<WarehouseTransfer[]> {
+  const query = bypassCache ? `?t=${Date.now()}` : '';
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.transfers.list}${query}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch transfers');
   const result = await response.json();
   const list = result.data ?? result ?? [];
@@ -555,7 +574,7 @@ export async function createWarehouseTransfer(data: Partial<WarehouseTransfer>):
     headers: authHeaders(),
     body: JSON.stringify(data)
   });
-  if (!response.ok) throw new Error('Failed to create transfer');
+  if (!response.ok) throw await parseApiError(response, 'Failed to create transfer');
   return await response.json();
 }
 
@@ -565,7 +584,7 @@ export async function updateWarehouseTransferStatus(id: string, status: string):
     headers: authHeaders(),
     body: JSON.stringify({ status })
   });
-  if (!response.ok) throw new Error('Failed to update transfer status');
+  if (!response.ok) throw await parseApiError(response, 'Failed to update transfer status');
 }
 
 // --- QC & Compliance ---
@@ -1054,7 +1073,7 @@ export async function addTraining(data: Partial<Training>): Promise<Training> {
     headers: authHeaders(),
     body: JSON.stringify(data)
   });
-  if (!response.ok) throw new Error('Failed to create training');
+  if (!response.ok) throw await parseApiError(response, 'Failed to create training');
   const result = await response.json();
   return result.data ?? result;
 }

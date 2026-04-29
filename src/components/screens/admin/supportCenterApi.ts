@@ -265,6 +265,13 @@ export async function fetchLiveChats(): Promise<LiveChat[]> {
   return res.data ?? [];
 }
 
+export async function acceptLiveChat(chatId: string, agentId?: string, agentName?: string): Promise<void> {
+  await apiRequest<{ success: boolean }>(`${PREFIX}/live-chats/${chatId}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ agentId, agentName }),
+  });
+}
+
 export async function fetchFAQs(): Promise<SupportFAQ[]> {
   const res = await apiRequest<{ success: boolean; data: SupportFAQ[] }>(`${PREFIX}/faqs`);
   return res.data ?? [];
@@ -313,5 +320,15 @@ export async function sendChatMessage(
   senderType: 'customer' | 'agent',
   message: string
 ): Promise<ChatMessage> {
-  throw new Error('Live chat not implemented');
+  const res = await apiRequest<{ success: boolean; data: ChatMessage }>(`${PREFIX}/live-chats/${chatId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      senderId,
+      senderName,
+      senderType,
+      message,
+    }),
+  });
+  if (!res.data) throw new Error('Failed to send chat message');
+  return res.data;
 }

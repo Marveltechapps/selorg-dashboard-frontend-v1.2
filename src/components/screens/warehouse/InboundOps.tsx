@@ -40,20 +40,31 @@ export function InboundOps() {
   };
 
   const createGRN = async () => {
-    if (newGRNData.poNumber && newGRNData.vendor) {
-      try {
-        await apiCreateGRN({
-          poNumber: newGRNData.poNumber,
-          vendor: newGRNData.vendor,
-          items: parseInt(newGRNData.items) || 0,
-        });
-        toast.success('GRN created successfully');
-        setShowGRNModal(false);
-        setNewGRNData({ poNumber: '', vendor: '', items: '' });
-        loadData();
-      } catch (error) {
-        toast.error('Failed to create GRN');
-      }
+    const poNumber = newGRNData.poNumber.trim();
+    const vendor = newGRNData.vendor.trim();
+    const items = Number(newGRNData.items || 0);
+
+    if (!poNumber) {
+      toast.error('PO Number is required');
+      return;
+    }
+    if (!vendor) {
+      toast.error('Vendor Name is required');
+      return;
+    }
+    if (!Number.isFinite(items) || items < 0) {
+      toast.error('Number of items must be a non-negative number');
+      return;
+    }
+
+    try {
+      await apiCreateGRN({ poNumber, vendor, items });
+      toast.success('GRN created successfully');
+      setShowGRNModal(false);
+      setNewGRNData({ poNumber: '', vendor: '', items: '' });
+      loadData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create GRN');
     }
   };
 

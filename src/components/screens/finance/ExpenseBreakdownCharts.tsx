@@ -7,7 +7,6 @@ import {
     YAxis, 
     CartesianGrid, 
     Tooltip, 
-    Legend,
     PieChart,
     Pie,
     Cell
@@ -53,6 +52,8 @@ export function ExpenseBreakdownCharts({ data, isLoading }: Props) {
 
   const totalExpense = pieData.reduce((sum, item) => sum + item.value, 0);
   const topCategory = [...pieData].sort((a,b) => b.value - a.value)[0];
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
 
   // Get unique category keys for bars
   const categoryKeys = data[0]?.categories.map(c => ({ name: c.name, color: c.color })) || [];
@@ -63,8 +64,8 @@ export function ExpenseBreakdownCharts({ data, isLoading }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
              <div className="bg-white p-4 rounded-lg border shadow-sm">
                 <p className="text-sm text-gray-500">Total Expenses (Selected Period)</p>
-                <h3 className="text-2xl font-bold text-[#212121]">
-                    ₹{totalExpense.toLocaleString()}
+                <h3 className="text-lg md:text-2xl font-bold text-[#212121] break-words">
+                    {formatCurrency(totalExpense)}
                 </h3>
             </div>
             <div className="bg-white p-4 rounded-lg border shadow-sm">
@@ -75,7 +76,7 @@ export function ExpenseBreakdownCharts({ data, isLoading }: Props) {
             </div>
             <div className="bg-white p-4 rounded-lg border shadow-sm">
                 <p className="text-sm text-gray-500">% of Total ({topCategory?.name})</p>
-                <h3 className="text-2xl font-bold text-purple-600">
+                <h3 className="text-lg md:text-2xl font-bold text-purple-600 break-words">
                     {totalExpense ? ((topCategory?.value / totalExpense) * 100).toFixed(1) : 0}%
                 </h3>
             </div>
@@ -83,9 +84,9 @@ export function ExpenseBreakdownCharts({ data, isLoading }: Props) {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Pie Chart */}
-            <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm h-[400px]">
+            <div className="bg-white p-4 md:p-6 rounded-xl border border-[#E0E0E0] shadow-sm min-h-[360px]">
                 <h4 className="font-bold text-gray-800 mb-6">Expense Distribution</h4>
-                <ResponsiveContainer width="100%" height="90%">
+                <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
                         <Pie
                             data={pieData}
@@ -100,26 +101,32 @@ export function ExpenseBreakdownCharts({ data, isLoading }: Props) {
                                 <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Pie>
-                        <Tooltip formatter={(val: number) => `₹${val.toLocaleString()}`} />
-                        <Legend layout="vertical" verticalAlign="middle" align="right" />
+                        <Tooltip formatter={(val: number) => formatCurrency(val)} />
                     </PieChart>
                 </ResponsiveContainer>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {pieData.map((entry) => (
+                    <span key={entry.name} className="inline-flex items-center gap-2 text-xs text-gray-600 max-w-full">
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                      <span className="truncate max-w-[180px]" title={entry.name}>{entry.name}</span>
+                    </span>
+                  ))}
+                </div>
             </div>
 
             {/* Stacked Bar Chart */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm h-[400px]">
+            <div className="lg:col-span-2 bg-white p-4 md:p-6 rounded-xl border border-[#E0E0E0] shadow-sm min-h-[360px]">
                 <h4 className="font-bold text-gray-800 mb-6">Expense Trends</h4>
-                <ResponsiveContainer width="100%" height="90%">
-                    <BarChart data={historyData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={historyData} margin={{ top: 20, right: 8, bottom: 20, left: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E0E0E0" />
                         <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#757575', fontSize: 12 }} dy={10} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#757575', fontSize: 12 }} tickFormatter={(val) => `₹${val/1000}k`} />
                         <Tooltip 
                             cursor={{ fill: '#F3F4F6' }}
-                            formatter={(value: any, name: string) => [`₹${value.toLocaleString()}`, name]}
+                            formatter={(value: any, name: string) => [formatCurrency(Number(value || 0)), name]}
                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                         />
-                        <Legend iconType="circle" />
                         {categoryKeys.map((cat) => (
                             <Bar 
                                 key={cat.name} 

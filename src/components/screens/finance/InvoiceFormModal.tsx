@@ -4,7 +4,6 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Textarea } from "../../ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select";
 import { Plus, Trash2, Loader2, Save, Send } from "lucide-react";
 import { toast } from 'sonner';
 import { createInvoice, CreateInvoicePayload, InvoiceItem } from './invoicingApi';
@@ -80,11 +79,31 @@ export function InvoiceFormModal({ open, onClose, onSuccess }: Props) {
           toast.error("Please fill in customer name and email");
           return;
       }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+          toast.error("Please enter a valid customer email");
+          return;
+      }
+      if (!issueDate || !dueDate) {
+          toast.error("Please set issue date and due date");
+          return;
+      }
+      if (new Date(dueDate).getTime() < new Date(issueDate).getTime()) {
+          toast.error("Due date must be on or after issue date");
+          return;
+      }
       
       // Filter out empty items and validate
-      const validItems = items.filter(i => i.description && i.unitPrice > 0);
+      const validItems = items
+        .map((item) => ({
+          ...item,
+          description: item.description?.trim(),
+          quantity: Number(item.quantity ?? 0),
+          unitPrice: Number(item.unitPrice ?? 0),
+          taxPercent: Number(item.taxPercent ?? 0),
+        }))
+        .filter((item) => item.description && item.quantity > 0 && item.unitPrice >= 0);
       if (validItems.length === 0) {
-          toast.error("Please add at least one item with description and price");
+          toast.error("Please add at least one valid item with description and quantity");
           return;
       }
 
@@ -114,7 +133,7 @@ export function InvoiceFormModal({ open, onClose, onSuccess }: Props) {
           onClose();
       } catch (e) {
           console.error('Failed to create invoice:', e);
-          toast.error("Failed to create invoice");
+          toast.error(e instanceof Error ? e.message : "Failed to create invoice");
       } finally {
           setIsSubmitting(false);
       }

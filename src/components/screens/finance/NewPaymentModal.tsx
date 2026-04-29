@@ -119,7 +119,7 @@ export function NewPaymentModal({ open, onClose, onSuccess, vendors, preselected
           onSuccess();
           onClose();
       } catch (e) {
-          toast.error("Payment failed");
+          toast.error(e instanceof Error ? e.message : "Payment failed");
       } finally {
           setIsSubmitting(false);
       }
@@ -139,9 +139,9 @@ export function NewPaymentModal({ open, onClose, onSuccess, vendors, preselected
             {step === 1 && (
                 <div className="space-y-4">
                     <Label>Select Vendor</Label>
-                    <Select value={selectedVendorId} onValueChange={handleVendorSelect}>
+                    <Select value={selectedVendorId} onValueChange={handleVendorSelect} disabled={vendors.length === 0}>
                         <SelectTrigger>
-                            <SelectValue placeholder="Choose a vendor..." />
+                            <SelectValue placeholder={vendors.length === 0 ? "No vendors available" : "Choose a vendor..."} />
                         </SelectTrigger>
                         <SelectContent>
                             {vendors.map(v => (
@@ -149,6 +149,11 @@ export function NewPaymentModal({ open, onClose, onSuccess, vendors, preselected
                             ))}
                         </SelectContent>
                     </Select>
+                    {vendors.length === 0 && (
+                      <p className="text-xs text-amber-600">
+                        No vendors loaded. Return to Vendor Payments, refresh data, and retry.
+                      </p>
+                    )}
                     {isLoadingInvoices && (
                         <div className="flex items-center justify-center py-8 text-gray-500">
                             <Loader2 className="animate-spin mr-2" /> Loading invoices...

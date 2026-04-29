@@ -19,6 +19,7 @@ import { setPendingOrderSearch } from '../../utils/pendingOrderSearch';
 import { websocketService } from '../../utils/websocket';
 import { getPaymentDisplay } from '../../utils/orderPaymentDisplay';
 import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
+import { getPickersLive } from '../../api/darkstore/pickers.api';
 
 interface DashboardHomeProps {
   setActiveTab?: (tab: string) => void;
@@ -275,6 +276,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       
       const results = await Promise.all(promises);
       const [summary, staff, stock, rto] = results;
+      const livePickers = await getPickersLive().catch(() => null);
 
       // Update summary stats
       if (summary) {
@@ -296,8 +298,18 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       }
 
       // Update staff load (use API data or genuine empty state)
+      const livePickerList = Array.isArray(livePickers?.data) ? livePickers.data : [];
+      const livePickerTotal = livePickerList.length;
+      const livePickerActive = livePickerList.filter((p: any) =>
+        p?.online && ['AVAILABLE', 'PICKING', 'DEVICE_IDLE'].includes(String(p?.derivedStatus || '').toUpperCase())
+      ).length;
+      const pickerLoadPercent = livePickerTotal > 0 ? Math.round((livePickerActive / livePickerTotal) * 100) : 0;
       setStaffLoad({
-        pickers: (staff && staff.pickers) ? staff.pickers : { active: 0, total: 0, load_percentage: 0 },
+        pickers: {
+          active: livePickerTotal > 0 ? livePickerActive : (staff?.pickers?.active ?? 0),
+          total: livePickerTotal > 0 ? livePickerTotal : (staff?.pickers?.total ?? 0),
+          load_percentage: livePickerTotal > 0 ? pickerLoadPercent : (staff?.pickers?.load_percentage ?? 0),
+        },
         packers: (staff && staff.packers) ? staff.packers : { active: 0, total: 0, load_percentage: 0 },
       });
 

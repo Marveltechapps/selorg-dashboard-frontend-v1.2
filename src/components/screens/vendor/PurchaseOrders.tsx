@@ -31,6 +31,7 @@ import { EmptyState } from '../../ui/ux-components';
 import { exportToPDF } from '../../../utils/pdfExport';
 
 import * as purchaseOrdersApi from '../../../api/vendor/purchaseOrders.api';
+import * as vendorManagementApi from '../../../api/vendor/vendorManagement.api';
 
 // Types
 type POStatus = 'Pending Approval' | 'Sent' | 'Partially Received' | 'Fully Received' | 'Cancelled' | 'On Hold';
@@ -279,6 +280,7 @@ export function PurchaseOrders() {
 
   // Orders from API only
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [vendors, setVendors] = useState<Array<{ id: string; name: string; email?: string; phone?: string }>>([]);
   const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({});
   const [loadingOrders, setLoadingOrders] = useState(true);
 
@@ -298,6 +300,30 @@ export function PurchaseOrders() {
         }
       } finally {
         if (mounted) setLoadingOrders(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const resp = await vendorManagementApi.listVendors({ page: 1, pageSize: 100 });
+        const items = Array.isArray(resp) ? resp : (resp?.data || resp?.items || []);
+        if (!mounted || !Array.isArray(items)) return;
+        const next = items
+          .map((x: any) => ({
+            id: String(x.id || x._id || ''),
+            name: String(x.vendorName || x.name || ''),
+            email: x.contact?.email || x.email || '',
+            phone: x.contact?.phone || x.phone || '',
+          }))
+          .filter((x: any) => x.id && x.name);
+        setVendors(next);
+      } catch {
+        setVendors([]);
       }
     })();
     return () => {
@@ -674,14 +700,15 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
     }
 
     try {
+      const selectedVendorData = vendors.find((v) => v.name === createPOForm.vendor);
       // Create new PO object
       const newPO: PurchaseOrder = {
         id: `po-${Date.now()}`,
         poNumber: generatePONumber(),
         vendor: createPOForm.vendor,
-        vendorContact: 'Contact Person', // Would come from vendor data
-        vendorEmail: 'vendor@example.com', // Would come from vendor data
-        vendorPhone: '+1 234 567 8900', // Would come from vendor data
+        vendorContact: createPOForm.vendor,
+        vendorEmail: selectedVendorData?.email || '',
+        vendorPhone: selectedVendorData?.phone || '',
         createdDate: createPOForm.poDate ? new Date(createPOForm.poDate).toLocaleDateString() : new Date().toLocaleDateString(),
         deliveryDue: createPOForm.deliveryDue ? new Date(createPOForm.deliveryDue).toLocaleDateString() : new Date().toLocaleDateString(),
         totalValue: totals.total,
@@ -807,9 +834,9 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
             className="h-9 px-3 pr-8 rounded-lg border border-[#E0E0E0] text-sm bg-white focus:border-[#4F46E5] outline-none appearance-none"
           >
             <option>Vendor: All</option>
-            <option>Fresh Farms Inc.</option>
-            <option>Tech Logistics</option>
-            <option>Dairy Delights</option>
+            {vendors.map((v) => (
+              <option key={v.id}>{v.name}</option>
+            ))}
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#757575] pointer-events-none" />
         </div>
@@ -972,9 +999,9 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
                   className="w-full h-10 px-3 bg-white border border-[#D1D5DB] rounded-md text-sm text-[#1F2937] focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
                 >
                   <option value="">Search and select vendor...</option>
-                  <option value="Fresh Farms Inc.">Fresh Farms Inc.</option>
-                  <option value="Tech Logistics">Tech Logistics</option>
-                  <option value="Dairy Delights">Dairy Delights</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.name}>{v.name}</option>
+                  ))}
                 </select>
               </div>
             </div>

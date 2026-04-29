@@ -12,8 +12,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../../ui/popover";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, AlertTriangle, CheckCircle2, ChevronRight, ChevronLeft } from "lucide-react";
 import { cn } from "../../../../lib/utils";
-import { pricingApi } from './pricingApi';
-import { toast } from "sonner";
 
 interface PriceRuleWizardProps {
   open: boolean;
@@ -325,20 +323,7 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
              </Button>
            ) : (
              <Button 
-               onClick={async () => {
-                 try {
-                   const response = await pricingApi.createPriceRule(formData);
-                   if (response.success) {
-                     toast.success(`Rule "${formData.name}" created successfully`);
-                     onSubmit(formData);
-                   } else {
-                     toast.error("Failed to create rule");
-                   }
-                 } catch (error) {
-                   console.error('Error creating rule:', error);
-                   toast.error("Failed to create rule");
-                 }
-               }} 
+               onClick={() => onSubmit(formData)} 
                className="bg-purple-600 hover:bg-purple-700"
              >
                Create Rule

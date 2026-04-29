@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../ui/dialog";
-import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
 import { AlertTriangle, UploadCloud, ChevronRight, X, FileText } from 'lucide-react';
 import { ChargebackCase, fetchChargebacks } from './refundsApi';
@@ -57,7 +56,6 @@ export function DisputeCenter({ open, onClose }: Props) {
                      <DialogDescription>Manage chargebacks and evidence submission</DialogDescription>
                  </div>
              </div>
-             <Button variant="ghost" onClick={onClose}><X size={20}/></Button>
         </div>
 
         <div className="flex flex-1 overflow-hidden min-h-0">

@@ -1,5 +1,5 @@
 import { API_CONFIG, API_ENDPOINTS } from '@/config/api';
-import { getAuthToken } from '@/contexts/AuthContext';
+import { getActiveStoreId, getAuthToken, getAuthUser } from '@/contexts/AuthContext';
 
 export interface FinanceSummary {
   entityId: string;
@@ -45,8 +45,52 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
+async function getApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json();
+    const raw = data?.error ?? data?.message ?? data?.data?.message;
+    if (typeof raw === 'string' && raw.trim()) return raw;
+    if (raw && typeof raw === 'object') {
+      const nested = (raw as Record<string, unknown>).message;
+      if (typeof nested === 'string' && nested.trim()) return nested;
+      return JSON.stringify(raw);
+    }
+  } catch {
+    // ignore json parse failures
+  }
+  return fallback;
+}
+
+function resolveFinanceEntityId(explicit?: string): string {
+  if (explicit && explicit.trim()) return explicit.trim();
+  const activeStoreId = getActiveStoreId();
+  if (activeStoreId && activeStoreId.trim()) return activeStoreId.trim();
+  const user = getAuthUser();
+  if (user?.primaryStoreId && user.primaryStoreId.trim()) return user.primaryStoreId.trim();
+  if (user?.assignedStores?.[0] && user.assignedStores[0].trim()) return user.assignedStores[0].trim();
+  return 'default';
+}
+
+function normalizePaymentMethodSplit(data: any): PaymentMethodSplitItem[] {
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.items)
+    ? data.items
+    : Array.isArray(data?.split)
+    ? data.split
+    : [];
+
+  return list.map((item: any) => ({
+    method: String(item.method ?? item.key ?? 'unknown'),
+    label: String(item.label ?? item.method ?? item.key ?? 'Unknown'),
+    percentage: Number(item.percentage ?? item.percent ?? 0),
+    amount: Number(item.amount ?? item.totalAmount ?? 0),
+    txnCount: Number(item.txnCount ?? item.count ?? item.transactions ?? 0),
+  }));
+}
+
 export const fetchFinanceSummary = async (entityId: string, date: string): Promise<FinanceSummary> => {
-  const params = new URLSearchParams({ entityId, date });
+  const params = new URLSearchParams({ entityId: resolveFinanceEntityId(entityId), date });
   const response = await fetch(
     `${API_CONFIG.baseURL}${API_ENDPOINTS.finance.summary}?${params.toString()}`,
     { headers: getAuthHeaders() }
@@ -60,7 +104,7 @@ export const fetchFinanceSummary = async (entityId: string, date: string): Promi
 };
 
 export const fetchPaymentMethodSplit = async (entityId: string, date: string): Promise<PaymentMethodSplitItem[]> => {
-  const params = new URLSearchParams({ entityId, date });
+  const params = new URLSearchParams({ entityId: resolveFinanceEntityId(entityId), date });
   const response = await fetch(
     `${API_CONFIG.baseURL}${API_ENDPOINTS.finance.paymentMethodSplit}?${params.toString()}`,
     { headers: getAuthHeaders() }
@@ -70,7 +114,7 @@ export const fetchPaymentMethodSplit = async (entityId: string, date: string): P
   }
   const json = await response.json();
   const data = json.success ? json.data : json;
-  return Array.isArray(data) ? data : [];
+  return normalizePaymentMethodSplit(data);
 };
 
 export const fetchLiveTransactions = async (
@@ -78,7 +122,7 @@ export const fetchLiveTransactions = async (
   limit: number = 10,
   cursor?: string
 ): Promise<LiveTransaction[]> => {
-  const params = new URLSearchParams({ entityId, limit: String(limit) });
+  const params = new URLSearchParams({ entityId: resolveFinanceEntityId(entityId), limit: String(limit) });
   if (cursor) params.append('cursor', cursor);
   const response = await fetch(
     `${API_CONFIG.baseURL}${API_ENDPOINTS.finance.liveTransactions}?${params.toString()}`,
@@ -126,16 +170,17 @@ export function dateRangeToFromTo(dateRange: string): { from: string; to: string
 }
 
 export const exportFinanceReport = async (payload: {
-  entityId: string;
+  entityId?: string;
   dateRange: string;
   format: string;
   scope: string[];
 }): Promise<void> => {
   const { from, to } = dateRangeToFromTo(payload.dateRange);
+  const resolvedFormat = payload.format || 'pdf';
   const body = {
-    entityId: payload.entityId,
+    entityId: resolveFinanceEntityId(payload.entityId),
     dateRange: { from, to },
-    format: payload.format === 'xlsx' ? 'csv' : payload.format,
+    format: resolvedFormat,
     scope: payload.scope,
   };
 
@@ -146,7 +191,7 @@ export const exportFinanceReport = async (payload: {
   });
 
   if (!response.ok) {
-    throw new Error(`Export failed: ${response.status}`);
+    throw new Error(await getApiErrorMessage(response, `Export failed: ${response.status}`));
   }
 
   const contentType = response.headers.get('Content-Type') ?? '';
@@ -159,7 +204,7 @@ export const exportFinanceReport = async (payload: {
     const blob = await response.blob();
     const cd = response.headers.get('Content-Disposition');
     const match = cd?.match(/filename="?([^";\n]+)"?/);
-    const filename = match?.[1] ?? `finance-report-${new Date().toISOString().split('T')[0]}.${payload.format === 'xlsx' ? 'csv' : payload.format}`;
+    const filename = match?.[1] ?? `finance-report-${new Date().toISOString().split('T')[0]}.${resolvedFormat}`;
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

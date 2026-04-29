@@ -32,7 +32,6 @@ export function UtilitiesTools() {
     setIsExporting(true);
     try {
       await exportFinanceReport({
-        entityId: 'default',
         dateRange: '30d',
         format: 'xlsx',
         scope: ['overview', 'gateway', 'failed'],
@@ -40,7 +39,7 @@ export function UtilitiesTools() {
       toast.success('Data exported successfully');
       setShowDataExport(false);
     } catch (e) {
-      toast.error('Export failed');
+      toast.error(e instanceof Error ? e.message : 'Export failed');
     } finally {
       setIsExporting(false);
     }

@@ -10,6 +10,15 @@ interface Props {
 }
 
 export function PaymentMethodSplitCard({ data, loading, onMethodClick }: Props) {
+  if (!data.length) {
+    return (
+      <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm p-6 h-full">
+        <h3 className="font-bold text-[#212121] mb-4">Payment Method Split</h3>
+        <p className="text-sm text-[#757575]">No payment split data available for the selected period.</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="bg-white border border-[#E0E0E0] rounded-xl h-[300px] animate-pulse"></div>;
   }
@@ -52,12 +61,12 @@ export function PaymentMethodSplitCard({ data, loading, onMethodClick }: Props) 
                       {getIcon(item.method)} 
                       {item.label}
                     </span>
-                    <span className="font-bold text-[#212121]">{item.percentage}%</span>
+                    <span className="font-bold text-[#212121]">{Math.max(0, Math.min(100, item.percentage)).toFixed(1)}%</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div 
                       className={`h-full ${getColor(item.method)} transition-all duration-500`} 
-                      style={{ width: `${item.percentage}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, item.percentage))}%` }}
                     />
                   </div>
                 </div>

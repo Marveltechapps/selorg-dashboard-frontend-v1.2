@@ -219,13 +219,8 @@ export function UserManagement() {
       await revokeSession(sessionId);
       toast.success('Session revoked');
       loadAllData();
-    } catch (error: unknown) {
-      const err = error as { response?: { status?: number } };
-      if (err?.response?.status === 501) {
-        toast.info('Session revocation is not implemented (stateless JWT)');
-      } else {
-        toast.error('Failed to revoke session');
-      }
+    } catch {
+      toast.error('Failed to revoke session');
     }
   };
 

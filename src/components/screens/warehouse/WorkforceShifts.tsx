@@ -228,25 +228,28 @@ export function WorkforceShifts() {
   };
 
   const createTraining = async () => {
-    if (!newTraining.title?.trim() || !newTraining.date) {
-      toast.error('Title and date are required');
+    const title = newTraining.title?.trim();
+    const type = newTraining.type?.trim();
+    if (!title || !newTraining.date || !type) {
+      toast.error('Title, type, and date are required');
       return;
     }
     try {
       await apiAddTraining({
-        title: newTraining.title.trim(),
-        type: newTraining.type || 'Mandatory',
+        title,
+        type,
         date: newTraining.date,
         duration: newTraining.duration || '1h',
         instructor: newTraining.instructor || 'TBD',
         capacity: newTraining.capacity ? parseInt(newTraining.capacity, 10) : 20,
+        status: 'scheduled',
       });
       toast.success('Training program created');
       setShowTrainingModal(false);
       setNewTraining({ title: '', type: '', date: '', duration: '', instructor: '', capacity: '' });
       loadData();
     } catch (error) {
-      toast.error('Failed to create training');
+      toast.error(error instanceof Error ? error.message : 'Failed to create training');
     }
   };
 

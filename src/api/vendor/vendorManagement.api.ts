@@ -5,6 +5,14 @@ import { getAuthToken } from '../../contexts/AuthContext';
  * Vendor Management API
  */
 export const vendorManagementApi = {
+  parseErrorMessage(payload: any, fallback: string) {
+    if (!payload) return fallback;
+    if (typeof payload === 'string') return payload;
+    if (typeof payload.message === 'string') return payload.message;
+    if (typeof payload.error === 'string') return payload.error;
+    if (payload.error && typeof payload.error.message === 'string') return payload.error.message;
+    return fallback;
+  },
   /**
    * Get all vendors (alias for getVendors)
    */
@@ -138,7 +146,7 @@ export const vendorManagementApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Failed to update vendor' }));
-      throw new Error(error.message || 'Failed to update vendor');
+      throw new Error(this.parseErrorMessage(error, 'Failed to update vendor'));
     }
 
     return response.json();
@@ -163,7 +171,7 @@ export const vendorManagementApi = {
       
       try {
         const errorData = await response.json();
-        error.message = errorData.message || errorData.error || `Failed to delete vendor (${response.status})`;
+        error.message = this.parseErrorMessage(errorData, `Failed to delete vendor (${response.status})`);
       } catch {
         error.message = `Failed to delete vendor (${response.status})`;
       }

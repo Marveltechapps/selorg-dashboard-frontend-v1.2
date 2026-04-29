@@ -11,6 +11,25 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+async function getErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const json = await response.json();
+    const raw = json?.error ?? json?.message;
+    if (typeof raw === 'string' && raw.trim()) return raw;
+    if (raw && typeof raw === 'object') {
+      const nested = (raw as Record<string, unknown>).message;
+      if (typeof nested === 'string' && nested.trim()) return nested;
+      return JSON.stringify(raw);
+    }
+    if (json?.prerequisite?.message && typeof json.prerequisite.message === 'string') {
+      return json.prerequisite.message;
+    }
+  } catch {
+    // ignore parsing failures and return fallback
+  }
+  return fallback;
+}
+
 /** Group flat allocations by SKU into frontend shape */
 function allocationsToSkus(allocations: any[]): any[] {
   if (!allocations || !Array.isArray(allocations)) return [];
@@ -49,7 +68,7 @@ export const allocationApi = {
   // SKU allocations - fetch from backend and transform to SKU-centric
   async fetchSKUAllocations(): Promise<any[]> {
     const response = await fetch(`${API_BASE_URL}`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch allocations');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch allocations'));
     const json = await response.json();
     const data = json.data ?? json;
     return allocationsToSkus(Array.isArray(data) ? data : []);
@@ -61,7 +80,7 @@ export const allocationApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
     });
-    if (!response.ok) throw new Error('Failed to update allocation');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to update allocation'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -73,7 +92,7 @@ export const allocationApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(order),
     });
-    if (!response.ok) throw new Error('Failed to create transfer order');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to create transfer order'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -85,7 +104,7 @@ export const allocationApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ updates }),
     });
-    if (!response.ok) throw new Error('Failed to rebalance');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to rebalance'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -93,7 +112,7 @@ export const allocationApi = {
   // Alerts
   async fetchAlerts(): Promise<any[]> {
     const response = await fetch(`${API_BASE_URL}/alerts`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch alerts');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch alerts'));
     const json = await response.json();
     const data = json.data ?? json;
     return Array.isArray(data) ? data : [];
@@ -105,7 +124,7 @@ export const allocationApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ status: 'dismissed' }),
     });
-    if (!response.ok) throw new Error('Failed to dismiss alert');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to dismiss alert'));
   },
 
   async seedAllocationData(): Promise<any> {
@@ -113,7 +132,7 @@ export const allocationApi = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to seed allocation data');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to seed allocation data'));
     return response.json();
   },
 

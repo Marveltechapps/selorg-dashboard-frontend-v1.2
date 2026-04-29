@@ -6,6 +6,9 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActionLogsTimeline } from '@/components/ui/action-logs-timeline';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { User, FileText, CreditCard, CheckCircle2, XCircle, Ban, Clock, Smartphone, Link2, Unlink } from 'lucide-react';
 import {
   PickerApprovalDetails,
@@ -23,6 +26,15 @@ import {
   PickerStatus,
 } from './pickerApprovalsApi';
 import { toast } from 'sonner';
+import {
+  fetchAgencies,
+  fetchStoreShiftSlots,
+  sendPickerPushNotification,
+  updatePickerAssignment,
+  type AgencyItem,
+  type ShiftSlotItem,
+} from '@/api/admin/pickerOpsApi';
+import { fetchStores, type Store } from './storeWarehouseApi';
 
 const STATUS_BADGE_CLASSES: Record<string, string> = {
   PENDING: 'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -51,6 +63,15 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
   const [trainingRows, setTrainingRows] = useState<Array<{ videoId: string; title: string; watchedSeconds: number; duration: number; progress: number; completed: boolean; completedAt: string | null }>>([]);
   const [faceVerification, setFaceVerification] = useState<{ status: string; verifiedAt: string | null; confidence: number | null; faceVerification: boolean } | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [agencies, setAgencies] = useState<AgencyItem[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [shiftSlots, setShiftSlots] = useState<ShiftSlotItem[]>([]);
+  const [agencyId, setAgencyId] = useState<string>('none');
+  const [storeId, setStoreId] = useState<string>('none');
+  const [shiftSlotId, setShiftSlotId] = useState<string>('none');
+  const [docReject, setDocReject] = useState<{ open: boolean; docType: 'aadhar' | 'pan'; side: 'front' | 'back' } | null>(null);
+  const [docRejectReason, setDocRejectReason] = useState('');
 
   const overallTrainingCompleted = useMemo(
     () => trainingRows.length > 0 && trainingRows.every((row) => row.completed),
@@ -121,6 +142,33 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
 
   if (!picker && !open) return null;
 
+  React.useEffect(() => {
+    if (!open) return;
+    fetchAgencies().then(setAgencies).catch(() => setAgencies([]));
+    fetchStores({ limit: 200, type: 'store' })
+      .then((r) => setStores(r.data))
+      .catch(() => setStores([]));
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open || !picker?.pickerId) return;
+    setAgencyId((picker as any).agencyId || (picker as any).agency?._id || 'none');
+    setStoreId((picker as any).storeId || (picker as any).store?._id || 'none');
+    setShiftSlotId((picker as any).shiftSlotId || (picker as any).shiftSlot?._id || 'none');
+  }, [open, picker?.pickerId]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (!storeId || storeId === 'none') {
+      setShiftSlots([]);
+      setShiftSlotId('none');
+      return;
+    }
+    fetchStoreShiftSlots(storeId)
+      .then(setShiftSlots)
+      .catch(() => setShiftSlots([]));
+  }, [open, storeId]);
+
   const docThumb = (
     label: string,
     docType: 'aadhar' | 'pan',
@@ -166,15 +214,8 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
           disabled={reviewLoading || !payload?.url}
           onClick={async () => {
             if (!picker) return;
-            const reason = window.prompt('Rejection reason') || 'Rejected by admin';
-            setReviewLoading(true);
-            try {
-              await rejectDocument(picker.pickerId, docType, reason, side);
-              toast.success('Document rejected');
-              onRefresh();
-            } finally {
-              setReviewLoading(false);
-            }
+            setDocReject({ open: true, docType, side });
+            setDocRejectReason(payload?.rejectionReason || '');
           }}
         >
           Reject
@@ -314,6 +355,96 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
                   <span className="font-medium">
                     {picker.appliedDate ? new Date(picker.appliedDate).toLocaleString() : '—'}
                   </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-semibold flex items-center gap-2">
+                <User size={18} /> Assignment
+              </h4>
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Agency</Label>
+                    <Select value={agencyId} onValueChange={setAgencyId} disabled={assignmentLoading}>
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Select agency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {agencies.map((a) => (
+                          <SelectItem key={a.agencyId} value={a.agencyId}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Store</Label>
+                    <Select value={storeId} onValueChange={setStoreId} disabled={assignmentLoading}>
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Select store" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {stores.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name} ({s.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Shift slot</Label>
+                    <Select
+                      value={shiftSlotId}
+                      onValueChange={setShiftSlotId}
+                      disabled={assignmentLoading || storeId === 'none' || shiftSlots.length === 0}
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder={storeId === 'none' ? 'Pick store first' : 'Select slot'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {shiftSlots.map((slot) => (
+                          <SelectItem key={slot.shiftSlotId} value={slot.shiftSlotId}>
+                            {String(slot.type).toUpperCase()} • {slot.startTime} - {slot.endTime}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      if (!picker) return;
+                      setAssignmentLoading(true);
+                      try {
+                        await updatePickerAssignment(picker.pickerId, {
+                          agencyId: agencyId === 'none' ? null : agencyId,
+                          storeId: storeId === 'none' ? null : storeId,
+                          shiftSlotId: shiftSlotId === 'none' ? null : shiftSlotId,
+                        });
+                        toast.success('Assignment updated');
+                        const detailed = await fetchPickerDetails(picker.pickerId);
+                        onPickerUpdated?.(detailed);
+                        onRefresh();
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'Failed to update assignment');
+                      } finally {
+                        setAssignmentLoading(false);
+                      }
+                    }}
+                    disabled={assignmentLoading}
+                  >
+                    {assignmentLoading ? 'Saving…' : 'Save assignment'}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -594,6 +725,63 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
           )}
         </div>
       </SheetContent>
+
+      <Dialog
+        open={!!docReject?.open}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDocReject(null);
+            setDocRejectReason('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject document</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Reason</Label>
+            <textarea
+              className="w-full min-h-[90px] p-3 text-sm border border-gray-200 rounded-md"
+              placeholder="Enter rejection reason…"
+              value={docRejectReason}
+              onChange={(e) => setDocRejectReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setDocReject(null)} disabled={reviewLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={reviewLoading || !docRejectReason.trim() || !picker || !docReject}
+              onClick={async () => {
+                if (!picker || !docReject) return;
+                setReviewLoading(true);
+                try {
+                  await rejectDocument(picker.pickerId, docReject.docType, docRejectReason.trim(), docReject.side);
+                  try {
+                    await sendPickerPushNotification(picker.pickerId, {
+                      title: 'Document rejected',
+                      body: `${docReject.docType.toUpperCase()} ${docReject.side} rejected: ${docRejectReason.trim()}`,
+                    });
+                  } catch {
+                    toast.message('Document rejected (push notification failed)');
+                  }
+                  toast.success('Document rejected');
+                  onRefresh();
+                  setDocReject(null);
+                  setDocRejectReason('');
+                } finally {
+                  setReviewLoading(false);
+                }
+              }}
+            >
+              Reject & notify
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }

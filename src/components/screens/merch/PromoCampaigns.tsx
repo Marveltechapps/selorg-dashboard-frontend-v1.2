@@ -41,7 +41,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
         }
       } catch (error) {
         console.error('Error loading campaigns:', error);
-        toast.error('Failed to load campaigns');
+        toast.error(error instanceof Error ? error.message : 'Failed to load campaigns');
         setCampaigns([]);
       } finally {
         setLoading(false);
@@ -72,7 +72,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
       }
     } catch (error) {
       console.error('Error updating campaign status:', error);
-      toast.error('Failed to update campaign status');
+      toast.error(error instanceof Error ? error.message : 'Failed to update campaign status');
     }
   };
 
@@ -81,7 +81,26 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
       ? `${new Date(data.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(data.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
       : "TBD";
 
+    const normalizedSkus = Array.isArray(data.skus)
+      ? data.skus
+          .map((sku: any) => {
+            if (typeof sku === 'string') return sku;
+            if (sku && typeof sku === 'object') {
+              return {
+                sku: sku.sku || sku.code || sku.id || sku._id || '',
+                name: sku.name || '',
+                category: sku.category || 'General',
+                basePrice: Number(sku.basePrice ?? sku.base ?? 0),
+                promoPrice: Number(sku.promoPrice ?? sku.sell ?? sku.sellingPrice ?? sku.basePrice ?? 0),
+              };
+            }
+            return null;
+          })
+          .filter(Boolean)
+      : [];
+
     const payload = {
+      ...data,
       name: data.name || "Untitled Campaign",
       tagline: data.description || "New Promotion",
       status,
@@ -91,8 +110,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
       type: (data.type || "Discount").charAt(0).toUpperCase() + (data.type || "Discount").slice(1).toLowerCase(),
       owner: { name: data.owner || "Muthu", initial: (data.owner || "Muthu").charAt(0).toUpperCase() },
       kpi: { label: "Revenue Uplift", value: "0%", trend: "neutral" as const },
-      skus: data.skus ?? [],
-      ...data,
+      skus: normalizedSkus,
     };
     delete (payload as any)._id;
 
@@ -118,7 +136,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
       }
     } catch (err) {
       console.error("Campaign save error:", err);
-      toast.error("Failed to save campaign");
+      toast.error(err instanceof Error ? err.message : "Failed to save campaign");
     }
   };
 

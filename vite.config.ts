@@ -12,12 +12,31 @@
     }
   };
 
+  const normalizeLegacyLocalProxy = (target: string, canonicalPort: string) => {
+    try {
+      const parsed = new URL(target);
+      const isLegacyLocal =
+        parsed.port === '5001' &&
+        (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+      return isLegacyLocal ? `http://localhost:${canonicalPort}` : target;
+    } catch {
+      return target;
+    }
+  };
+
   export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     const apiBaseUrl = env.VITE_API_BASE_URL?.trim() || '';
-    const defaultBackendPort = env.VITE_PROXY_PORT || '5001';
-    const proxyTarget = resolveOrigin(apiBaseUrl, `http://localhost:${defaultBackendPort}`);
-    const wsServerUrl = env.VITE_WS_URL?.trim() || `http://localhost:${defaultBackendPort}`;
+    // Keep fallback aligned with backend `.env` default used in this workspace.
+    const canonicalBackendPort = '3333';
+    const defaultBackendPort = env.VITE_PROXY_PORT || canonicalBackendPort;
+    const configuredDevProxyTarget = resolveOrigin(env.VITE_PROXY_TARGET?.trim() || '', `http://localhost:${defaultBackendPort}`);
+    // Backward compatibility: older dashboards hardcoded local port 5001.
+    const devProxyTarget = normalizeLegacyLocalProxy(configuredDevProxyTarget, canonicalBackendPort);
+    const proxyTarget = mode === 'development'
+      ? devProxyTarget
+      : resolveOrigin(apiBaseUrl, devProxyTarget);
+    const wsServerUrl = env.VITE_WS_URL?.trim() || proxyTarget;
     const devServerPort = Number(env.VITE_DEV_PORT || '5173');
 
     return {

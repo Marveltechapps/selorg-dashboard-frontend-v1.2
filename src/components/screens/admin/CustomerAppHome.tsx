@@ -105,6 +105,26 @@ function normalizeBannerSlot(raw: unknown): 'hero' | 'small' | 'mid' | 'large' |
   return (allowed.includes(s as (typeof allowed)[number]) ? s : 'hero') as (typeof allowed)[number];
 }
 
+function normalizeBannerContentFit(raw: unknown): 'cover' | 'contain' | 'fill' | 'none' {
+  const allowed = ['cover', 'contain', 'fill', 'none'] as const;
+  const s = String(raw ?? 'fill')
+    .trim()
+    .toLowerCase();
+  return (allowed.includes(s as (typeof allowed)[number]) ? s : 'fill') as (typeof allowed)[number];
+}
+
+function normalizeBannerAspectRatio(raw: unknown): 'auto' | '16:9' | '4:3' | '1:1' | '21:9' | '3:2' {
+  const allowed = ['auto', '16:9', '4:3', '1:1', '21:9', '3:2'] as const;
+  const s = String(raw ?? 'auto').trim();
+  return (allowed.includes(s as (typeof allowed)[number]) ? s : 'auto') as (typeof allowed)[number];
+}
+
+function parseDimensionNumber(raw: unknown): number | null {
+  if (raw === '' || raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 function normalizeBannerLeafItem(it: BannerContentItem, idx: number): BannerContentItem {
   const oid = /^[a-f0-9]{24}$/i;
   const base: BannerContentItem = { type: it.type, order: idx };
@@ -344,6 +364,21 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
         const slot = normalizeBannerSlot(raw.slot);
         const pmRaw = String(raw.presentationMode ?? 'single').toLowerCase();
         const presentationMode = pmRaw === 'carousel' ? 'carousel' : 'single';
+        const redirectTypeRaw = String(raw.redirectType ?? 'banner').trim().toLowerCase();
+        const redirectType =
+          raw.isNavigable === false
+            ? 'none'
+            : (redirectTypeRaw || 'banner');
+        const redirectValueRaw = String(raw.redirectValue ?? '').trim();
+        const redirectValue =
+          redirectType !== 'banner' && redirectType !== 'none' ? (redirectValueRaw || undefined) : undefined;
+        const dimensions = raw.dimensions && typeof raw.dimensions === 'object'
+          ? {
+              width: parseDimensionNumber((raw.dimensions as { width?: unknown }).width),
+              height: parseDimensionNumber((raw.dimensions as { height?: unknown }).height),
+              preferredHeight: parseDimensionNumber((raw.dimensions as { preferredHeight?: unknown }).preferredHeight),
+            }
+          : undefined;
         const items = (raw.contentItems as BannerContentItem[]) ?? [];
         const normalizedItems = items.map((it, idx) => normalizeBannerTopItem(it, idx));
         // Do not spread raw: avoid _id/createdAt on create, and never send link/startDate/endDate as null (Mongoose rejects null for String paths).
@@ -355,15 +390,21 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
           imageUrl,
           order: Number(raw.order) || 0,
           isActive: raw.isActive !== false,
-          redirectType: 'banner',
+          redirectType,
+          redirectValue,
+          aspectRatio: normalizeBannerAspectRatio(raw.aspectRatio),
+          contentFit: normalizeBannerContentFit(raw.contentFit),
+          dimensions,
           contentItems: normalizedItems,
         };
         if (editingId) {
-          payload.redirectValue = editingId;
+          if (payload.redirectType === 'banner' && payload.isNavigable !== false) {
+            payload.redirectValue = editingId;
+          }
           await updateBanner(editingId, payload);
         } else {
           const created = await createBanner(payload);
-          if (created?._id) {
+          if (created?._id && payload.redirectType === 'banner' && payload.isNavigable !== false) {
             await updateBanner(created._id, { ...payload, redirectValue: created._id });
           }
         }
@@ -573,6 +614,10 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                   order: 0,
                   isActive: true,
                   redirectType: 'banner',
+                  redirectValue: '',
+                  aspectRatio: 'auto',
+                  contentFit: 'fill',
+                  dimensions: { preferredHeight: null, width: null, height: null },
                   contentItems: [],
                 });
                 setEditingId(null);
@@ -1183,6 +1228,80 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
                       />
                       Home banner is tappable (opens landing page)
                     </label>
+                    {formData.isNavigable !== false && (
+                      <div className="space-y-2 rounded-lg border border-[#e4e4e7] bg-[#fafafa] p-3">
+                        <label className="text-sm font-medium text-[#18181b] block">Tap action</label>
+                        <select
+                          className="w-full rounded-md border border-[#e4e4e7] bg-white px-3 py-2 text-sm"
+                          value={(formData.redirectType as string) || 'banner'}
+                          onChange={(e) => setFormData({ ...formData, redirectType: e.target.value })}
+                        >
+                          <option value="banner">Landing page (built below)</option>
+                          <option value="category">Category</option>
+                          <option value="subcategory">Subcategory</option>
+                          <option value="collection">Collection</option>
+                          <option value="section">Section</option>
+                          <option value="product">Product</option>
+                          <option value="search">Search</option>
+                          <option value="screen">App screen</option>
+                          <option value="url">External URL</option>
+                        </select>
+                        {(formData.redirectType as string) !== 'banner' && (
+                          <Input
+                            placeholder={(formData.redirectType as string) === 'url' ? 'https://example.com' : 'Target id / value'}
+                            value={(formData.redirectValue as string) ?? ''}
+                            onChange={(e) => setFormData({ ...formData, redirectValue: e.target.value })}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <div className="space-y-2 rounded-lg border border-[#e4e4e7] bg-[#fafafa] p-3">
+                      <label className="text-sm font-medium text-[#18181b] block">Image display settings</label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-xs text-[#71717a]">Aspect ratio</label>
+                          <select
+                            className="w-full rounded-md border border-[#e4e4e7] bg-white px-3 py-2 text-sm"
+                            value={normalizeBannerAspectRatio(formData.aspectRatio)}
+                            onChange={(e) => setFormData({ ...formData, aspectRatio: e.target.value })}
+                          >
+                            <option value="auto">Auto (original image)</option>
+                            <option value="16:9">16:9</option>
+                            <option value="4:3">4:3</option>
+                            <option value="1:1">1:1</option>
+                            <option value="21:9">21:9</option>
+                            <option value="3:2">3:2</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-[#71717a]">Image fit</label>
+                          <select
+                            className="w-full rounded-md border border-[#e4e4e7] bg-white px-3 py-2 text-sm"
+                            value={normalizeBannerContentFit(formData.contentFit)}
+                            onChange={(e) => setFormData({ ...formData, contentFit: e.target.value })}
+                          >
+                            <option value="contain">Contain (show full image)</option>
+                            <option value="cover">Cover (fill and crop)</option>
+                            <option value="fill">Fill (stretch)</option>
+                            <option value="none">None</option>
+                          </select>
+                        </div>
+                      </div>
+                      <Input
+                        type="number"
+                        placeholder="Custom height in px (optional)"
+                        value={(formData.dimensions as { preferredHeight?: number | null } | undefined)?.preferredHeight ?? ''}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            dimensions: {
+                              ...((formData.dimensions as Record<string, unknown>) ?? {}),
+                              preferredHeight: e.target.value ? Number(e.target.value) : null,
+                            },
+                          })
+                        }
+                      />
+                    </div>
                     <Input
                       placeholder="Image URL *"
                       value={(formData.imageUrl as string) ?? ''}

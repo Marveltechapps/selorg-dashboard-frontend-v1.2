@@ -147,8 +147,8 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
       toast.success('QC check logged');
       // Remove item from UI immediately
       setWatchItems(prev => prev.filter(item => item.sku !== sku));
-    } catch (error) {
-      toast.error('Failed to log check');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to log check');
     }
   };
 
@@ -158,8 +158,8 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
       toast.success('Failure resolved');
       setFailures(prev => prev.filter(f => (f.failure_id || f.order_id) !== failureId));
       loadSummary();
-    } catch (error) {
-      toast.error('Failed to resolve');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to resolve');
     }
   };
 
@@ -176,8 +176,8 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
       setIsDialogOpen(false);
       setFormData({ productName: '', sku: '', reason: '', reqCheck: 'Every 4h' });
       loadData();
-    } catch (error) {
-      toast.error('Failed to add item');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add item');
     }
   };
 
@@ -408,8 +408,8 @@ getAuditStatus()
       setIsReadingDialogOpen(false);
       setFormData({ zone: '', reading: '', threshold: '', notes: '' });
       loadComplianceData();
-    } catch (error) {
-      toast.error('Failed to add reading');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add reading');
     }
   };
 

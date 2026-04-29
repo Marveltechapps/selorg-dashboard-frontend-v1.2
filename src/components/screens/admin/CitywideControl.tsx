@@ -157,10 +157,10 @@ export function CitywideControl() {
   useEffect(() => {
     loadAllData();
     
-    // Set up real-time updates every 2 seconds
+    // Poll less aggressively to avoid overloading citywide APIs.
     const interval = setInterval(() => {
       loadAllData();
-    }, 2000);
+    }, 8000);
     
     return () => clearInterval(interval);
   }, []);

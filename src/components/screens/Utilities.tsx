@@ -360,7 +360,7 @@ function SystemStatus() {
       } catch (error: any) {
          console.error('Failed to load system status:', error);
          if (loading) {
-            toast.error('Failed to load system status');
+            toast.error(error?.message || 'Failed to load system status');
          }
       } finally {
          setLoading(false);
@@ -376,7 +376,7 @@ function SystemStatus() {
          });
 
          if (response.success) {
-            toast.success('Database re-index started. Estimated completion: 15 minutes');
+            toast.success(response.message || 'Database diagnostics started successfully');
             setLastDiagnostic(new Date().toLocaleString());
          }
       } catch (error: any) {
@@ -395,7 +395,7 @@ function SystemStatus() {
          });
 
          if (response.success) {
-            toast.success(`Global sync completed! ${response.recordsPushed} records pushed.`);
+            toast.success(response.message || `Global sync completed! ${response.recordsPushed} records pushed.`);
             setLastSync(new Date().toLocaleString());
             loadSystemStatus(); // Refresh status after sync
          }

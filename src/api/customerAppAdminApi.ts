@@ -65,6 +65,13 @@ export interface Banner {
   link?: string;
   redirectType?: string | null;
   redirectValue?: string | null;
+  aspectRatio?: 'auto' | '16:9' | '4:3' | '1:1' | '21:9' | '3:2';
+  contentFit?: 'cover' | 'contain' | 'fill' | 'none';
+  dimensions?: {
+    width?: number | null;
+    height?: number | null;
+    preferredHeight?: number | null;
+  };
   title?: string;
   isActive?: boolean;
   order?: number;

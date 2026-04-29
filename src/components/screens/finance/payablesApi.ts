@@ -90,9 +90,11 @@ function mapInvoice(raw: Record<string, unknown>): VendorInvoice {
 }
 
 function mapVendor(raw: Record<string, unknown>): Vendor {
+  const resolvedId = String(raw.id ?? raw._id ?? raw.vendorId ?? '').trim();
+  const resolvedName = String(raw.name ?? raw.displayName ?? raw.vendorName ?? '').trim();
   return {
-    id: String(raw.id ?? raw._id ?? ''),
-    name: String(raw.name ?? ''),
+    id: resolvedId,
+    name: resolvedName || (resolvedId ? `Vendor ${resolvedId}` : 'Unknown Vendor'),
     email: raw.email != null ? String(raw.email) : undefined,
     accountNumber: raw.accountNumber != null ? String(raw.accountNumber) : undefined,
   };
@@ -169,7 +171,9 @@ export async function fetchVendors(): Promise<Vendor[]> {
   if (!Array.isArray(arr)) {
     return [];
   }
-  return arr.map((r: Record<string, unknown>) => mapVendor(r));
+  return arr
+    .map((r: Record<string, unknown>) => mapVendor(r))
+    .filter((vendor) => Boolean(vendor.id));
 }
 
 export async function bulkApproveInvoices(ids: string[]): Promise<{ approvedCount: number; totalRequested: number; data: VendorInvoice[] }> {

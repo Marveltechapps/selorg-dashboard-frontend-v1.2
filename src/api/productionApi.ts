@@ -13,7 +13,14 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...options, headers: { ...authHeaders(), ...options?.headers } });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || 'Request failed');
+    const rawMessage = err?.error ?? err?.message;
+    const resolvedMessage =
+      typeof rawMessage === 'string'
+        ? rawMessage
+        : typeof rawMessage === 'object' && rawMessage !== null
+        ? (rawMessage.message as string) || JSON.stringify(rawMessage)
+        : 'Request failed';
+    throw new Error(resolvedMessage);
   }
   return res.json();
 }
@@ -529,7 +536,14 @@ export async function bulkUploadProduction(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || 'Upload failed');
+    const rawMessage = err?.error ?? err?.message;
+    const resolvedMessage =
+      typeof rawMessage === 'string'
+        ? rawMessage
+        : typeof rawMessage === 'object' && rawMessage !== null
+        ? (rawMessage.message as string) || JSON.stringify(rawMessage)
+        : 'Upload failed';
+    throw new Error(resolvedMessage);
   }
   const data = await res.json();
   return { recordsProcessed: data.recordsProcessed ?? 0, message: data.message ?? 'Upload completed' };

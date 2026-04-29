@@ -25,6 +25,10 @@ import {
   Sliders,
   Scale,
   UserPlus,
+  Building2,
+  Clock3,
+  Shuffle,
+  Download,
   HelpCircle,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
@@ -81,8 +85,14 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
     { category: "Control Room", items: [
       { id: 'citywide', label: 'Citywide Control', icon: Globe },
     ]},
-    { category: "Platform Settings", items: [
+    { category: "Picker Operations", items: [
       { id: 'picker-management', label: 'Picker Management', icon: UserPlus },
+      { id: 'agencies', label: 'Agencies', icon: Building2 },
+      { id: 'ot-approvals', label: 'OT Approvals', icon: Clock3 },
+      { id: 'shift-change-approvals', label: 'Shift Change Approvals', icon: Shuffle },
+      { id: 'attendance-export', label: 'Attendance Export', icon: Download },
+    ]},
+    { category: "Platform Settings", items: [
       { id: 'master-data', label: 'Master Data', icon: Database },
       { id: 'users', label: 'Users & Roles', icon: Users },
       { id: 'customers', label: 'Customers', icon: UserCheck },

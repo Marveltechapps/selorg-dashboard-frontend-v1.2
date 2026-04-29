@@ -464,20 +464,80 @@ export function InventoryCoordination() {
     })();
   };
 
-  const handleReorder = (_id: string) => {
-    toast.info('Reorder is not available from the API yet.');
+  const handleReorder = async (id: string) => {
+    if (!vendorId) {
+      toast.error('Vendor context not ready');
+      return;
+    }
+    setProcessingReorders((prev) => [...prev, id]);
+    try {
+      await vendorInventoryApi.bulkReorder(vendorId, { stockoutIds: [id] });
+      setStockouts((prev) => prev.map((x) => (x.id === id ? { ...x, reorderInitiated: true } : x)));
+      toast.success('Reorder initiated');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to initiate reorder';
+      toast.error(msg);
+    } finally {
+      setProcessingReorders((prev) => prev.filter((x) => x !== id));
+    }
   };
 
-  const handleAlertVendor = (_id: string) => {
-    toast.info('Vendor alert is not available from the API yet.');
+  const handleAlertVendor = async (id: string) => {
+    if (!vendorId) {
+      toast.error('Vendor context not ready');
+      return;
+    }
+    setProcessingAlerts((prev) => [...prev, id]);
+    try {
+      const stock = stockouts.find((x) => x.id === id);
+      await vendorInventoryApi.alertAllVendors(vendorId, {
+        message: stock ? `Stockout for ${stock.product}. Please replenish inventory.` : undefined,
+      });
+      setStockouts((prev) => prev.map((x) => (x.id === id ? { ...x, alerted: true } : x)));
+      toast.success('Vendor alerted');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to alert vendor';
+      toast.error(msg);
+    } finally {
+      setProcessingAlerts((prev) => prev.filter((x) => x !== id));
+    }
   };
 
-  const handleBulkReorder = () => {
-    toast.info('Bulk reorder is not available from the API yet.');
+  const handleBulkReorder = async () => {
+    if (!vendorId) {
+      toast.error('Vendor context not ready');
+      return;
+    }
+    const ids = stockouts.map((x) => x.id);
+    if (!ids.length) {
+      toast.info('No stockout rows to reorder');
+      return;
+    }
+    try {
+      await vendorInventoryApi.bulkReorder(vendorId, { stockoutIds: ids });
+      setStockouts((prev) => prev.map((x) => ({ ...x, reorderInitiated: true })));
+      toast.success(`Bulk reorder started for ${ids.length} stockout items`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed bulk reorder';
+      toast.error(msg);
+    }
   };
 
-  const handleAlertAllVendors = () => {
-    toast.info('Bulk vendor alert is not available from the API yet.');
+  const handleAlertAllVendors = async () => {
+    if (!vendorId) {
+      toast.error('Vendor context not ready');
+      return;
+    }
+    try {
+      await vendorInventoryApi.alertAllVendors(vendorId, {
+        message: 'Please prioritize stock replenishment for currently out-of-stock SKUs.',
+      });
+      setStockouts((prev) => prev.map((x) => ({ ...x, alerted: true })));
+      toast.success('Alerts sent for all stockouts');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to alert vendors';
+      toast.error(msg);
+    }
   };
 
   const handleAgingReturn = (item: AgingInventory) => {

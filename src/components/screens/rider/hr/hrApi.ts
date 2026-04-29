@@ -97,7 +97,12 @@ async function apiRequest<T>(
       } catch {
         error = { message: errorText || 'Request failed' };
       }
-      throw new Error(error.message || `HTTP error! status: ${response.status}`);
+      const message =
+        (typeof error?.message === 'string' && error.message) ||
+        (typeof error?.error === 'string' && error.error) ||
+        (typeof error?.error?.message === 'string' && error.error.message) ||
+        `HTTP error! status: ${response.status}`;
+      throw new Error(message);
     }
 
     const data = await response.json();
@@ -248,6 +253,14 @@ export async function fetchDocumentDetails(documentId: string): Promise<RiderDoc
     console.error(`[HR API] Error fetching document ${documentId}:`, error);
     return null;
   }
+}
+
+export async function fetchDocumentDownloadUrl(documentId: string): Promise<string> {
+  const data = await apiRequest<{ fileUrl?: string }>(API_ENDPOINTS.hr.documentDownload(documentId));
+  if (!data?.fileUrl) {
+    throw new Error('Document file is unavailable for download');
+  }
+  return data.fileUrl;
 }
 
 export async function approveDocument(docId: string, notes?: string): Promise<void> {

@@ -63,6 +63,10 @@ export function PickerConfigManagement() {
         websocketReconnectionDelayMs: Number(form.websocketReconnectionDelayMs) ?? config?.websocketReconnectionDelayMs,
         websocketReconnectionDelayMaxMs: Number(form.websocketReconnectionDelayMaxMs) ?? config?.websocketReconnectionDelayMaxMs,
         defaultHubName: form.defaultHubName ?? config?.defaultHubName,
+        autoEndThresholdMinutes:
+          Number(form.autoEndThresholdMinutes) ?? config?.autoEndThresholdMinutes ?? 10,
+        breakPollingIntervalMs:
+          Number(form.breakPollingIntervalMs) ?? config?.breakPollingIntervalMs ?? 30000,
       };
       const updated = await updatePickerConfig(updates);
       setConfig(updated);
@@ -204,6 +208,32 @@ export function PickerConfigManagement() {
                 placeholder="Downtown Hub"
               />
               <p className="text-xs text-[#71717a] mt-1">Shown on shift selection before location is set</p>
+            </div>
+
+            <div>
+              <Label htmlFor="autoEndThresholdMinutes">Auto-end threshold (minutes)</Label>
+              <Input
+                id="autoEndThresholdMinutes"
+                type="number"
+                min={0}
+                value={c.autoEndThresholdMinutes ?? 10}
+                onChange={(e) => setForm((f) => ({ ...f, autoEndThresholdMinutes: Number(e.target.value) || 0 }))}
+                className="mt-1"
+              />
+              <p className="text-xs text-[#71717a] mt-1">Default: shift end + 10 minutes</p>
+            </div>
+
+            <div>
+              <Label htmlFor="breakPollingIntervalMs">Break polling interval (ms)</Label>
+              <Input
+                id="breakPollingIntervalMs"
+                type="number"
+                min={1000}
+                value={c.breakPollingIntervalMs ?? 30000}
+                onChange={(e) => setForm((f) => ({ ...f, breakPollingIntervalMs: Number(e.target.value) || 0 }))}
+                className="mt-1"
+              />
+              <p className="text-xs text-[#71717a] mt-1">Default: 30000ms (30 seconds)</p>
             </div>
           </div>
         </div>

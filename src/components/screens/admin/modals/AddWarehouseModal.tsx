@@ -241,7 +241,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col p-0 gap-0">
+      <DialogContent className="w-[95vw] max-w-lg max-h-[92vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle>{editWarehouse ? 'Edit Warehouse' : 'Add Warehouse'}</DialogTitle>
         </DialogHeader>
@@ -292,7 +292,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
                   <Label>Storage capacity</Label>
                   <Input type="number" value={storageCapacity} onChange={(e) => setStorageCapacity(e.target.value)} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Current load</Label>
                     <Input type="number" value={currentLoad} onChange={(e) => setCurrentLoad(e.target.value)} />
@@ -302,7 +302,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
                     <Input type="number" value={deliveryRadius} onChange={(e) => setDeliveryRadius(e.target.value)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Latitude *</Label>
                     <Input type="number" step="0.0001" value={latitude} onChange={(e) => setLatitude(e.target.value)} />
@@ -312,7 +312,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
                     <Input type="number" step="0.0001" value={longitude} onChange={(e) => setLongitude(e.target.value)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Service status</Label>
                     <Select value={serviceStatus} onValueChange={(v: 'Full' | 'Partial' | 'None') => setServiceStatus(v)}>
@@ -349,7 +349,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Phone</Label>
                     <Input value={phone} onChange={(e) => setPhone(e.target.value)} />

@@ -268,6 +268,7 @@ export const API_ENDPOINTS = {
     summary: '/rider/hr/dashboard/summary',
     documents: '/rider/hr/documents',
     document: (id: string) => `/rider/hr/documents/${id}`,
+    documentDownload: (id: string) => `/rider/hr/documents/${id}/download`,
     documentRejectionReason: (id: string) => `/rider/hr/documents/${id}/rejection-reason`,
     documentHistory: (id: string) => `/rider/hr/documents/${id}/history`,
     riders: '/rider/hr/riders',

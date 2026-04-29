@@ -10,10 +10,26 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+async function getErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const json = await response.json();
+    const raw = json?.error ?? json?.message;
+    if (typeof raw === 'string' && raw.trim()) return raw;
+    if (raw && typeof raw === 'object') {
+      const nested = (raw as Record<string, unknown>).message;
+      if (typeof nested === 'string' && nested.trim()) return nested;
+      return JSON.stringify(raw);
+    }
+  } catch {
+    // ignore parsing failures
+  }
+  return fallback;
+}
+
 export const geofenceApi = {
   getZones: async () => {
     const response = await fetch(`${API_BASE_URL}/zones`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch zones');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch zones'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -24,7 +40,7 @@ export const geofenceApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(zoneData),
     });
-    if (!response.ok) throw new Error('Failed to create zone');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to create zone'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -35,7 +51,7 @@ export const geofenceApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(updateData),
     });
-    if (!response.ok) throw new Error('Failed to update zone');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to update zone'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -45,7 +61,7 @@ export const geofenceApi = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to delete zone');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to delete zone'));
     return response.json();
   },
 
@@ -55,14 +71,14 @@ export const geofenceApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ status }),
     });
-    if (!response.ok) throw new Error('Failed to toggle zone status');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to toggle zone status'));
     const json = await response.json();
     return json.data ?? json;
   },
 
   getStores: async () => {
     const response = await fetch(`${API_BASE_URL}/stores`, { headers: getAuthHeaders() });
-    if (!response.ok) throw new Error('Failed to fetch stores');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to fetch stores'));
     const json = await response.json();
     return json.data ?? json;
   },
@@ -72,7 +88,7 @@ export const geofenceApi = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to seed data');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to seed data'));
     return response.json();
   },
 };

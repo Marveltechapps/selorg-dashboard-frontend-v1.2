@@ -650,7 +650,15 @@ export function NotificationManager() {
                               <Play size={14} />
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedTemplate(null);
+                              setCampaign(campaign);
+                              setShowPreviewModal(true);
+                            }}
+                          >
                             <Eye size={14} />
                           </Button>
                         </div>
@@ -1344,7 +1352,16 @@ export function NotificationManager() {
       </Dialog>
 
       {/* Preview Modal */}
-      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+      <Dialog
+        open={showPreviewModal}
+        onOpenChange={(open) => {
+          setShowPreviewModal(open);
+          if (!open) {
+            setSelectedTemplate(null);
+            setCampaign(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Notification Preview</DialogTitle>
@@ -1392,6 +1409,21 @@ export function NotificationManager() {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+          {!selectedTemplate && selectedCampaign && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[#e4e4e7] p-4 bg-[#fcfcfc]">
+                <p className="text-sm font-bold text-[#18181b]">{selectedCampaign.name}</p>
+                <p className="text-xs text-[#71717a] mt-1">Template: {selectedCampaign.templateName}</p>
+                <p className="text-xs text-[#71717a]">Segment: {selectedCampaign.segment}</p>
+                <p className="text-xs text-[#71717a]">
+                  Channels: {selectedCampaign.channels.join(', ')}
+                </p>
+                <p className="text-xs text-[#71717a]">
+                  Status: {selectedCampaign.status}
+                </p>
               </div>
             </div>
           )}

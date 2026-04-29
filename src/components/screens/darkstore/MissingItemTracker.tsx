@@ -43,9 +43,20 @@ export function MissingItemTracker() {
   }, [load]);
 
   useEffect(() => {
-    const handler = () => load();
-    websocketService.on('MISSING_ITEM_REPORTED', handler);
-    return () => { websocketService.off('MISSING_ITEM_REPORTED', handler); };
+    const reloadOnMissing = (payload?: any) => {
+      // Support legacy + current event contracts from picker/darkstore flows.
+      if (!payload || payload.missingItems || payload.order_id || payload.orderId) {
+        load();
+      }
+    };
+    websocketService.on('MISSING_ITEM_REPORTED', reloadOnMissing);
+    websocketService.on('missing_item_reported', reloadOnMissing);
+    websocketService.on('ORDER_COMPLETED', reloadOnMissing);
+    return () => {
+      websocketService.off('MISSING_ITEM_REPORTED', reloadOnMissing);
+      websocketService.off('missing_item_reported', reloadOnMissing);
+      websocketService.off('ORDER_COMPLETED', reloadOnMissing);
+    };
   }, [load]);
 
   const formatDate = (d: string) => {

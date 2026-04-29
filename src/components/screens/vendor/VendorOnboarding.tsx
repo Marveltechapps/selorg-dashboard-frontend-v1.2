@@ -709,25 +709,49 @@ export function VendorOnboarding() {
     }
   };
 
-  const handleNudge = (e: React.FormEvent) => {
+  const handleNudge = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Nudge vendor action - API call would go here
-    setActiveModal(null);
-    setNudgeForm({ subject: 'KYC Verification Reminder - Your Application', message: '' });
+    if (!modalVendor) return;
+    try {
+      await vendorManagementApi.vendorAction(modalVendor.id, 'nudge', {
+        subject: nudgeForm.subject,
+        message: nudgeForm.message,
+      });
+      setActiveModal(null);
+      setNudgeForm({ subject: 'KYC Verification Reminder - Your Application', message: '' });
+      toast.success(`Reminder sent to ${modalVendor.name}`);
+      await loadVendors();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to send reminder');
+    }
   };
 
-  const handleReRequestDocs = (e: React.FormEvent) => {
+  const handleReRequestDocs = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Re-request docs action - API call would go here
-    setActiveModal(null);
-    setReRequestDocsForm({ documents: [], message: '', deadline: '' });
+    if (!modalVendor) return;
+    try {
+      await vendorManagementApi.vendorAction(modalVendor.id, 're_request_docs', {
+        documents: reRequestDocsForm.documents,
+        message: reRequestDocsForm.message,
+        deadline: reRequestDocsForm.deadline || undefined,
+      });
+      setActiveModal(null);
+      setReRequestDocsForm({ documents: [], message: '', deadline: '' });
+      toast.success(`Document re-request sent to ${modalVendor.name}`);
+      await loadVendors();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to re-request documents');
+    }
   };
 
   const handleAssignTier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalVendor || !assignTierForm.tier) return;
     try {
-      await vendorManagementApi.updateVendor(modalVendor.id, { metadata: { tier: assignTierForm.tier } });
+      await vendorManagementApi.vendorAction(modalVendor.id, 'assign_tier', {
+        tier: assignTierForm.tier,
+        notes: assignTierForm.notes,
+      });
       setActiveModal(null);
       setAssignTierForm({ tier: '', notes: '' });
       toast.success(`Tier assigned to ${modalVendor.name}`);

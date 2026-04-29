@@ -100,7 +100,7 @@ export function MaintenanceScheduleList({ tasks, loading, onRefresh, onTaskStatu
               tasks.map((task) => (
                 <TableRow key={task.id} className="hover:bg-gray-50/50">
                   <TableCell className="font-medium">{task.vehicleId}</TableCell>
-                  <TableCell>{task.type}</TableCell>
+                  <TableCell>{task.vehicleType || "—"}</TableCell>
                   <TableCell>{new Date(task.scheduledDate).toLocaleDateString()}</TableCell>
                   <TableCell>{getStatusBadge(task.status)}</TableCell>
                   <TableCell>{task.workshopName || "N/A"}</TableCell>

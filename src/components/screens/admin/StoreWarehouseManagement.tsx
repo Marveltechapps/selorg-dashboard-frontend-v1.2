@@ -58,6 +58,7 @@ import {
 } from './storeWarehouseApi';
 import { AddStoreModal } from './modals/AddStoreModal';
 import { toast } from 'sonner';
+import { createShiftSlot, fetchStoreShiftSlots, type ShiftSlotItem } from '@/api/admin/pickerOpsApi';
 import {
   Store as StoreIcon,
   Plus,
@@ -129,6 +130,13 @@ export function StoreWarehouseManagement() {
   const [storeType, setStoreType] = useState<'store' | 'warehouse'>('store');
   const [storeDetailsOpen, setStoreDetailsOpen] = useState(false);
   const [selectedStoreDetails, setSelectedStoreDetails] = useState<Store | null>(null);
+  const [shiftSlots, setShiftSlots] = useState<ShiftSlotItem[]>([]);
+  const [shiftSlotsLoading, setShiftSlotsLoading] = useState(false);
+  const [newShiftType, setNewShiftType] = useState<'morning' | 'evening' | 'night'>('morning');
+  const [newShiftStart, setNewShiftStart] = useState('09:00');
+  const [newShiftEnd, setNewShiftEnd] = useState('18:00');
+  const [newGeofenceRadius, setNewGeofenceRadius] = useState<number>(150);
+  const [newGracePeriod, setNewGracePeriod] = useState<number>(10);
 
   useEffect(() => {
     loadData();
@@ -181,6 +189,18 @@ export function StoreWarehouseManagement() {
   const handleEditStore = (store: Store) => {
     setEditStore(store);
     setAddStoreOpen(true);
+  };
+
+  const loadShiftSlots = async (storeId: string) => {
+    setShiftSlotsLoading(true);
+    try {
+      const data = await fetchStoreShiftSlots(storeId);
+      setShiftSlots(data);
+    } catch {
+      setShiftSlots([]);
+    } finally {
+      setShiftSlotsLoading(false);
+    }
   };
 
   const handleToggleStatus = async (store: Store) => {
@@ -590,6 +610,7 @@ export function StoreWarehouseManagement() {
                               <DropdownMenuItem onClick={() => {
                                 setSelectedStoreDetails(store);
                                 setStoreDetailsOpen(true);
+                                loadShiftSlots(store.id);
                               }}>
                                 <Eye size={14} className="mr-2" /> View Details
                               </DropdownMenuItem>
@@ -1264,6 +1285,129 @@ export function StoreWarehouseManagement() {
                 <div>
                   <p className="text-xs text-[#71717a]">Total orders</p>
                   <p className="text-sm font-medium">{selectedStoreDetails.totalOrders?.toLocaleString() ?? '-'}</p>
+                </div>
+              </div>
+
+              {/* Shift Slots */}
+              <div className="pt-4 border-t border-[#e4e4e7] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[#71717a] uppercase tracking-wider">Shift Slots</p>
+                    <p className="text-sm text-[#52525b] mt-1">
+                      Configure Morning/Evening/Night slots (start/end, geofence radius, grace period).
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => loadShiftSlots(selectedStoreDetails.id)} disabled={shiftSlotsLoading}>
+                    <RefreshCw size={14} className="mr-1.5" /> Refresh
+                  </Button>
+                </div>
+
+                <div className="bg-[#fcfcfc] border border-[#e4e4e7] rounded-lg p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-[#71717a]">Type</p>
+                      <Select value={newShiftType} onValueChange={(v) => setNewShiftType(v as any)}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="morning">Morning</SelectItem>
+                          <SelectItem value="evening">Evening</SelectItem>
+                          <SelectItem value="night">Night</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#71717a]">Geofence radius (m)</p>
+                      <Input
+                        className="mt-1"
+                        type="number"
+                        min={10}
+                        value={newGeofenceRadius}
+                        onChange={(e) => setNewGeofenceRadius(Number(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#71717a]">Start</p>
+                      <Input className="mt-1" type="time" value={newShiftStart} onChange={(e) => setNewShiftStart(e.target.value)} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#71717a]">End</p>
+                      <Input className="mt-1" type="time" value={newShiftEnd} onChange={(e) => setNewShiftEnd(e.target.value)} />
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-[#71717a]">Grace period (minutes)</p>
+                      <Input
+                        className="mt-1"
+                        type="number"
+                        min={0}
+                        value={newGracePeriod}
+                        onChange={(e) => setNewGracePeriod(Number(e.target.value) || 10)}
+                      />
+                      <p className="text-[11px] text-[#71717a] mt-1">Default: 10 minutes</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await createShiftSlot(selectedStoreDetails.id, {
+                            type: newShiftType,
+                            startTime: newShiftStart,
+                            endTime: newShiftEnd,
+                            geofenceRadiusMeters: newGeofenceRadius,
+                            gracePeriodMinutes: newGracePeriod || 10,
+                          });
+                          toast.success('Shift slot created');
+                          await loadShiftSlots(selectedStoreDetails.id);
+                        } catch {
+                          toast.error('Failed to create shift slot');
+                        }
+                      }}
+                    >
+                      <Plus size={14} className="mr-1.5" /> Create slot
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border border-[#e4e4e7] rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-[#f9fafb]">
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Start</TableHead>
+                        <TableHead>End</TableHead>
+                        <TableHead>Radius</TableHead>
+                        <TableHead>Grace</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {shiftSlotsLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-8 text-center text-[#71717a]">
+                            Loading shift slots…
+                          </TableCell>
+                        </TableRow>
+                      ) : shiftSlots.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-8 text-center text-[#71717a]">
+                            No shift slots configured
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        shiftSlots.map((s) => (
+                          <TableRow key={s.shiftSlotId}>
+                            <TableCell className="font-medium">{String(s.type).toUpperCase()}</TableCell>
+                            <TableCell>{s.startTime}</TableCell>
+                            <TableCell>{s.endTime}</TableCell>
+                            <TableCell>{typeof s.geofenceRadiusMeters === 'number' ? `${s.geofenceRadiusMeters} m` : '—'}</TableCell>
+                            <TableCell>{typeof s.gracePeriodMinutes === 'number' ? `${s.gracePeriodMinutes} min` : '—'}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
               <div className="pt-4 border-t border-[#e4e4e7] flex gap-2">

@@ -17,6 +17,8 @@ export interface PickerConfig {
   websocketReconnectionDelayMs: number;
   websocketReconnectionDelayMaxMs: number;
   defaultHubName?: string;
+  autoEndThresholdMinutes?: number;
+  breakPollingIntervalMs?: number;
 }
 
 export async function fetchPickerConfig(): Promise<PickerConfig> {

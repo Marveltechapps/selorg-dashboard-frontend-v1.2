@@ -29,7 +29,6 @@ export function ExportFinanceReportModal({ isOpen, onClose }: Props) {
     setLoading(true);
     try {
       await exportFinanceReport({ 
-        entityId: "default", 
         dateRange, 
         format, 
         scope: scopes 
@@ -39,7 +38,7 @@ export function ExportFinanceReportModal({ isOpen, onClose }: Props) {
       });
       onClose();
     } catch (e) {
-      toast.error("Export failed");
+      toast.error(e instanceof Error ? e.message : "Export failed");
     } finally {
       setLoading(false);
     }

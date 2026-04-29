@@ -1,260 +1,220 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { PickerPayoutTable } from './PickerPayoutTable';
-import { PickerPayoutDetailsDrawer } from './PickerPayoutDetailsDrawer';
-import {
-  PickerWithdrawalListItem,
-  PickerWithdrawalDetails,
-  PickerWithdrawalFilters,
-  fetchPickerWithdrawals,
-  fetchPickerWithdrawalDetails,
-  fetchAllPickerTransactions,
-  PickerTransactionRow,
-} from './pickerWithdrawalsApi';
+import { apiRequest } from '@/api/apiClient';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { fetchAgencies, type AgencyItem } from '@/api/admin/pickerOpsApi';
+
+type FinancePickerAttendanceRow = {
+  pickerName: string;
+  agency?: string | null;
+  daysWorked: number;
+  regularHours: number;
+  otHours: number;
+  month: string; // YYYY-MM
+};
+
+function getDefaultMonth(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}`;
+}
+
+function escapeCsvCell(value: unknown): string {
+  const str = String(value ?? '');
+  if (/[",\n]/.test(str)) return `"${str.replaceAll('"', '""')}"`;
+  return str;
+}
+
+function downloadCsvFromRows(rows: FinancePickerAttendanceRow[], filename: string) {
+  const header = ['Picker Name', 'Agency', 'Days Worked', 'Regular Hours', 'OT Hours', 'Month'];
+  const lines = [
+    header.join(','),
+    ...rows.map((r) =>
+      [
+        r.pickerName,
+        r.agency ?? '',
+        r.daysWorked,
+        r.regularHours,
+        r.otHours,
+        r.month,
+      ]
+        .map(escapeCsvCell)
+        .join(',')
+    ),
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
 
 export function PickerPayouts() {
-  type PopupWithdrawalStatus = 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED';
-  type FinanceTab = PopupWithdrawalStatus | 'TRANSACTION_HISTORY';
-  const [list, setList] = useState<PickerWithdrawalListItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<PickerWithdrawalFilters>({
-    page: 1,
-    limit: 50,
-    status: undefined,
-  });
-  const [activeTab, setActiveTab] = useState<FinanceTab>('PENDING');
-  const [selectedWithdrawal, setSelectedWithdrawal] = useState<PickerWithdrawalDetails | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [txRows, setTxRows] = useState<PickerTransactionRow[]>([]);
-  const [txLoading, setTxLoading] = useState(false);
-  const [txFilters, setTxFilters] = useState<{ search?: string; startDate?: string; endDate?: string; type?: string }>({});
+  const [month, setMonth] = useState<string>(getDefaultMonth());
+  const [agencyId, setAgencyId] = useState<string>('all');
+  const [agencies, setAgencies] = useState<AgencyItem[]>([]);
 
-  const loadList = useCallback(async () => {
-    setIsLoading(true);
+  const [rows, setRows] = useState<FinancePickerAttendanceRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadAgencies = async () => {
     try {
-      const result = await fetchPickerWithdrawals({
-        ...filters,
-        status: activeTab === 'TRANSACTION_HISTORY' ? undefined : activeTab,
-      });
-      setList(result.data ?? []);
-      setTotal(result.total ?? 0);
-      setTotalPages(result.totalPages ?? 1);
+      const data = await fetchAgencies();
+      setAgencies(data);
+    } catch {
+      setAgencies([]);
+    }
+  };
+
+  const loadAttendance = async () => {
+    if (!month) {
+      toast.error('Pick a month');
+      return;
+    }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('month', month);
+      params.set('agency', agencyId === 'all' ? '' : agencyId);
+      const res = await apiRequest<{ success: boolean; data: FinancePickerAttendanceRow[] }>(
+        `/finance/picker-attendance?${params.toString()}`
+      );
+      setRows(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
-      toast.error('Failed to load picker withdrawals');
-      setList([]);
+      toast.error(e instanceof Error ? e.message : 'Failed to load picker attendance');
+      setRows([]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [filters, activeTab]);
+  };
 
   useEffect(() => {
-    loadList();
-  }, [loadList]);
-
-  const handleViewDetails = async (item: PickerWithdrawalListItem) => {
-    setSelectedWithdrawal(null);
-    setDetailsOpen(true);
-    try {
-      const details = await fetchPickerWithdrawalDetails(item.id);
-      setSelectedWithdrawal(details);
-    } catch {
-      setDetailsOpen(false);
-    }
-  };
-
-  const handleApprove = (item: PickerWithdrawalListItem) => {
-    handleViewDetails(item);
-  };
-
-  const handleReject = (item: PickerWithdrawalListItem) => {
-    handleViewDetails(item);
-  };
-
-  const handleMarkPaid = (item: PickerWithdrawalListItem) => {
-    handleViewDetails(item);
-  };
-
-  const handleRefresh = () => {
-    loadList();
-  };
-
-  const statusTabs: Array<PopupWithdrawalStatus | 'TRANSACTION_HISTORY'> = ['PENDING', 'APPROVED', 'PAID', 'REJECTED', 'TRANSACTION_HISTORY'];
-
-  const loadTransactions = useCallback(async () => {
-    setTxLoading(true);
-    try {
-      const res = await fetchAllPickerTransactions({
-        ...txFilters,
-        page: 1,
-        limit: 100,
-      });
-      setTxRows(res.data || []);
-    } catch {
-      toast.error('Failed to load transactions');
-      setTxRows([]);
-    } finally {
-      setTxLoading(false);
-    }
-  }, [txFilters]);
+    loadAgencies();
+  }, []);
 
   useEffect(() => {
-    if (activeTab === ('TRANSACTION_HISTORY' as any)) {
-      loadTransactions();
-    }
-  }, [activeTab, loadTransactions]);
+    loadAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, agencyId]);
+
+  const selectedAgencyName = useMemo(() => {
+    if (agencyId === 'all') return 'All agencies';
+    return agencies.find((a) => a.agencyId === agencyId)?.name || 'Selected agency';
+  }, [agencyId, agencies]);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-[#212121]">Picker Payouts</h1>
-        <p className="text-[#757575] text-sm">
-          Review and process picker wallet withdrawal requests
-        </p>
+        <p className="text-[#757575] text-sm">View picker attendance and export CSV by month and agency.</p>
       </div>
 
-      <div className="flex gap-2 border-b border-[#E0E0E0] pb-0">
-        {statusTabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab as any);
-              if (tab !== 'TRANSACTION_HISTORY') {
-                setFilters((prev) => ({ ...prev, status: tab as PopupWithdrawalStatus, page: 1 }));
-              }
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab
-                ? 'border-[#14B8A6] text-[#14B8A6]'
-                : 'border-transparent text-[#757575] hover:text-[#212121]'
-            }`}
-          >
-            {tab === 'TRANSACTION_HISTORY' ? 'Transaction History' : tab.charAt(0) + tab.slice(1).toLowerCase()}
-          </button>
-        ))}
-      </div>
-
-      {activeTab !== ('TRANSACTION_HISTORY' as any) ? (
-      <PickerPayoutTable
-        data={list}
-        isLoading={isLoading}
-        filters={{ ...filters, status: activeTab as PopupWithdrawalStatus }}
-        onFilterChange={setFilters}
-        onApprove={handleApprove}
-        onReject={handleReject}
-        onMarkPaid={handleMarkPaid}
-        onViewDetails={handleViewDetails}
-      />
-      ) : (
-        <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm p-4 space-y-3">
-          <div className="flex items-center gap-2">
+      <div className="bg-white border border-[#e4e4e7] rounded-xl p-5 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="space-y-1.5">
+            <Label>Month</Label>
             <input
-              className="h-9 rounded border px-3 text-sm"
-              placeholder="Search picker name/phone"
-              value={txFilters.search || ''}
-              onChange={(e) => setTxFilters((prev) => ({ ...prev, search: e.target.value }))}
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
-            <input
-              type="date"
-              className="h-9 rounded border px-3 text-sm"
-              value={txFilters.startDate || ''}
-              onChange={(e) => setTxFilters((prev) => ({ ...prev, startDate: e.target.value || undefined }))}
-            />
-            <input
-              type="date"
-              className="h-9 rounded border px-3 text-sm"
-              value={txFilters.endDate || ''}
-              onChange={(e) => setTxFilters((prev) => ({ ...prev, endDate: e.target.value || undefined }))}
-            />
-            <select
-              className="h-9 rounded border px-3 text-sm"
-              value={txFilters.type || ''}
-              onChange={(e) => setTxFilters((prev) => ({ ...prev, type: e.target.value || undefined }))}
-            >
-              <option value="">All types</option>
-              <option value="credit">Credit</option>
-              <option value="debit">Debit</option>
-              <option value="withdrawal">Withdrawal</option>
-            </select>
-            <button className="h-9 px-3 border rounded text-sm" onClick={loadTransactions}>
-              Apply
-            </button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-[#F5F7FA]">
-                <tr>
-                  <th className="px-3 py-2 text-left">Picker</th>
-                  <th className="px-3 py-2 text-left">Type</th>
-                  <th className="px-3 py-2 text-left">Amount</th>
-                  <th className="px-3 py-2 text-left">Description</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {txRows.map((row) => (
-                  <tr key={row.id} className="border-t">
-                    <td className="px-3 py-2">{row.pickerName} ({row.pickerPhone})</td>
-                    <td className="px-3 py-2 capitalize">{row.type}</td>
-                    <td className="px-3 py-2">₹{row.amount}</td>
-                    <td className="px-3 py-2">{row.description || '—'}</td>
-                    <td className="px-3 py-2 capitalize">{row.status}</td>
-                    <td className="px-3 py-2">{new Date(row.createdAt).toLocaleString()}</td>
-                  </tr>
+
+          <div className="space-y-1.5">
+            <Label>Agency</Label>
+            <Select value={agencyId} onValueChange={setAgencyId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select agency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All agencies</SelectItem>
+                {agencies.map((a) => (
+                  <SelectItem key={a.agencyId} value={a.agencyId}>
+                    {a.name}
+                  </SelectItem>
                 ))}
-                {!txLoading && txRows.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-[#757575]" colSpan={6}>
-                      No transactions found.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex md:justify-end gap-2">
+            <Button variant="outline" onClick={loadAttendance} disabled={loading}>
+              <RefreshCw size={14} className="mr-1.5" /> Refresh
+            </Button>
+            <Button
+              onClick={() => {
+                if (!month) {
+                  toast.error('Pick a month');
+                  return;
+                }
+                downloadCsvFromRows(rows, `picker-attendance-${month}-${agencyId}.csv`);
+              }}
+              disabled={rows.length === 0}
+            >
+              <Download size={14} className="mr-1.5" /> Export CSV
+            </Button>
           </div>
         </div>
-      )}
 
-      {totalPages > 1 && (
-        <div className="flex justify-between items-center text-sm text-[#757575]">
-          <span>
-            Page {filters.page ?? 1} of {totalPages} • {total} total
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilters((p) => ({ ...p, page: Math.max(1, (p.page ?? 1) - 1) }))}
-              disabled={(filters.page ?? 1) === 1}
-              className="px-3 py-1 rounded border disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() =>
-                setFilters((p) => ({ ...p, page: Math.min(totalPages, (p.page ?? 1) + 1) }))
-              }
-              disabled={(filters.page ?? 1) >= totalPages}
-              className="px-3 py-1 rounded border disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
+        <div className="text-sm text-[#71717a]">
+          Showing <span className="font-medium text-[#18181b]">{rows.length}</span> rows •{' '}
+          <span className="font-medium text-[#18181b]">{selectedAgencyName}</span> •{' '}
+          <span className="font-medium text-[#18181b]">{month}</span>
         </div>
-      )}
+      </div>
 
-      <PickerPayoutDetailsDrawer
-        withdrawal={selectedWithdrawal}
-        open={detailsOpen}
-        onClose={() => {
-          setDetailsOpen(false);
-          setSelectedWithdrawal(null);
-        }}
-        onApprove={() => {}}
-        onReject={() => {}}
-        onMarkPaid={() => {}}
-        onRefresh={handleRefresh}
-      />
+      <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-auto">
+          <Table>
+            <TableHeader className="sticky top-0 bg-[#f9fafb] z-10">
+              <TableRow>
+                <TableHead>Picker Name</TableHead>
+                <TableHead>Agency</TableHead>
+                <TableHead>Days Worked</TableHead>
+                <TableHead>Regular Hours</TableHead>
+                <TableHead>OT Hours</TableHead>
+                <TableHead>Month</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-[#71717a]">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-[#71717a]">
+                    No records found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r, idx) => (
+                  <TableRow key={`${r.pickerName}-${r.month}-${idx}`} className="hover:bg-[#fcfcfc]">
+                    <TableCell className="font-medium text-[#18181b]">{r.pickerName || '—'}</TableCell>
+                    <TableCell>{r.agency || '—'}</TableCell>
+                    <TableCell>{typeof r.daysWorked === 'number' ? r.daysWorked : '—'}</TableCell>
+                    <TableCell>{typeof r.regularHours === 'number' ? r.regularHours : '—'}</TableCell>
+                    <TableCell>{typeof r.otHours === 'number' ? r.otHours : '—'}</TableCell>
+                    <TableCell>{r.month || month}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   );
 }

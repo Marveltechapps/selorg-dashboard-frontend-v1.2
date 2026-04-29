@@ -88,6 +88,15 @@ interface ApiMapData {
   };
 }
 
+function extractApiErrorMessage(error: any, fallback: string): string {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (typeof error.message === 'string') return error.message;
+  if (typeof error.error === 'string') return error.error;
+  if (error.error && typeof error.error.message === 'string') return error.error.message;
+  return fallback;
+}
+
 /**
  * Helper function to make API requests
  */
@@ -119,7 +128,7 @@ async function apiRequest<T>(
       } catch {
         error = { message: errorText || 'Request failed' };
       }
-      throw new Error(error.message || `HTTP error! status: ${response.status}`);
+      throw new Error(extractApiErrorMessage(error, `HTTP error! status: ${response.status}`));
     }
 
     const data = await response.json();

@@ -16,10 +16,10 @@ export function Transfers() {
     loadTransfers();
   }, []);
 
-  const loadTransfers = async () => {
+  const loadTransfers = async (bypassCache = false) => {
     setLoading(true);
     try {
-      const data = await fetchWarehouseTransfers();
+      const data = await fetchWarehouseTransfers(bypassCache);
       setTransfers(data);
     } catch (error) {
       toast.error('Failed to load transfers');
@@ -39,9 +39,9 @@ export function Transfers() {
         toast.success('Transfer created successfully');
         setShowTransferModal(false);
         setNewTransfer({ destination: '', items: '', vehicle: '' });
-        loadTransfers();
+        loadTransfers(true);
       } catch (error) {
-        toast.error('Failed to create transfer');
+        toast.error(error instanceof Error ? error.message : 'Failed to create transfer');
       }
     }
   };

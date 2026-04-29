@@ -26,6 +26,10 @@ import { CustomerManagement } from './screens/admin/CustomerManagement';
 import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
 import { PickerManagement } from './screens/admin/PickerManagement';
+import { AgencyManagement } from './screens/admin/AgencyManagement';
+import { OTRequestApprovals } from './screens/admin/OTRequestApprovals';
+import { ShiftChangeApprovals } from './screens/admin/ShiftChangeApprovals';
+import { PickerAttendanceExport } from './screens/admin/PickerAttendanceExport';
 import { ContentHub } from './screens/admin/ContentHub';
 import { FaqManagement } from './screens/admin/FaqManagement';
 import { HomeConfigScreen } from './screens/admin/HomeConfigScreen';
@@ -72,6 +76,10 @@ const TAB_LABELS: Record<string, string> = {
   'compliance': 'Compliance',
   'audit': 'Audit Logs',
   'picker-management': 'Picker Management',
+  'agencies': 'Agencies',
+  'ot-approvals': 'OT Approvals',
+  'shift-change-approvals': 'Shift Change Approvals',
+  'attendance-export': 'Attendance Export',
   'content-hub': 'CMS',
   'system-tools': 'System Tools',
   'applications': 'Applications',
@@ -307,6 +315,10 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'pricing' && <PricingManagement />}
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
             {activeTab === 'picker-management' && <PickerManagement />}
+            {activeTab === 'agencies' && <AgencyManagement />}
+            {activeTab === 'ot-approvals' && <OTRequestApprovals />}
+            {activeTab === 'shift-change-approvals' && <ShiftChangeApprovals />}
+            {activeTab === 'attendance-export' && <PickerAttendanceExport />}
             {activeTab === 'support' && <SupportCenter />}
             {activeTab === 'fraud' && <FraudRiskHub />}
             {activeTab === 'analytics' && <AnalyticsDashboard />}

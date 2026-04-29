@@ -9,9 +9,11 @@ import { Separator } from "@/components/ui/separator";
 interface Props {
   transaction: LiveTransaction | null;
   onClose: () => void;
+  onViewReconciliation?: (txn: LiveTransaction) => void;
+  onViewCustomerHistory?: (txn: LiveTransaction) => void;
 }
 
-export function TransactionDetailsDrawer({ transaction, onClose }: Props) {
+export function TransactionDetailsDrawer({ transaction, onClose, onViewReconciliation, onViewCustomerHistory }: Props) {
   if (!transaction) return null;
 
   const StatusIcon = {
@@ -105,11 +107,19 @@ export function TransactionDetailsDrawer({ transaction, onClose }: Props) {
 
            {/* Actions */}
            <div className="flex flex-col gap-3">
-              <Button variant="outline" className="w-full justify-between">
+              <Button
+                variant="outline"
+                className="w-full justify-between"
+                onClick={() => onViewReconciliation?.(transaction)}
+              >
                  View in Reconciliation
                  <ExternalLink size={16} />
               </Button>
-              <Button variant="outline" className="w-full justify-between">
+              <Button
+                variant="outline"
+                className="w-full justify-between"
+                onClick={() => onViewCustomerHistory?.(transaction)}
+              >
                  View Customer History
                  <ExternalLink size={16} />
               </Button>

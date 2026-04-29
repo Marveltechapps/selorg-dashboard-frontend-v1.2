@@ -39,6 +39,10 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
   const [engineStatus, setEngineStatus] = useState<DispatchEngineStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [algorithm, setAlgorithm] = useState('nearest_available');
+  const [riderSelection, setRiderSelection] = useState('proximity');
+  const [batchingEnabled, setBatchingEnabled] = useState(true);
+  const [surgePricingEnabled, setSurgePricingEnabled] = useState(true);
 
   useEffect(() => {
     if (open) {
@@ -51,6 +55,12 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
     try {
       const data = await fetchDispatchEngineStatus();
       setEngineStatus(data);
+      if (data?.configuration) {
+        setAlgorithm(data.configuration.algorithm);
+        setRiderSelection(data.configuration.riderSelection);
+        setBatchingEnabled(Boolean(data.configuration.batchingEnabled));
+        setSurgePricingEnabled(Boolean(data.configuration.surgePricingEnabled));
+      }
     } catch (error) {
       console.error('Failed to load engine status:', error);
       setEngineStatus(null);
@@ -106,13 +116,21 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
     }
   };
 
-  const handleConfigUpdate = async (key: string, value: any) => {
+  const applyConfigChanges = async () => {
+    setActionLoading(true);
     try {
-      await updateDispatchConfig({ [key]: value });
-      toast.success('Configuration updated');
+      await updateDispatchConfig({
+        algorithm,
+        riderSelection,
+        batchingEnabled,
+        surgePricingEnabled,
+      });
+      toast.success('Dispatch configuration updated');
       await loadEngineStatus();
-    } catch (error) {
-      toast.error('Failed to update configuration');
+    } catch {
+      toast.error('Failed to apply dispatch changes');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -215,10 +233,14 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
                     Current: {engineStatus.configuration.algorithm}
                   </div>
                 </div>
-                <select className="px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm">
-                  <option value="ai-optimized">AI-Optimized</option>
-                  <option value="proximity">Proximity-Based</option>
+                <select
+                  className="px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm"
+                  value={algorithm}
+                  onChange={(e) => setAlgorithm(e.target.value)}
+                >
+                  <option value="nearest_available">Nearest Available</option>
                   <option value="balanced">Balanced</option>
+                  <option value="round_robin">Round Robin</option>
                 </select>
               </div>
 
@@ -229,9 +251,13 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
                     Current: {engineStatus.configuration.riderSelection}
                   </div>
                 </div>
-                <select className="px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm">
-                  <option value="proximity-rating">Proximity + Rating</option>
-                  <option value="proximity">Proximity Only</option>
+                <select
+                  className="px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm"
+                  value={riderSelection}
+                  onChange={(e) => setRiderSelection(e.target.value)}
+                >
+                  <option value="proximity">Proximity</option>
+                  <option value="proximity_rating">Proximity + Rating</option>
                   <option value="rating">Rating Only</option>
                 </select>
               </div>
@@ -244,8 +270,8 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
                   </div>
                 </div>
                 <Switch
-                  checked={engineStatus.configuration.batchingEnabled}
-                  onCheckedChange={(checked) => handleConfigUpdate('batchingEnabled', checked)}
+                  checked={batchingEnabled}
+                  onCheckedChange={setBatchingEnabled}
                 />
               </div>
 
@@ -257,8 +283,8 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
                   </div>
                 </div>
                 <Switch
-                  checked={engineStatus.configuration.surgePricingEnabled}
-                  onCheckedChange={(checked) => handleConfigUpdate('surgePricingEnabled', checked)}
+                  checked={surgePricingEnabled}
+                  onCheckedChange={setSurgePricingEnabled}
                 />
               </div>
             </div>
@@ -303,6 +329,20 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
               <Button 
                 variant="outline"
                 className="justify-start"
+                onClick={async () => {
+                  try {
+                    if (engineStatus.status === 'running') {
+                      await pauseDispatchEngine();
+                      toast.warning('Dispatch paused via manual override');
+                    } else {
+                      await resumeDispatchEngine();
+                      toast.success('Dispatch resumed via manual override');
+                    }
+                    await loadEngineStatus();
+                  } catch {
+                    toast.error('Manual override failed');
+                  }
+                }}
               >
                 <Settings size={16} className="mr-2" />
                 Manual Override
@@ -311,6 +351,9 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
               <Button 
                 variant="outline"
                 className="justify-start"
+                onClick={() => {
+                  toast.info(`Dispatch logs summary: ${engineStatus.processingOrders} processing, ${engineStatus.successRate}% success.`);
+                }}
               >
                 <BarChart3 size={16} className="mr-2" />
                 View Logs
@@ -340,7 +383,12 @@ export function DispatchEngineModal({ open, onClose }: DispatchEngineModalProps)
                   Reset rate limits
                 </label>
               </div>
-              <Button variant="outline" className="w-full mt-3">
+              <Button
+                variant="outline"
+                className="w-full mt-3"
+                onClick={applyConfigChanges}
+                disabled={actionLoading}
+              >
                 Apply Changes
               </Button>
             </div>

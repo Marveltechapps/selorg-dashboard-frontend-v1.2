@@ -113,7 +113,7 @@ export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props)
           onSuccess();
           onClose();
       } catch (e) {
-          toast.error("Failed to upload invoice");
+          toast.error(e instanceof Error ? e.message : "Failed to upload invoice");
       } finally {
           setIsLoading(false);
       }
@@ -136,9 +136,10 @@ export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props)
                     <Select 
                         value={formData.vendorId} 
                         onValueChange={(val) => setFormData({...formData, vendorId: val})}
+                        disabled={vendors.length === 0}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder="Select vendor" />
+                            <SelectValue placeholder={vendors.length === 0 ? "No vendors available" : "Select vendor"} />
                         </SelectTrigger>
                         <SelectContent>
                             {vendors.map(v => (
@@ -146,6 +147,11 @@ export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props)
                             ))}
                         </SelectContent>
                     </Select>
+                    {vendors.length === 0 && (
+                      <p className="text-xs text-amber-600">
+                        No vendors loaded. Close this modal and refresh Vendor Payments, then retry.
+                      </p>
+                    )}
                 </div>
 
                 <div className="space-y-2">

@@ -1,5 +1,6 @@
 import { apiRequest } from '@/api/apiClient';
-import { API_ENDPOINTS } from '@/config/api';
+
+const ADMIN_PICKER_BASE = '/admin/picker';
 
 export type PickerStatus = 'PENDING' | 'ACTIVE' | 'REJECTED' | 'BLOCKED' | 'SUSPENDED';
 
@@ -99,14 +100,14 @@ export const fetchPickerApprovalsList = async (
   const query = new URLSearchParams(
     Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))
   ).toString();
-  const url = `${API_ENDPOINTS.admin.pickers.list}${query ? `?${query}` : ''}`;
+  const url = `${ADMIN_PICKER_BASE}/approvals${query ? `?${query}` : ''}`;
   const res = await apiRequest<{ success: boolean; data: PickerApprovalsListResponse }>(url);
   return res.data;
 };
 
 export const fetchPickerDetails = async (id: string): Promise<PickerApprovalDetails> => {
   const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
-    API_ENDPOINTS.admin.pickers.byId(id)
+    `${ADMIN_PICKER_BASE}/pickers/${id}`
   );
   return res.data;
 };
@@ -121,14 +122,14 @@ export const fetchPickerActionLogs = async (
   if (params?.actionType) searchParams.set('actionType', params.actionType);
   if (params?.limit) searchParams.set('limit', String(params.limit));
   const qs = searchParams.toString();
-  const url = `${API_ENDPOINTS.admin.pickers.actionLogs(pickerId)}${qs ? `?${qs}` : ''}`;
+  const url = `${ADMIN_PICKER_BASE}/pickers/${pickerId}/action-logs${qs ? `?${qs}` : ''}`;
   const res = await apiRequest<{ success: boolean; data: any[] }>(url);
   return Array.isArray(res.data) ? res.data : [];
 };
 
 export const linkPickerHhd = async (pickerId: string, hhdUserId: string): Promise<PickerApprovalDetails> => {
   const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
-    API_ENDPOINTS.admin.pickers.linkHhd(pickerId),
+    `${ADMIN_PICKER_BASE}/pickers/${pickerId}/link-hhd`,
     { method: 'POST', body: JSON.stringify({ hhdUserId }) }
   );
   return res.data;
@@ -136,7 +137,7 @@ export const linkPickerHhd = async (pickerId: string, hhdUserId: string): Promis
 
 export const unlinkPickerHhd = async (pickerId: string): Promise<PickerApprovalDetails> => {
   const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
-    API_ENDPOINTS.admin.pickers.linkHhd(pickerId),
+    `${ADMIN_PICKER_BASE}/pickers/${pickerId}/link-hhd`,
     { method: 'DELETE' }
   );
   return res.data;
@@ -150,7 +151,7 @@ export const updatePickerStatus = async (
   const body: { status: PickerStatus; rejectedReason?: string } = { status };
   if (rejectedReason) body.rejectedReason = rejectedReason;
   const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
-    API_ENDPOINTS.admin.pickers.updateStatus(id),
+    `${ADMIN_PICKER_BASE}/pickers/${id}/status`,
     {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -160,20 +161,20 @@ export const updatePickerStatus = async (
 };
 
 export const approveDocument = async (pickerId: string, docType: string, side?: string) =>
-  apiRequest(API_ENDPOINTS.admin.pickers.approveDocument(pickerId), {
+  apiRequest(`${ADMIN_PICKER_BASE}/pickers/${pickerId}/documents/review`, {
     method: 'PATCH',
     body: JSON.stringify({ docType, side, action: 'approve' }),
   });
 
 export const rejectDocument = async (pickerId: string, docType: string, reason: string, side?: string) =>
-  apiRequest(API_ENDPOINTS.admin.pickers.approveDocument(pickerId), {
+  apiRequest(`${ADMIN_PICKER_BASE}/pickers/${pickerId}/documents/review`, {
     method: 'PATCH',
     body: JSON.stringify({ docType, side, action: 'reject', reason }),
   });
 
 export const fetchPickerTrainingProgress = async (pickerId: string) =>
   apiRequest<{ success: boolean; data: { overallCompleted: boolean; videos: Array<{ videoId: string; title: string; watchedSeconds: number; duration: number; progress: number; completed: boolean; completedAt: string | null }> } }>(
-    API_ENDPOINTS.admin.pickers.trainingProgress(pickerId)
+    `${ADMIN_PICKER_BASE}/pickers/${pickerId}/training-progress`
   );
 
 export const reviewBankAccount = async (
@@ -182,18 +183,18 @@ export const reviewBankAccount = async (
   action: 'approve' | 'reject',
   reason?: string
 ) =>
-  apiRequest(API_ENDPOINTS.admin.pickers.reviewBankAccount(pickerId, accountId), {
+  apiRequest(`${ADMIN_PICKER_BASE}/pickers/${pickerId}/bank/${accountId}/review`, {
     method: 'PATCH',
     body: JSON.stringify({ action, reason }),
   });
 
 export const fetchPickerFaceVerification = async (pickerId: string) =>
   apiRequest<{ success: boolean; data: { status: string; verifiedAt: string | null; confidence: number | null; faceVerification: boolean } }>(
-    API_ENDPOINTS.admin.pickers.faceVerification(pickerId)
+    `${ADMIN_PICKER_BASE}/pickers/${pickerId}/face-verification`
   );
 
 export const overrideFaceVerification = async (pickerId: string, action: 'approve' | 'reject', reason: string) =>
-  apiRequest(API_ENDPOINTS.admin.pickers.overrideFaceVerification(pickerId), {
+  apiRequest(`${ADMIN_PICKER_BASE}/pickers/${pickerId}/face-verification/override`, {
     method: 'PATCH',
     body: JSON.stringify({ action, reason }),
   });

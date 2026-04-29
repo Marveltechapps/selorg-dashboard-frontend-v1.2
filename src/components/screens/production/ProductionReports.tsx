@@ -87,7 +87,9 @@ export function ProductionReports() {
   const productionData = reportData?.productionData ?? [];
   const lineUtilizationData = reportData?.lineUtilizationData ?? [];
   const materialData = reportData?.materialData ?? [];
-  const wasteData = materialData.map(m => ({ name: m.material, value: m.waste }));
+  const wasteData = materialData
+    .filter((m) => (m.waste ?? 0) > 0)
+    .map((m) => ({ name: m.material, value: m.waste }));
   const qualityData = reportData?.qualityData ?? [];
   const defectTypeData = reportData?.defectTypeData ?? [];
   const workforceData = reportData?.workforceData ?? [];
@@ -175,6 +177,12 @@ export function ProductionReports() {
     if (datePreset === 'month') return qualityData.slice(-4);
     return qualityData;
   }, [datePreset, qualityData]);
+  const effectiveDefectTypeData = useMemo(() => {
+    if (defectTypeData.length > 0) return defectTypeData;
+    const derivedDefects = effectiveQualityData.reduce((sum, q) => sum + (q.defects || 0), 0);
+    if (derivedDefects <= 0) return [];
+    return [{ name: 'General Defects', value: derivedDefects }];
+  }, [defectTypeData, effectiveQualityData]);
 
   const totalOutput = effectiveProductionData.reduce((sum, d) => sum + d.output, 0);
   const avgEfficiency = (effectiveProductionData.reduce((sum, d) => sum + d.efficiency, 0) / (effectiveProductionData.length || 1)).toFixed(1);
@@ -488,23 +496,30 @@ export function ProductionReports() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                {wasteData.length === 0 && (
+                  <p className="text-sm text-[#757575] mt-2">No waste data available for the selected range.</p>
+                )}
               </div>
 
               <div>
                 <h3 className="font-bold text-[#212121] mb-4">Material Efficiency</h3>
                 <div className="space-y-3">
                   {materialData.map((material, index) => {
-                    const efficiency = ((material.consumed / material.allocated) * 100).toFixed(1);
+                    const safeAllocated = Number(material.allocated) > 0 ? Number(material.allocated) : 1;
+                    const efficiencyValue = Math.max(0, Math.min(100, (Number(material.consumed) / safeAllocated) * 100));
+                    const efficiency = efficiencyValue.toFixed(1);
                     return (
                       <div key={index} className="border border-[#E0E0E0] rounded-lg p-3">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-[#212121]">{material.material}</span>
+                          <span className="text-sm font-medium text-[#212121] truncate pr-3 max-w-[70%]" title={material.material}>
+                            {material.material}
+                          </span>
                           <span className="text-sm font-bold text-[#16A34A]">{efficiency}%</span>
                         </div>
                         <div className="w-full bg-[#E5E7EB] rounded-full h-2">
                           <div 
                             className="bg-[#16A34A] h-2 rounded-full"
-                            style={{ width: `${efficiency}%` }}
+                            style={{ width: `${efficiencyValue}%` }}
                           ></div>
                         </div>
                       </div>
@@ -563,7 +578,7 @@ export function ProductionReports() {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={defectTypeData}
+                      data={effectiveDefectTypeData}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
@@ -572,13 +587,16 @@ export function ProductionReports() {
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {defectTypeData.map((entry, index) => (
+                      {effectiveDefectTypeData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+                {effectiveDefectTypeData.length === 0 && (
+                  <p className="text-sm text-[#757575] mt-2">No defect breakdown available for the selected range.</p>
+                )}
               </div>
 
               <div>

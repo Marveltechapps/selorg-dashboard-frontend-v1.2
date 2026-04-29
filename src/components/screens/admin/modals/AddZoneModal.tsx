@@ -296,7 +296,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] flex flex-col p-0 gap-0">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[92vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle>{editZone ? 'Edit Zone' : 'Add Zone'}</DialogTitle>
         </DialogHeader>
@@ -337,7 +337,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                     </Label>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Type</Label>
                     <Select value={type} onValueChange={setType}>
@@ -361,7 +361,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Color</Label>
                     <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-full p-1" />
@@ -371,7 +371,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                     <Input type="number" step="0.01" value={areaSqKm} onChange={(e) => setAreaSqKm(e.target.value)} placeholder="0" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Default capacity</Label>
                     <Input type="number" value={defaultCapacity} onChange={(e) => setDefaultCapacity(e.target.value)} placeholder="Optional" />
@@ -385,7 +385,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                   <Switch checked={isVisible} onCheckedChange={setIsVisible} id="vis" />
                   <Label htmlFor="vis">Visible on map / listings</Label>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>City label (denormalized)</Label>
                     <Input value={cityLabel} onChange={(e) => setCityLabel(e.target.value)} placeholder="Optional display name" />
@@ -411,7 +411,7 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                   <Label>Polygon (lat,lng) JSON</Label>
                   <Textarea value={polygonJson} onChange={(e) => setPolygonJson(e.target.value)} rows={6} className="font-mono text-xs" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Center latitude</Label>
                     <Input type="number" step="any" value={centerLat} onChange={(e) => setCenterLat(e.target.value)} />

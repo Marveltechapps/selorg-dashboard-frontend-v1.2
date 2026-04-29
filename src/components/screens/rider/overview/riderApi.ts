@@ -67,6 +67,16 @@ interface ApiListResponse<T> {
   totalPages?: number;
 }
 
+function extractApiErrorMessage(error: any, fallback: string): string {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (typeof error.message === 'string') return error.message;
+  if (typeof error.error === 'string') return error.error;
+  if (error.error && typeof error.error.message === 'string') return error.error.message;
+  if (error.details && typeof error.details.message === 'string') return error.details.message;
+  return fallback;
+}
+
 /**
  * Helper function to make API requests
  */
@@ -99,26 +109,7 @@ async function apiRequest<T>(
         error = { message: errorText || 'Request failed' };
       }
       // Extract error message properly - handle nested error objects
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error && typeof error === 'object') {
-        // Try multiple paths to extract error message
-        errorMessage = error.message || error.error || error.msg || errorMessage;
-        // If still an object, try nested paths
-        if (typeof errorMessage === 'object') {
-          errorMessage = (errorMessage as any)?.message || (error as any)?.error?.message || 'Request failed';
-        }
-        // Ensure it's a string
-        if (typeof errorMessage !== 'string') {
-          errorMessage = String(errorMessage);
-        }
-        // Avoid [object Object] - try to extract meaningful message
-        if (errorMessage === '[object Object]' || errorMessage === '{}' || errorMessage.startsWith('{')) {
-          const nestedMsg = (error as any)?.error?.message || (error as any)?.message?.message || (error as any)?.details?.message;
-          errorMessage = nestedMsg || 'Request failed';
-        }
-      }
+      const errorMessage = extractApiErrorMessage(error, `HTTP error! status: ${response.status}`);
       const apiError = new Error(errorMessage);
       (apiError as any).status = response.status;
       (apiError as any).details = error.details || error;

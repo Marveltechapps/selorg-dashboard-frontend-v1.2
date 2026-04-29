@@ -42,6 +42,7 @@ export interface MaintenanceTask {
   id: string;
   vehicleId: string; // Display ID
   vehicleInternalId: string; // Internal ID
+  vehicleType?: VehicleType | string | null;
   type: MaintenanceType;
   scheduledDate: string; // ISO date
   status: MaintenanceStatus;
@@ -66,7 +67,20 @@ async function apiRequest(endpoint: string, options: RequestInit = {}): Promise<
       ...(options.headers as object),
     },
   });
-  if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+  if (!response.ok) {
+    let payload: any = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    const message =
+      (typeof payload?.message === 'string' && payload.message) ||
+      (typeof payload?.error === 'string' && payload.error) ||
+      (typeof payload?.error?.message === 'string' && payload.error.message) ||
+      `API error: ${response.statusText}`;
+    throw new Error(message);
+  }
   return response.json();
 }
 
