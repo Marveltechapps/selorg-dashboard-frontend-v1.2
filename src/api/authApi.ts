@@ -89,7 +89,9 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   const endpoint = getLoginEndpoint(credentials.role);
   const response = await fetch(`${API_CONFIG.baseURL}${endpoint}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    mode: 'cors',
+    credentials: 'omit',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
       email: credentials.email,
       password: credentials.password,
