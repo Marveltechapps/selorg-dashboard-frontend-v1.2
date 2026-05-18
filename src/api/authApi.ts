@@ -35,6 +35,37 @@ export class LoginLockoutError extends Error {
   }
 }
 
+/**
+ * Browser blocked or could not complete the request (CORS preflight failure, 502, DNS, offline).
+ * Often reported as "Failed to fetch" even when the root cause is the API not responding.
+ */
+export class ApiNetworkError extends Error {
+  readonly apiBaseUrl: string;
+
+  constructor(apiBaseUrl: string, cause?: unknown) {
+    const origin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'this site';
+    super(
+      `Cannot reach the API at ${apiBaseUrl}. ` +
+        `The server may be down or misconfigured (common symptom: nginx 502 on api.selorg.com). ` +
+        `Requests from ${origin} require a working API with CORS headers on OPTIONS preflight.`
+    );
+    this.name = 'ApiNetworkError';
+    this.apiBaseUrl = apiBaseUrl;
+    if (cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = cause;
+    }
+  }
+}
+
+function isFetchNetworkFailure(err: unknown): boolean {
+  if (!(err instanceof TypeError)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed');
+}
+
 function parseRetryAfterSeconds(response: Response, body: Record<string, unknown>): number {
   const fromBody = body.retryAfterSeconds ?? body.retryAfter;
   if (typeof fromBody === 'number' && Number.isFinite(fromBody) && fromBody > 0) {
@@ -87,17 +118,27 @@ function getLoginEndpoint(role?: string): string {
  */
 export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   const endpoint = getLoginEndpoint(credentials.role);
-  const response = await fetch(`${API_CONFIG.baseURL}${endpoint}`, {
-    method: 'POST',
-    mode: 'cors',
-    credentials: 'omit',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      email: credentials.email,
-      password: credentials.password,
-      role: credentials.role,
-    }),
-  });
+  const url = `${API_CONFIG.baseURL}${endpoint}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        email: credentials.email,
+        password: credentials.password,
+        role: credentials.role,
+      }),
+    });
+  } catch (err) {
+    if (isFetchNetworkFailure(err)) {
+      throw new ApiNetworkError(API_CONFIG.baseURL, err);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     const error = (await response.json().catch(() => ({}))) as Record<string, unknown>;

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, UserCircle, Lock, User, Eye, EyeOff, Clock, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
-import { login, LoginLockoutError } from '../api/authApi';
+import { login, ApiNetworkError, LoginLockoutError } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useDynamicFavicon } from '../hooks/useDynamicFavicon';
 import { DASHBOARD_BRANDS } from '../utils/dashboardFavicon';
@@ -129,6 +129,8 @@ export function LoginScreen() {
           message: error.message,
         });
         toast.error(error.message);
+      } else if (error instanceof ApiNetworkError) {
+        toast.error(error.message, { duration: 10_000 });
       } else {
         const msg = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
         toast.error(msg);
