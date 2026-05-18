@@ -116,7 +116,27 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
     throw new Error(message);
   }
 
-  return response.json();
+  const json = (await response.json()) as Record<string, unknown>;
+
+  // Backend may wrap payloads in ResponseFormatter envelope: { success, data: { token, user, ... } }
+  if (
+    json &&
+    typeof json === 'object' &&
+    json.success === true &&
+    json.data !== null &&
+    typeof json.data === 'object'
+  ) {
+    const inner = json.data as Record<string, unknown>;
+    if (typeof inner.token === 'string' && inner.user && typeof inner.user === 'object') {
+      return { token: inner.token, user: inner.user as LoginResponse['user'] };
+    }
+  }
+
+  if (typeof json.token === 'string' && json.user && typeof json.user === 'object') {
+    return { token: json.token, user: json.user as LoginResponse['user'] };
+  }
+
+  throw new Error('Invalid login response from server');
 }
 
 function getLogoutEndpoint(role?: string): string {

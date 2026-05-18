@@ -76,6 +76,8 @@ class WebSocketService {
   connect() {
     if (this.socket?.connected) return;
     if (this.connectionFailed) return;
+    // Avoid overlapping io() instances when multiple screens call connect() during handshake.
+    if (this.socket && !this.socket.connected) return;
 
     const token = getAuthToken();
     if (!token) return;
@@ -106,6 +108,7 @@ class WebSocketService {
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 15000,
 
       timeout: 10000,
     });
@@ -145,7 +148,7 @@ class WebSocketService {
       // a terminal "realtime unavailable" state until the user refreshes.
       const errText = `${(err as any)?.message ?? ''} ${(err as any) ?? ''}`;
       const isBackendUnreachable =
-        /ECONNREFUSED|ERR_CONNECTION_REFUSED|connection refused|xhr poll error|transport error/i.test(
+        /ECONNREFUSED|ERR_CONNECTION_REFUSED|ECONNRESET|connection refused|xhr poll error|websocket error|transport error|hang up|socket hang up|502|503|Bad Gateway|Network Error|Failed to fetch/i.test(
           errText
         );
 

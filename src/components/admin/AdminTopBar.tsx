@@ -37,6 +37,7 @@ const ADMIN_SCREENS = new Set([
   'catalog',
   'pricing',
   'legal-policies',
+  'legal-documents',
   'support',
   'fraud',
   'analytics',
@@ -45,6 +46,12 @@ const ADMIN_SCREENS = new Set([
   'compliance',
   'audit',
   'picker-management',
+  'agencies',
+  'ot-approvals',
+  'shift-change-approvals',
+  'attendance-export',
+  'logistics-providers',
+  'platform-config',
   'content-hub',
   'content-hub-categories',
   'home-config',
@@ -71,6 +78,12 @@ const DEFAULT_ADMIN_SCREEN_BY_RESULT_CATEGORY: Record<string, string> = {
 
 function suggestionCategoryToAdminScreen(category: string, type: string): string {
   const c = `${category ?? ''} ${type ?? ''}`.toLowerCase();
+  if (c.includes('overtime') || /\bot\b/i.test(c)) return 'ot-approvals';
+  if (c.includes('shift change') || c.includes('shift-change')) return 'shift-change-approvals';
+  if (c.includes('attendance')) return 'attendance-export';
+  if (c.includes('agency')) return 'agencies';
+  if (c.includes('logistics') && c.includes('provider')) return 'logistics-providers';
+  if (c.includes('platform') && (c.includes('config') || c.includes('setting'))) return 'platform-config';
   if (c.includes('inbound') || c.includes('po') || c.includes('vendor')) return 'master-data';
   if (c.includes('transfer')) return 'master-data';
   if (c.includes('inventory') || c.includes('sku') || c.includes('bin') || c.includes('product')) return 'catalog';
@@ -94,8 +107,29 @@ function formatResultSectionLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
+function envBadge(): { label: string; className: string } | null {
+  const custom = (import.meta.env.VITE_ENV_LABEL as string | undefined)?.trim();
+  if (custom) {
+    return {
+      label: custom,
+      className: 'bg-slate-50 rounded-full border border-slate-200 text-slate-800',
+    };
+  }
+  if (import.meta.env.DEV) {
+    return {
+      label: 'Development',
+      className: 'bg-slate-50 rounded-full border border-slate-200 text-slate-700',
+    };
+  }
+  return {
+    label: 'Production',
+    className: 'bg-rose-50 rounded-full border border-rose-100 text-rose-900',
+  };
+}
+
 export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
   const navigate = useNavigate();
+  const badge = envBadge();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationHistory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -580,10 +614,12 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
         </div>
 
         <div className="relative z-[2] flex shrink-0 min-w-0 items-center gap-1 sm:gap-4 ml-1 sm:ml-6">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-rose-50 rounded-full border border-rose-100">
-            <ShieldCheck size={14} className="text-[#e11d48]" />
-            <span className="text-xs font-medium text-rose-900">Prod Environment</span>
-          </div>
+          {badge && (
+            <div className={cn('hidden sm:flex items-center gap-2 px-3 py-1.5', badge.className)}>
+              <ShieldCheck size={14} className={import.meta.env.DEV ? 'text-slate-600' : 'text-[#e11d48]'} />
+              <span className="text-xs font-medium">{badge.label}</span>
+            </div>
+          )}
 
           <div className="h-6 w-px bg-[#e4e4e7] mx-0 sm:mx-2 hidden sm:block shrink-0" />
 

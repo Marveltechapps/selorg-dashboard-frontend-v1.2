@@ -30,7 +30,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { fetchContentHubImportHistory, uploadContentHubMaster, type ContentHubImportRun } from '@/api/cmsAdminApi';
+import {
+  fetchContentHubImportHistory,
+  uploadContentHubMaster,
+  XLSX_FILE_ACCEPT,
+  type ContentHubImportRun,
+} from '@/api/cmsAdminApi';
 
 interface ContentHubProps {
   setActiveTab: (tab: string) => void;
@@ -158,8 +163,12 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx"
-        className="hidden"
+        accept={XLSX_FILE_ACCEPT}
+        multiple={false}
+        // Force file selection (not folder); directory mode breaks single .xlsx import.
+        webkitdirectory={false}
+        className="sr-only"
+        aria-label="Import CMS mastersheet (.xlsx)"
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
           if (file) void handleImport(file);

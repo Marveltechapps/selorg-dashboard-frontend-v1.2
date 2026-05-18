@@ -222,7 +222,12 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
       setVerificationRequestId(response.verificationRequestId);
       setIsEmailVerified(false);
       setFormData((prev) => ({ ...prev, emailVerifiedToken: undefined }));
-      toast.success('OTP sent to email');
+      if (response.devOtp) {
+        setOtp(response.devOtp);
+        toast.success(`Dev OTP: ${response.devOtp}`, { duration: 15000 });
+      } else {
+        toast.success('OTP sent to email');
+      }
     } catch (error: any) {
       const message =
         error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Failed to send OTP';

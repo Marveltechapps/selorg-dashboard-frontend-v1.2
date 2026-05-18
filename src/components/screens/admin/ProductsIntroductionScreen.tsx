@@ -4,6 +4,7 @@
  * CMS (Banners, Categories, Collections, product carousels) uses this data.
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -35,6 +36,7 @@ import {
 import { fetchCategories, type Category } from './catalogApi';
 import { toast } from 'sonner';
 import { BulkProductOperationsModal } from './modals/BulkProductOperationsModal';
+import { CategoryTaxonomyManager } from './CategoryTaxonomyManager';
 import { Plus, Pencil, Trash2, Loader2, Package, Search } from 'lucide-react';
 
 const PAGE_SIZE = 20;
@@ -69,7 +71,10 @@ function productToImageUrlsText(p: Product): string {
   return orderedUniqueImageUrls([primary, ...extras].filter(Boolean)).join(', ');
 }
 
+type ProductsIntroductionTab = 'products' | 'categories' | 'subcategories';
+
 export function ProductsIntroductionScreen() {
+  const [activeTab, setActiveTab] = useState<ProductsIntroductionTab>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -513,9 +518,20 @@ export function ProductsIntroductionScreen() {
           Products Introduction
         </h1>
         <p className="text-sm text-[#71717a] mt-1">
-          Single source of truth for products. CMS uses this data.
+          Manage products, categories, and subcategories. Single source of truth for product data.
         </p>
       </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ProductsIntroductionTab)}>
+        <div className="sticky top-0 z-10 -mx-1 mb-4 border-b border-[#e4e4e7] bg-[#fcfcfc] px-1 pt-1 pb-2">
+          <TabsList className="bg-[#f4f4f5] p-1 rounded-lg flex flex-wrap gap-1">
+            <TabsTrigger value="products">Products</TabsTrigger>
+            <TabsTrigger value="categories">Categories</TabsTrigger>
+            <TabsTrigger value="subcategories">Subcategories</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="products" className="mt-0">
 
       <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden">
         <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc] flex flex-col gap-4">
@@ -770,7 +786,22 @@ export function ProductsIntroductionScreen() {
             )}
           </>
         )}
-      </div>
+        </div>
+        </TabsContent>
+
+        <TabsContent value="categories" className="mt-0">
+          <CategoryTaxonomyManager showInlineRefresh />
+        </TabsContent>
+
+        <TabsContent value="subcategories" className="mt-0">
+          <div className="rounded-lg border border-[#e4e4e7] bg-white p-6">
+            <p className="text-sm text-[#71717a] mb-4">
+              Subcategories are managed within the Categories tab above. Select a category to view and manage its subcategories.
+            </p>
+            <CategoryTaxonomyManager showInlineRefresh />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <BulkProductOperationsModal
         open={bulkModalOpen}

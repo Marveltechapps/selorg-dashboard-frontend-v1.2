@@ -98,6 +98,8 @@ export interface AuthUser {
   primaryStoreId?: string;
   /** Procurement / vendor dashboard tenant from JWT (e.g. chennai-hub) */
   hubKey?: string;
+  /** Action-level permissions from JWT (`permissions` claim); optional for legacy tokens */
+  permissions?: string[];
 }
 
 export interface AuthContextType {
@@ -159,9 +161,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const payload = decodeJwtPayload(newToken);
     const hubFromJwt =
       typeof payload?.hubKey === 'string' && payload.hubKey.trim() ? String(payload.hubKey).trim() : undefined;
+    const jwtPermissions = Array.isArray(payload?.permissions)
+      ? (payload.permissions as string[])
+      : undefined;
     const enriched: AuthUser = {
       ...newUser,
       hubKey: newUser.hubKey ?? hubFromJwt,
+      permissions: jwtPermissions ?? newUser.permissions,
     };
     _token = newToken;
     _user = enriched;
@@ -206,8 +212,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const payload = decodeJwtPayload(_token);
       const hubFromJwt =
         typeof payload?.hubKey === 'string' && payload.hubKey.trim() ? String(payload.hubKey).trim() : undefined;
-      const mergedUser =
-        _user && hubFromJwt && !_user.hubKey ? { ..._user, hubKey: hubFromJwt } : _user;
+      const jwtPermissions = Array.isArray(payload?.permissions)
+        ? (payload.permissions as string[])
+        : undefined;
+      let mergedUser = _user;
+      if (_user) {
+        mergedUser = {
+          ..._user,
+          ...(hubFromJwt && !_user.hubKey ? { hubKey: hubFromJwt } : {}),
+          ...(jwtPermissions ? { permissions: jwtPermissions } : {}),
+        };
+      }
       if (mergedUser && mergedUser !== _user) {
         _user = mergedUser;
         persistAuth(_token, mergedUser, _activeStoreId);
@@ -255,5 +270,3 @@ export function useAuth(): AuthContextType {
   }
   return ctx;
 }
-
-export default AuthContext;

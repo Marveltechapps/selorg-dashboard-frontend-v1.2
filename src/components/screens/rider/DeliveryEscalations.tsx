@@ -50,10 +50,25 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set('targetTeam', 'rider_ops');
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      const res = await apiRequest<{ success: boolean; data: Escalation[] }>(`/shared/escalations?${params}`);
-      setEscalations(res.data ?? []);
+      const res = await apiRequest<{ success: boolean; data: Escalation[] }>(
+        `/shared/escalations/by-team/rider_ops?${params}`
+      );
+      const rows = res.data ?? [];
+      setEscalations(
+        rows.map((e) => {
+          const row = e as Escalation & { type?: string; description?: string };
+          const orderFromDesc =
+            typeof row.description === 'string'
+              ? row.description.match(/ORD-[\d-]+/)?.[0]
+              : undefined;
+          return {
+            ...row,
+            issueType: row.issueType || row.type || '',
+            orderId: row.orderId || orderFromDesc || '',
+          };
+        })
+      );
     } catch {
       setEscalations([]);
     } finally {

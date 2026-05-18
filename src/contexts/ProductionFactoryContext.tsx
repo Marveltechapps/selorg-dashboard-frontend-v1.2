@@ -1,3 +1,4 @@
+/* @refresh reset */
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { fetchProductionFactories, type ProductionFactory } from '../api/productionApi';
 

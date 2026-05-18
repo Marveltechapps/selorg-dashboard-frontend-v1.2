@@ -18,6 +18,9 @@ const WAREHOUSE_TAB_LABELS: Record<string, string> = {
   exceptions: 'Exceptions',
   analytics: 'Reports & Analytics',
   utilities: 'Utilities',
+  logistics: 'Logistics',
+  'logistics-tracking': 'Logistics tracking',
+  'logistics-estimate': 'Logistics estimate',
 };
 
 const TABS_UNDER_WORKFORCE = new Set(['shift-master', 'shift-roster']);

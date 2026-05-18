@@ -17,7 +17,7 @@ import {
 } from "../../ui/dropdown-menu";
 import { toast } from "sonner";
 import { getMerchStats, getCampaigns } from '../../../api/merch/merchApi';
-import { setOpenPendingUpdates } from './PricingEngine';
+import { setOpenPendingUpdates } from './pricingPendingUpdatesBridge';
 
 import { CampaignDrawer } from './components/CampaignDrawer';
 

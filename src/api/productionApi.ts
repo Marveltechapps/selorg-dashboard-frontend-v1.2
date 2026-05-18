@@ -9,6 +9,17 @@ function authHeaders(): Record<string, string> {
   };
 }
 
+/** Unwrap `{ success, data }` API envelopes without stripping sibling fields (e.g. reports `dateRange`). */
+function unwrapPayload<T>(json: unknown): T {
+  if (!json || typeof json !== 'object') return json as T;
+  const o = json as Record<string, unknown>;
+  if (!('data' in o)) return json as T;
+  const envelopeKeys = new Set(['success', 'message', 'meta', 'count', 'data']);
+  const isEnvelope = Object.keys(o).every((k) => envelopeKeys.has(k));
+  if (isEnvelope && o.data !== undefined && o.data !== null) return o.data as T;
+  return json as T;
+}
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...options, headers: { ...authHeaders(), ...options?.headers } });
   if (!res.ok) {
@@ -22,7 +33,8 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
         : 'Request failed';
     throw new Error(resolvedMessage);
   }
-  return res.json();
+  const json = await res.json();
+  return unwrapPayload<T>(json);
 }
 
 export interface RawMaterial {

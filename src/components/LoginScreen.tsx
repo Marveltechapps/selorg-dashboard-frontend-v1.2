@@ -185,6 +185,7 @@ export function LoginScreen() {
               return (
                 <button
                   key={role}
+                  type="button"
                   onClick={() => handleRoleSelect(role)}
                   className={cn(
                     "w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all hover:shadow-md text-left group",
@@ -293,7 +294,7 @@ export function LoginScreen() {
                 <UserCircle className="text-[#A3A3A3] w-8 h-8" />
               </div>
               <p className="font-medium text-[#212121]">No Department Selected</p>
-              <p className="text-sm text-[#757575]">Please select your role to continue.</p>
+              <p className="text-sm text-[#757575]">Please select a department to continue.</p>
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@
  * Integrated with backend based on api-documentation.yaml
  */
 
-import { getActiveStoreId } from '../../contexts/AuthContext';
+import { getActiveStoreId, getAuthToken } from '../../contexts/AuthContext';
 
 const API_BASE_URL = (() => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
@@ -130,11 +130,18 @@ export interface HSDLogsResponse {
  * API Request Helper
  */
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const defaultOptions: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-    },
     ...options,
+    headers,
   };
 
   try {

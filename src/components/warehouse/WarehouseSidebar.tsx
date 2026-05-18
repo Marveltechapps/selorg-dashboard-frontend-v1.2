@@ -15,7 +15,8 @@ import {
   BarChart3, 
   Settings,
   LogOut,
-  Warehouse
+  Warehouse,
+  Truck,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
@@ -65,6 +66,9 @@ export function WarehouseSidebar({ activeTab, setActiveTab, onLogout }: Warehous
     { id: 'exceptions', label: 'Exceptions', icon: AlertTriangle },
     { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
     { id: 'utilities', label: 'Utilities', icon: Settings },
+    { id: 'logistics', label: 'Logistics', icon: Truck },
+    { id: 'logistics-tracking', label: 'Logistics tracking', icon: Truck },
+    { id: 'logistics-estimate', label: 'Logistics estimate', icon: Truck },
   ];
 
   return (

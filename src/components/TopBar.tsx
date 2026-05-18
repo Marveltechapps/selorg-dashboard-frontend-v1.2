@@ -94,6 +94,8 @@ const DARKSTORE_TABS = new Set([
   'reports',
   'hsd',
   'utilities',
+  'replenishment',
+  'replenishment-tracking',
   'settings',
 ]);
 

@@ -224,8 +224,13 @@ export const createUser = async (payload: CreateUserPayload): Promise<User> => {
   return { ...user, avatar: user.avatar ?? deriveAvatar(user.name) };
 };
 
-export const sendCreateUserOtp = async (email: string): Promise<{ verificationRequestId: string; expiresAt: string }> => {
-  const response = await apiRequest<{ success: boolean; data: { verificationRequestId: string; expiresAt: string } }>(
+export const sendCreateUserOtp = async (
+  email: string
+): Promise<{ verificationRequestId: string; expiresAt: string; devOtp?: string }> => {
+  const response = await apiRequest<{
+    success: boolean;
+    data: { verificationRequestId: string; expiresAt: string; devOtp?: string };
+  }>(
     '/admin/users/verification/send-otp',
     {
       method: 'POST',

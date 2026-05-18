@@ -17,7 +17,8 @@ import { NotificationHandler } from './components/NotificationHandler';
 import { useDynamicFavicon } from './hooks/useDynamicFavicon';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { LegalManagerPage } from './components/screens/legal/LegalManagerPage';
+// Feature flag for new navigation (Phase A). Use VITE_ENABLE_NEW_NAV=true in env for Vite.
+const ENABLE_NEW_NAV = import.meta.env.VITE_ENABLE_NEW_NAV === 'true';
 
 const VALID_DASHBOARDS = ['darkstore', 'production', 'merch', 'rider', 'finance', 'vendor', 'warehouse', 'admin'] as const;
 
@@ -104,15 +105,8 @@ function App() {
           {/* Public vendor self-onboarding (invite token required) */}
           <Route path="/vendor-signup" element={<VendorSignup />} />
 
-          <Route
-            path="/legal"
-            element={
-              <ProtectedRoute>
-                <LegalManagerPage />
-              </ProtectedRoute>
-            }
-          />
-          
+          <Route path="/legal" element={<Navigate to="/admin/legal-documents" replace />} />
+
           <Route 
             path="/darkstore/:screen?" 
             element={

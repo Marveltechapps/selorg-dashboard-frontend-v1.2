@@ -42,9 +42,10 @@ export function StoreEscalations() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set('targetTeam', 'darkstore');
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      const res = await apiRequest<{ success: boolean; data: Escalation[] }>(`/shared/escalations?${params}`);
+      const res = await apiRequest<{ success: boolean; data: Escalation[] }>(
+        `/shared/escalations/by-team/darkstore?${params}`
+      );
       setEscalations(res.data ?? []);
     } catch {
       setEscalations([]);

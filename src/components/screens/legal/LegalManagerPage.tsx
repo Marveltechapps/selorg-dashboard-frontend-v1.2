@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FileText,
   Plus,
-  RefreshCcw,
+  RefreshCw,
   Trash2,
   CheckCircle2,
   Clock,
-  Eye,
   Pencil,
   Loader2,
+  Smartphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,6 +23,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { format, parseISO, isValid } from 'date-fns';
 import {
@@ -41,6 +51,17 @@ function formatDisplayDate(value: string): string {
   if (!isValid(d)) return value;
   return value.length <= 10 ? format(d, 'MMM d, yyyy') : format(d, 'MMM d, yyyy h:mm a');
 }
+
+const APP_TABS: { id: AppTarget; label: string }[] = [
+  { id: 'picker', label: 'Picker' },
+  { id: 'customer', label: 'Customer' },
+  { id: 'rider', label: 'Rider' },
+];
+
+const TYPE_TABS: { id: DocType; label: string }[] = [
+  { id: 'terms', label: 'Terms & Conditions' },
+  { id: 'privacy', label: 'Privacy Policy' },
+];
 
 export function LegalManagerPage() {
   const [activeApp, setActiveApp] = useState<AppTarget>('picker');
@@ -76,6 +97,9 @@ export function LegalManagerPage() {
     void loadDocs();
   }, [loadDocs]);
 
+  const liveCount = useMemo(() => docs.filter((d) => d.isCurrent).length, [docs]);
+  const draftCount = docs.length - liveCount;
+
   const openCreateModal = () => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const hasCurrent = docs.some((d) => d.isCurrent);
@@ -104,9 +128,7 @@ export function LegalManagerPage() {
 
   const closeFormModal = (open: boolean) => {
     setShowForm(open);
-    if (!open) {
-      setEditDoc(null);
-    }
+    if (!open) setEditDoc(null);
   };
 
   const handleSave = async () => {
@@ -174,211 +196,234 @@ export function LegalManagerPage() {
     }
   };
 
-  const appTabs: { id: AppTarget; label: string }[] = [
-    { id: 'picker', label: 'Picker' },
-    { id: 'customer', label: 'Customer' },
-    { id: 'rider', label: 'Rider' },
-  ];
-
-  const typeTabs: { id: DocType; label: string }[] = [
-    { id: 'terms', label: 'Terms & Conditions' },
-    { id: 'privacy', label: 'Privacy Policy' },
-  ];
+  const activeAppLabel = APP_TABS.find((t) => t.id === activeApp)?.label ?? activeApp;
+  const activeTypeLabel = TYPE_TABS.find((t) => t.id === activeType)?.label ?? activeType;
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* A) Page header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6 w-full min-w-0 max-w-full">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#212121]">Legal Document Manager</h1>
-          <p className="text-[#757575] text-sm max-w-2xl">
-            Manage Terms & Conditions and Privacy Policy for each app. Publishing a version sets it
-            live immediately.
+          <h1 className="text-2xl font-bold text-[#18181b]">Legal Documents</h1>
+          <p className="text-[#71717a] text-sm mt-1">
+            Manage Terms & Conditions and Privacy Policy for Picker, Customer, and Rider apps.
+            Publishing a version sets it live immediately.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => void loadDocs()} disabled={loading}>
-            <RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={() => void loadDocs()} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'animate-spin mr-1.5' : 'mr-1.5'} />
+            Refresh
           </Button>
-          <Button
-            className="bg-[#5B4EFF] hover:bg-[#4a3fee] text-white"
-            onClick={openCreateModal}
-          >
-            <Plus size={16} className="mr-2" />
+          <Button size="sm" onClick={openCreateModal}>
+            <Plus size={14} className="mr-1.5" />
             New Version
           </Button>
         </div>
       </div>
 
-      {/* B) Filter bar */}
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {appTabs.map((tab) => (
-            <Button
-              key={tab.id}
-              type="button"
-              variant={activeApp === tab.id ? 'default' : 'outline'}
-              size="sm"
-              className={
-                activeApp === tab.id
-                  ? 'bg-[#5B4EFF] text-white hover:bg-[#4a3fee] border-transparent'
-                  : ''
-              }
-              onClick={() => setActiveApp(tab.id)}
-            >
-              {tab.label}
-            </Button>
-          ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-[#71717a]">Active App</p>
+            <Smartphone className="text-[#e11d48]" size={16} />
+          </div>
+          <p className="text-2xl font-bold text-[#18181b]">{activeAppLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{activeTypeLabel}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {typeTabs.map((tab) => (
-            <Button
-              key={tab.id}
-              type="button"
-              variant={activeType === tab.id ? 'default' : 'outline'}
-              size="sm"
-              className={
-                activeType === tab.id
-                  ? 'bg-[#5B4EFF] text-white hover:bg-[#4a3fee] border-transparent'
-                  : ''
-              }
-              onClick={() => setActiveType(tab.id)}
-            >
-              {tab.label}
-            </Button>
-          ))}
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-[#71717a]">Versions</p>
+            <FileText className="text-blue-600" size={16} />
+          </div>
+          <p className="text-2xl font-bold text-[#18181b]">{docs.length}</p>
+          <p className="text-xs text-[#71717a] mt-1">in current filter</p>
+        </div>
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-[#71717a]">Live</p>
+            <CheckCircle2 className="text-emerald-600" size={16} />
+          </div>
+          <p className="text-2xl font-bold text-[#18181b]">{liveCount}</p>
+          <p className="text-xs text-[#71717a] mt-1">published versions</p>
+        </div>
+        <div className="bg-white border border-[#e4e4e7] rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-[#71717a]">Drafts</p>
+            <Clock className="text-amber-600" size={16} />
+          </div>
+          <p className="text-2xl font-bold text-[#18181b]">{draftCount}</p>
+          <p className="text-xs text-[#71717a] mt-1">awaiting publish</p>
         </div>
       </div>
 
-      {/* C) Documents table */}
-      <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-          <h3 className="font-bold text-[#212121]">Documents</h3>
-        </div>
+      <Tabs
+        value={activeApp}
+        onValueChange={(v) => setActiveApp(v as AppTarget)}
+        className="space-y-4 min-w-0"
+      >
+        <TabsList className="w-fit justify-start overflow-x-auto overflow-y-hidden whitespace-nowrap px-[10px]">
+          {APP_TABS.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id} className="shrink-0">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        <div className="overflow-x-auto">
-          {loading ? (
-            <div className="p-4 space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-12 w-full rounded-md bg-[#E0E0E0] animate-pulse"
-                  aria-hidden
-                />
-              ))}
-            </div>
-          ) : docs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-[#757575]">
-              <div className="flex items-center gap-2 mb-3 text-[#9E9E9E]">
-                <FileText className="size-10" strokeWidth={1.25} />
-                <Eye className="size-8 opacity-60" strokeWidth={1.25} />
-              </div>
-              <p className="text-sm">No documents yet. Create your first version.</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#E0E0E0] bg-[#FAFAFA] text-left text-[#757575]">
-                  <th className="px-4 py-3 font-semibold">Version</th>
-                  <th className="px-4 py-3 font-semibold">Title</th>
-                  <th className="px-4 py-3 font-semibold">Effective Date</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Last Updated</th>
-                  <th className="px-4 py-3 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {docs.map((doc) => (
-                  <tr key={doc._id} className="border-b border-[#E0E0E0] last:border-0">
-                    <td className="px-4 py-3 font-mono text-[#212121]">{doc.version}</td>
-                    <td className="px-4 py-3 text-[#212121]">{doc.title}</td>
-                    <td className="px-4 py-3 text-[#424242]">{formatDisplayDate(doc.effectiveDate)}</td>
-                    <td className="px-4 py-3">
-                      {doc.isCurrent ? (
-                        <Badge className="border-transparent bg-emerald-600 text-white gap-1">
-                          <CheckCircle2 className="size-3" />
-                          Live
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="gap-1 text-[#616161]">
-                          <Clock className="size-3" />
-                          Draft
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-[#424242]">{formatDisplayDate(doc.lastUpdated)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end items-center gap-2 flex-wrap">
-                        {!doc.isCurrent && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs border-[#5B4EFF] text-[#5B4EFF] hover:bg-[#5B4EFF]/10"
-                            onClick={() => void handlePublish(doc._id)}
-                          >
-                            Publish
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          aria-label="Edit document"
-                          onClick={() => openEditModal(doc)}
-                        >
-                          <Pencil size={16} />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          aria-label="Delete document"
-                          onClick={() => setDeleteId(doc._id)}
-                        >
-                          <Trash2 size={16} />
+        {APP_TABS.map((appTab) => (
+          <TabsContent key={appTab.id} value={appTab.id} className="space-y-4 mt-0">
+            <Tabs
+              value={activeType}
+              onValueChange={(v) => setActiveType(v as DocType)}
+              className="space-y-4"
+            >
+              <TabsList className="w-fit justify-start overflow-x-auto overflow-y-hidden whitespace-nowrap px-[10px]">
+                {TYPE_TABS.map((tab) => (
+                  <TabsTrigger key={tab.id} value={tab.id} className="shrink-0">
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              {TYPE_TABS.map((typeTab) => (
+                <TabsContent key={typeTab.id} value={typeTab.id} className="mt-0">
+                  <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+                    <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
+                      <h3 className="font-bold text-[#18181b]">Documents</h3>
+                      <p className="text-xs text-[#71717a] mt-1">
+                        {appTab.label} · {typeTab.label}
+                      </p>
+                    </div>
+
+                    {loading ? (
+                      <div className="flex justify-center py-12">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#71717a]" />
+                      </div>
+                    ) : docs.length === 0 ? (
+                      <div className="text-center py-12 space-y-3">
+                        <FileText className="w-12 h-12 text-[#a1a1aa] mx-auto" />
+                        <p className="text-[#71717a]">No documents yet.</p>
+                        <p className="text-xs text-[#a1a1aa]">
+                          Create your first version for this app and document type.
+                        </p>
+                        <Button size="sm" className="mt-2" onClick={openCreateModal}>
+                          <Plus size={14} className="mr-1.5" />
+                          New Version
                         </Button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Version</TableHead>
+                              <TableHead>Title</TableHead>
+                              <TableHead>Effective Date</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Last Updated</TableHead>
+                              <TableHead className="w-36 text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {docs.map((doc) => (
+                              <TableRow key={doc._id}>
+                                <TableCell className="font-mono text-sm">v{doc.version}</TableCell>
+                                <TableCell className="font-medium">{doc.title}</TableCell>
+                                <TableCell className="text-[#71717a]">
+                                  {formatDisplayDate(doc.effectiveDate)}
+                                </TableCell>
+                                <TableCell>
+                                  {doc.isCurrent ? (
+                                    <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                                      Live
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-[#71717a]">
+                                      Draft
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-[#71717a]">
+                                  {formatDisplayDate(doc.lastUpdated)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-end items-center gap-1">
+                                    {!doc.isCurrent && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 text-xs"
+                                        onClick={() => void handlePublish(doc._id)}
+                                      >
+                                        Publish
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8"
+                                      aria-label="Edit document"
+                                      onClick={() => openEditModal(doc)}
+                                    >
+                                      <Pencil size={16} />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8 text-destructive hover:text-destructive"
+                                      aria-label="Delete document"
+                                      onClick={() => setDeleteId(doc._id)}
+                                    >
+                                      <Trash2 size={16} />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              ))}
+            </Tabs>
+          </TabsContent>
+        ))}
+      </Tabs>
 
-      {/* D) Form modal */}
       <Dialog open={showForm} onOpenChange={closeFormModal}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editDoc ? 'Edit Document' : 'New Version'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-[#212121]">Title</label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Title</Label>
+                <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Version</Label>
+                <Input
+                  value={formVersion}
+                  onChange={(e) => setFormVersion(e.target.value)}
+                  placeholder="e.g. 1.0.0"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-[#212121]">Version</label>
-              <Input
-                value={formVersion}
-                onChange={(e) => setFormVersion(e.target.value)}
-                placeholder="e.g. 1.0.0"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-[#212121]">Effective Date</label>
+            <div className="space-y-1.5">
+              <Label>Effective Date</Label>
               <Input
                 type="date"
                 value={formEffectiveDate}
                 onChange={(e) => setFormEffectiveDate(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-[#212121]">Content</label>
+            <div className="space-y-1.5">
+              <Label>Content</Label>
               <Textarea
                 rows={12}
                 value={formContent}
@@ -392,19 +437,14 @@ export function LegalManagerPage() {
                 checked={formIsCurrent}
                 onCheckedChange={(v) => setFormIsCurrent(v === true)}
               />
-              <span className="text-sm text-[#212121]">Set as current (live) version</span>
+              <span className="text-sm text-[#18181b]">Set as current (live) version</span>
             </label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => closeFormModal(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              className="bg-[#5B4EFF] hover:bg-[#4a3fee] text-white"
-              onClick={() => void handleSave()}
-              disabled={saving}
-            >
+            <Button type="button" onClick={() => void handleSave()} disabled={saving}>
               {saving ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
@@ -418,13 +458,12 @@ export function LegalManagerPage() {
         </DialogContent>
       </Dialog>
 
-      {/* E) Delete confirm */}
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && !saving && setDeleteId(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete version?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-[#757575]">
+          <p className="text-sm text-[#71717a]">
             Are you sure you want to delete this version? This cannot be undone.
           </p>
           <DialogFooter>

@@ -22,6 +22,7 @@ import {
   Package,
   PackageX,
   Bug,
+  Truck,
 } from 'lucide-react';
 import { cn } from "../lib/utils";
 import { useAuth } from '../contexts/AuthContext';
@@ -59,6 +60,8 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
     { id: 'reports', label: 'Reports', icon: FileBarChart },
     { id: 'hsd', label: 'HSD Devices', icon: Smartphone },
     { id: 'utilities', label: 'Utilities', icon: Settings },
+    { id: 'replenishment', label: 'Replenishment', icon: Truck },
+    { id: 'replenishment-tracking', label: 'Replenishment tracking', icon: Truck },
   ];
 
   return (

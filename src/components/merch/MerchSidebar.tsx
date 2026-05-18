@@ -11,7 +11,15 @@ import {
   ShieldCheck,
   ChevronDown,
   LogOut,
-  Store
+  Store,
+  Package,
+  RotateCcw,
+  Truck,
+  Zap,
+  Building2,
+  ArrowRightLeft,
+  Users,
+  Network
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 
@@ -29,9 +37,28 @@ export function MerchSidebar({ activeTab, setActiveTab, onLogout }: MerchSidebar
     { id: 'promotions', label: 'Promotion Campaigns', icon: Megaphone },
     { id: 'allocation', label: 'Allocation & Stock', icon: Boxes },
     { id: 'geofence', label: 'Geofence & Targeting', icon: Map },
+    // Inventory Management Section
+    { id: 'inventory-overview', label: 'Inventory Overview', icon: Package },
+    { id: 'transactions', label: 'Transactions & Audit', icon: RotateCcw },
+    { id: 'replenishment', label: 'Replenishment Orders', icon: Truck },
+    { id: 'expiry', label: 'Expiry Management', icon: Zap },
+    // Warehouse & Distribution Section (Phase 4)
+    { id: 'warehouses', label: 'Warehouse Management', icon: Building2 },
+    { id: 'allocations', label: 'Allocation Dashboard', icon: ArrowRightLeft },
+    { id: 'transfer-orders', label: 'Transfer Orders', icon: Truck },
+    { id: 'vendors', label: 'Vendor Management', icon: Users },
+    // Analytics & Compliance
     { id: 'analytics', label: 'Analytics & Insights', icon: BarChart3 },
     { id: 'alerts', label: 'Alerts & Exceptions', icon: AlertTriangle },
     { id: 'compliance', label: 'Compliance & Approvals', icon: ShieldCheck },
+    // Phase 5: Pricing & Promotions
+    { id: 'pricing-engine', label: 'Pricing Engine', icon: Tag },
+    { id: 'promo-campaigns', label: 'Promo Campaigns', icon: Megaphone },
+    { id: 'markdown-mgmt', label: 'Markdown Management', icon: TrendingDown },
+    { id: 'competitor-analysis', label: 'Competitor Analysis', icon: BarChart3 },
+    // Phase 6: Analytics & Forecasting
+    { id: 'analytics', label: 'Analytics Dashboard', icon: BarChart3 },
+    { id: 'forecasting', label: 'Forecasting', icon: TrendingUp },
   ];
 
   return (

@@ -18,11 +18,7 @@ import {
     DropdownMenuTrigger 
 } from "../../ui/dropdown-menu";
 
-let _shouldOpenPendingUpdates = false;
-
-export function setOpenPendingUpdates(v: boolean) {
-  _shouldOpenPendingUpdates = v;
-}
+import { takePendingUpdatesOpenRequest } from './pricingPendingUpdatesBridge';
 
 export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -91,8 +87,7 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
     window.addEventListener('openPendingUpdates', eventHandler);
     
     const checkAndOpen = () => {
-      if (_shouldOpenPendingUpdates) {
-        _shouldOpenPendingUpdates = false;
+      if (takePendingUpdatesOpenRequest()) {
         setIsPendingOpen(true);
       }
     };

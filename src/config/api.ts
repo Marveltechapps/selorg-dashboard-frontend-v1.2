@@ -22,6 +22,13 @@ export const API_ENDPOINTS = {
     auth: {
       login: '/darkstore/auth/login',
     },
+    logistics: {
+      orders: '/darkstore/logistics/orders',
+      orderById: (id: string) => `/darkstore/logistics/orders/${id}`,
+      cancel: (id: string) => `/darkstore/logistics/orders/${id}/cancel`,
+      estimate: '/darkstore/logistics/estimate',
+      tracking: (id: string) => `/darkstore/logistics/orders/${id}/tracking`,
+    },
   },
   production: {
     auth: {
@@ -156,6 +163,20 @@ export const API_ENDPOINTS = {
       generateLabels: '/warehouse/utilities/generate-labels',
       reassignBins: '/warehouse/utilities/reassign-bins',
     },
+    logistics: {
+      orders: '/warehouse/logistics/orders',
+      orderById: (id: string) => `/warehouse/logistics/orders/${id}`,
+      cancel: (id: string) => `/warehouse/logistics/orders/${id}/cancel`,
+      estimate: '/warehouse/logistics/estimate',
+      tracking: (id: string) => `/warehouse/logistics/orders/${id}/tracking`,
+    },
+  },
+  logisticsPlatform: {
+    adminProviders: '/logistics/admin/providers',
+    adminProviderPatch: (id: string) => `/logistics/admin/providers/${id}`,
+    adminKpis: '/logistics/admin/analytics/kpis',
+    adminCostPerRoute: '/logistics/admin/analytics/cost-per-route',
+    adminSlaBreaches: '/logistics/admin/analytics/sla-breaches',
   },
   darkstoreIssues: {
     list: '/darkstore/issues',
@@ -216,6 +237,10 @@ export const API_ENDPOINTS = {
     pickerConfig: {
       get: '/admin/picker-config',
       update: '/admin/picker-config',
+    },
+    platformConfig: {
+      list: '/admin/platform-config',
+      byKey: (key: string) => `/admin/platform-config/${encodeURIComponent(key)}`,
     },
     fraud: {
       alerts: '/admin/fraud/alerts',

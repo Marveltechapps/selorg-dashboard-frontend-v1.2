@@ -17,9 +17,28 @@ import { WarehouseDevices } from './screens/warehouse/WarehouseDevices';
 import { Exceptions } from './screens/warehouse/Exceptions';
 import { ReportsAnalytics } from './screens/warehouse/ReportsAnalytics';
 import { WarehouseUtilities } from './screens/warehouse/WarehouseUtilities';
+import { LogisticsModule } from './logistics/LogisticsModule';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
-const TAB_IDS = ['overview', 'inbound', 'inventory', 'outbound', 'transfers', 'qc', 'workforce', 'shift-master', 'shift-roster', 'equipment', 'devices', 'exceptions', 'analytics', 'utilities'] as const;
+const TAB_IDS = [
+  'overview',
+  'inbound',
+  'inventory',
+  'outbound',
+  'transfers',
+  'qc',
+  'workforce',
+  'shift-master',
+  'shift-roster',
+  'equipment',
+  'devices',
+  'exceptions',
+  'analytics',
+  'utilities',
+  'logistics',
+  'logistics-tracking',
+  'logistics-estimate',
+] as const;
 
 export function WarehouseManagement({ onLogout }: { onLogout: () => void }) {
   const { screen } = useParams<{ screen?: string }>();
@@ -55,6 +74,9 @@ export function WarehouseManagement({ onLogout }: { onLogout: () => void }) {
             {effectiveTab === 'exceptions' && <Exceptions />}
             {effectiveTab === 'analytics' && <ReportsAnalytics />}
             {effectiveTab === 'utilities' && <WarehouseUtilities />}
+            {effectiveTab === 'logistics' && <LogisticsModule variant="warehouse" section="hub" />}
+            {effectiveTab === 'logistics-tracking' && <LogisticsModule variant="warehouse" section="tracking" />}
+            {effectiveTab === 'logistics-estimate' && <LogisticsModule variant="warehouse" section="estimate" />}
         </main>
       </div>
     </div>

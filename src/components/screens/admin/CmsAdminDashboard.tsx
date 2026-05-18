@@ -6,16 +6,20 @@ import {
   fetchCmsOverview,
   uploadSkuMaster,
   uploadCmsPages,
+  XLSX_FILE_ACCEPT,
   type AdminCmsOverview,
   type AdminCmsUploadResult,
 } from '@/api/cmsAdminApi';
 import { CmsPagesScreen } from './CmsPagesScreen';
 import { CollectionsScreen } from './CollectionsScreen';
 import { HomeConfigScreen } from './HomeConfigScreen';
+import { BannersScreen } from './BannersScreen';
+import { HomeSectionsScreen } from './HomeSectionsScreen';
+import { ButtonsScreen } from './ButtonsScreen';
 import { toast } from 'sonner';
 import { Loader2, UploadCloud, FileSpreadsheet, BarChart3 } from 'lucide-react';
 
-type CmsTab = 'overview' | 'upload' | 'pages' | 'collections' | 'home-config';
+type CmsTab = 'overview' | 'upload' | 'pages' | 'collections' | 'home-config' | 'banners' | 'home-sections' | 'buttons';
 
 interface UploadState {
   uploading: boolean;
@@ -158,6 +162,9 @@ export function CmsAdminDashboard() {
             <TabsTrigger value="pages">CMS Pages</TabsTrigger>
             <TabsTrigger value="collections">Collections</TabsTrigger>
             <TabsTrigger value="home-config">Home Config</TabsTrigger>
+            <TabsTrigger value="banners">Banners</TabsTrigger>
+            <TabsTrigger value="home-sections">Home Content</TabsTrigger>
+            <TabsTrigger value="buttons">Buttons</TabsTrigger>
           </TabsList>
         </div>
 
@@ -257,8 +264,11 @@ export function CmsAdminDashboard() {
                   <span className="text-[11px] text-[#71717a]">.xlsx only · Max 20MB</span>
                   <Input
                     type="file"
-                    accept=".xlsx"
-                    className="mt-2 hidden"
+                    accept={XLSX_FILE_ACCEPT}
+                    multiple={false}
+                    webkitdirectory={false}
+                    className="mt-2 sr-only"
+                    aria-label="Upload SKU mastersheet (.xlsx)"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       void handleUpload('sku', file);
@@ -295,8 +305,11 @@ export function CmsAdminDashboard() {
                   <span className="text-[11px] text-[#71717a]">.xlsx only · Max 10MB</span>
                   <Input
                     type="file"
-                    accept=".xlsx"
-                    className="mt-2 hidden"
+                    accept={XLSX_FILE_ACCEPT}
+                    multiple={false}
+                    webkitdirectory={false}
+                    className="mt-2 sr-only"
+                    aria-label="Upload CMS pages mastersheet (.xlsx)"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       void handleUpload('cms', file);
@@ -353,6 +366,18 @@ export function CmsAdminDashboard() {
 
         <TabsContent value="home-config" className="mt-0">
           <HomeConfigScreen />
+        </TabsContent>
+
+        <TabsContent value="banners" className="mt-0">
+          <BannersScreen />
+        </TabsContent>
+
+        <TabsContent value="home-sections" className="mt-0">
+          <HomeSectionsScreen />
+        </TabsContent>
+
+        <TabsContent value="buttons" className="mt-0">
+          <ButtonsScreen />
         </TabsContent>
       </Tabs>
     </div>

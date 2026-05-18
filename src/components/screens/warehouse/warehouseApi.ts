@@ -15,6 +15,26 @@ async function parseApiError(response: Response, fallbackMessage: string): Promi
   const message = err?.message || err?.error || fallbackMessage;
   return new Error(message);
 }
+
+/** Normalize `{ success, data }` and legacy bare payloads. */
+function extractPayload<T>(result: unknown): T {
+  if (result && typeof result === 'object' && 'data' in (result as Record<string, unknown>)) {
+    return (result as { data: T }).data;
+  }
+  return result as T;
+}
+
+function extractList(result: unknown): unknown[] {
+  const payload = extractPayload<unknown>(result);
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object') {
+    const obj = payload as Record<string, unknown>;
+    for (const key of ['items', 'rows', 'list', 'checks', 'roster']) {
+      if (Array.isArray(obj[key])) return obj[key] as unknown[];
+    }
+  }
+  return [];
+}
 export interface WarehouseMetrics {
   inboundQueue: number;
   outboundQueue: number;
@@ -50,7 +70,7 @@ export async function fetchWarehouseMetrics(): Promise<WarehouseMetrics> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.warehouse.metrics}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch warehouse metrics');
   const result = await response.json();
-  const data = result.data ?? result;
+  const data = extractPayload<WarehouseMetrics>(result);
   if (!data || typeof data !== 'object' || !('inboundQueue' in data)) return DEFAULT_METRICS;
   return data;
 }
@@ -59,8 +79,7 @@ export async function fetchOrderFlow(): Promise<PicklistFlow[]> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.warehouse.orderFlow}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch order flow');
   const result = await response.json();
-  const data = result.data ?? result ?? [];
-  if (!Array.isArray(data)) return [];
+  const data = extractList(result);
   return data.map((entry: any, index: number) => ({
     id: entry.id ?? entry.orderId ?? entry.order_id ?? `flow-${index}`,
     orderId: entry.orderId ?? entry.order_id ?? entry.id ?? `N/A-${index + 1}`,
@@ -137,10 +156,7 @@ export async function createGRN(data: Partial<GRN>): Promise<GRN> {
     headers: authHeaders(),
     body: JSON.stringify(data)
   });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || 'Failed to create GRN');
-  }
+  if (!response.ok) throw await parseApiError(response, 'Failed to create GRN');
   const result = await response.json();
   return result.data ?? result;
 }
@@ -262,10 +278,10 @@ export async function assignPickerToOrder(id: string, pickerName: string): Promi
 }
 
 export async function fetchPickers(): Promise<PickerAssignment[]> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.admin.pickers.list}?status=ACTIVE&shiftActive=true`, { headers: authHeaders() });
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.outbound.pickers}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch pickers');
   const result = await response.json();
-  const list = result.data?.data ?? result.data ?? result ?? [];
+  const list = result.data ?? result ?? [];
   const arr = Array.isArray(list) ? list : [];
   return arr.map((p: any) => {
     const activeOrders = p.activeOrders ?? p.currentOrders ?? 0;
@@ -741,8 +757,8 @@ export async function fetchComplianceChecks(): Promise<ComplianceCheck[]> {
   const response = await fetch(`${API_CONFIG.baseURL}/warehouse/qc/checks`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch compliance checks');
   const result = await response.json();
-  const list = result.data ?? result.checks ?? [];
-  return Array.isArray(list) ? list : [];
+  const list = extractList(result);
+  return Array.isArray(list) ? (list as ComplianceCheck[]) : [];
 }
 
 export async function toggleComplianceCheck(id: string, completed: boolean): Promise<void> {

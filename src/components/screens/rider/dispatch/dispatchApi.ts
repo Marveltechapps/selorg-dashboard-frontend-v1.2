@@ -97,6 +97,14 @@ function extractApiErrorMessage(error: any, fallback: string): string {
   return fallback;
 }
 
+/** Unwrap `{ success, data }` envelopes from the global API middleware. */
+function unwrapApiPayload<T>(json: unknown): T {
+  if (!json || typeof json !== 'object') return json as T;
+  const o = json as Record<string, unknown>;
+  if ('data' in o && o.data !== undefined && o.data !== null) return o.data as T;
+  return json as T;
+}
+
 /**
  * Helper function to make API requests
  */
@@ -288,16 +296,17 @@ export async function fetchUnassignedOrders(params?: {
     ? `${API_ENDPOINTS.dispatch.unassignedOrders}?${queryString}`
     : API_ENDPOINTS.dispatch.unassignedOrders;
   
-  const response = await apiRequest<{ orders: ApiOrder[]; total: number; page: number; limit: number; totalPages: number }>(endpoint);
-  
-  return response.orders.map(transformOrder);
+  const raw = await apiRequest<unknown>(endpoint);
+  const response = unwrapApiPayload<{ orders?: ApiOrder[] }>(raw);
+  return (response.orders ?? []).map(transformOrder);
 }
 
 export async function fetchAllOrders(): Promise<DispatchOrder[]> {
   // Get map data which includes all orders
-  const mapData = await apiRequest<ApiMapData>(API_ENDPOINTS.dispatch.mapData);
-  
-  return mapData.orders.map(order => ({
+  const raw = await apiRequest<unknown>(API_ENDPOINTS.dispatch.mapData);
+  const mapData = unwrapApiPayload<ApiMapData>(raw);
+
+  return (mapData.orders ?? []).map(order => ({
     id: order.id,
     priority: order.priority as Priority,
     distanceKm: 0, // Will be calculated
@@ -330,8 +339,9 @@ export async function fetchOnlineRiders(): Promise<DispatchRider[]> {
     logger.warn('[DispatchAPI.fetchOnlineRiders] v2 /delivery/riders failed, falling back to legacy mapData', err);
   }
 
-  const mapData = await apiRequest<ApiMapData>(API_ENDPOINTS.dispatch.mapData);
-  return mapData.riders.map(transformRider);
+  const raw = await apiRequest<unknown>(API_ENDPOINTS.dispatch.mapData);
+  const mapData = unwrapApiPayload<ApiMapData>(raw);
+  return (mapData.riders ?? []).map(transformRider);
 }
 
 export async function assignOrder(orderId: string, riderId: string, overrideSla?: boolean): Promise<void> {
@@ -349,7 +359,7 @@ export async function assignOrder(orderId: string, riderId: string, overrideSla?
 }
 
 export async function autoAssignOrders(orderIds: string[]): Promise<{ assigned: number; failed: number }> {
-  const result = await apiRequest<{ assigned: number; failed: number }>(
+  const raw = await apiRequest<unknown>(
     API_ENDPOINTS.dispatch.autoAssign,
     {
       method: 'POST',
@@ -358,13 +368,18 @@ export async function autoAssignOrders(orderIds: string[]): Promise<{ assigned: 
       }),
     }
   );
-  
-  return result;
+
+  return unwrapApiPayload<{ assigned: number; failed: number }>(raw);
 }
 
 export async function fetchAutoAssignRules(): Promise<AutoAssignRule[]> {
-  const response = await apiRequest<AutoAssignRule[]>(API_ENDPOINTS.dispatch.autoAssignRules);
-  return Array.isArray(response) ? response : [];
+  const raw = await apiRequest<unknown>(API_ENDPOINTS.dispatch.autoAssignRules);
+  const response = unwrapApiPayload<AutoAssignRule[] | { rules?: AutoAssignRule[] }>(raw);
+  if (Array.isArray(response)) return response;
+  if (response && Array.isArray((response as { rules?: AutoAssignRule[] }).rules)) {
+    return (response as { rules: AutoAssignRule[] }).rules;
+  }
+  return [];
 }
 
 export async function updateAutoAssignRule(rule: AutoAssignRule): Promise<void> {
@@ -427,9 +442,9 @@ export async function fetchRecommendedRiders(orderId: string, search?: string): 
     ? `${API_ENDPOINTS.dispatch.recommendedRiders(orderId)}?${queryString}`
     : API_ENDPOINTS.dispatch.recommendedRiders(orderId);
   
-  const response = await apiRequest<{ riders: ApiRecommendedRider[]; orderDetails: any }>(endpoint);
-  
-  return response.riders;
+  const raw = await apiRequest<unknown>(endpoint);
+  const response = unwrapApiPayload<{ riders?: ApiRecommendedRider[] }>(raw);
+  return response.riders ?? [];
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   Shuffle,
   Download,
   HelpCircle,
+  Truck,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { DASHBOARD_BRANDS } from '@/utils/dashboardFavicon';
@@ -101,17 +102,19 @@ export function AdminSidebar({ activeTab, setActiveTab, onLogout, mobileOpen, on
       { id: 'legal-policies', label: 'Legal & Policies', icon: Scale },
     ]},
     { category: "Operational Engines", items: [
+      { id: 'logistics-providers', label: 'Logistics providers', icon: Truck },
       { id: 'support', label: 'Support Center', icon: Headphones },
       { id: 'fraud', label: 'Fraud & Risk', icon: ShieldAlert },
       { id: 'analytics', label: 'Analytics', icon: BarChart3 },
       { id: 'notifications', label: 'Notifications', icon: Bell },
       { id: 'geofence', label: 'Geofence Manager', icon: Map },
       { id: 'compliance', label: 'Compliance', icon: FileCheck },
-      { id: 'legal-documents', label: 'Legal Documents', icon: FileText, href: '/legal' },
+      { id: 'legal-documents', label: 'Legal Documents', icon: FileText },
     ]},
     { category: "System & App", items: [
       { id: 'content-hub', label: 'CMS', icon: LayoutGrid },
       { id: 'audit', label: 'Audit Logs', icon: History },
+      { id: 'platform-config', label: 'Platform configuration', icon: Sliders },
       { id: 'system-tools', label: 'System Tools', icon: Cpu },
     ]}
   ];

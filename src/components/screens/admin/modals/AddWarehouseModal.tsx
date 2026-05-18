@@ -241,7 +241,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-lg max-h-[92vh] flex flex-col p-0 gap-0">
+      <DialogContent className="w-[95vw] max-w-lg max-h-[min(92vh,calc(100dvh-2rem))] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle>{editWarehouse ? 'Edit Warehouse' : 'Add Warehouse'}</DialogTitle>
         </DialogHeader>
@@ -252,7 +252,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
               <TabsTrigger value="hours">Hours</TabsTrigger>
               <TabsTrigger value="extra">Advanced</TabsTrigger>
             </TabsList>
-            <ScrollArea className="flex-1 max-h-[52vh] pr-2 mt-3">
+            <ScrollArea className="flex-1 min-h-0 max-h-[calc(min(92vh,100dvh-2rem)-11rem)] pr-2 mt-3">
               <TabsContent value="main" className="space-y-3 mt-0 pb-4">
                 <div className="space-y-2">
                   <Label>Code *</Label>
@@ -404,7 +404,7 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
               </TabsContent>
             </ScrollArea>
           </Tabs>
-          <div className="flex justify-end gap-2 px-6 py-4 border-t">
+          <div className="flex shrink-0 justify-end gap-2 border-t bg-background px-6 py-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : editWarehouse ? 'Update' : 'Create'}</Button>
           </div>

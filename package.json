@@ -31,6 +31,7 @@
             "@radix-ui/react-tooltip": "^1.1.8",
             "@radix-ui/react-visually-hidden": "*",
             "@react-google-maps/api": "^2.20.8",
+            "@sentry/react": "^10.52.0",
             "@tanstack/react-query": "^5.62.0",
             "axios": "^1.13.2",
             "class-variance-authority": "^0.7.1",
@@ -39,6 +40,7 @@
             "date-fns": "*",
             "embla-carousel-react": "^8.6.0",
             "input-otp": "^1.4.2",
+            "leaflet": "^1.9.4",
             "lucide-react": "^0.487.0",
             "motion": "*",
             "react": "^18.3.1",
@@ -47,6 +49,7 @@
             "react-dnd-html5-backend": "*",
             "react-dom": "^18.3.1",
             "react-hook-form": "^7.55.0",
+            "react-leaflet": "^4.2.1",
             "react-resizable-panels": "^2.1.7",
             "react-router-dom": "^7.11.0",
             "recharts": "^2.15.2",
@@ -58,6 +61,7 @@
       },
       "devDependencies": {
             "@playwright/test": "^1.57.0",
+            "@types/leaflet": "^1.9.14",
             "@types/node": "^20.19.33",
             "@types/react": "^19.2.13",
             "@types/react-dom": "^19.2.3",
@@ -67,6 +71,8 @@
             "vite": "6.3.5"
       },
       "scripts": {
+            "predev": "node scripts/sync-vite-index-cache.mjs",
+            "prestart": "node scripts/sync-vite-index-cache.mjs",
             "start": "vite",
             "dev": "vite",
             "build": "vite build",

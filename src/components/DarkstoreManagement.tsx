@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
+import { SidebarV2 } from '../layouts/sidebar/SidebarV2';
 import { websocketService } from '../utils/websocket';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from './TopBar';
@@ -28,8 +29,12 @@ import { MissingItemTracker } from './screens/darkstore/MissingItemTracker';
 import { ExceptionQueue } from './screens/darkstore/ExceptionQueue';
 import { LivePickingMonitor } from './screens/darkstore/LivePickingMonitor';
 import { OperationsAlerts } from './screens/darkstore/OperationsAlerts';
+import { LogisticsModule } from './logistics/LogisticsModule';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
+
+// Feature flag for new navigation (Phase A). Use VITE_ENABLE_NEW_NAV=true in env for Vite.
+const ENABLE_NEW_NAV = import.meta.env.VITE_ENABLE_NEW_NAV === 'true';
 
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
@@ -58,9 +63,13 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
+      {ENABLE_NEW_NAV ? (
+        <SidebarV2 activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
+      ) : (
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
+      )}
       
-      <div className="pl-[220px]">
+      <div className={ENABLE_NEW_NAV ? "pl-[260px]" : "pl-[220px]"}>
         <TopBar setActiveTab={setActiveTab} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
@@ -96,6 +105,8 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'escalations' && <StoreEscalations />}
             {activeTab === 'issues' && <IssueManagement />}
             {activeTab === 'utilities' && <Utilities />}
+            {activeTab === 'replenishment' && <LogisticsModule variant="darkstore" section="hub" />}
+            {activeTab === 'replenishment-tracking' && <LogisticsModule variant="darkstore" section="tracking" />}
             
             {/* Fallbacks for unimplemented screens */}
             {['settings'].includes(activeTab) && (

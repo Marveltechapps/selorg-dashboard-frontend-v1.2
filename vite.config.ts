@@ -1,7 +1,41 @@
 
-  import { defineConfig, loadEnv } from 'vite';
+  import { defineConfig, loadEnv, createLogger } from 'vite';
+  import type { Logger } from 'vite';
+
+  const PROXY_ERROR_LOG_INTERVAL_MS = 45_000;
+
+  function createThrottledProxyLogger(): Logger {
+    const base = createLogger();
+    let lastProxyNoiseAt = 0;
+
+    return {
+      ...base,
+      error(msg, options) {
+        const text = typeof msg === 'string' ? msg : String(msg);
+        const isProxyNoise =
+          text.includes('http proxy error') ||
+          text.includes('ws proxy error') ||
+          text.includes('ws proxy socket error');
+
+        if (isProxyNoise) {
+          const now = Date.now();
+          if (now - lastProxyNoiseAt < PROXY_ERROR_LOG_INTERVAL_MS) {
+            return;
+          }
+          lastProxyNoiseAt = now;
+          base.warn(
+            '[Vite Proxy] Backend unreachable — repeated proxy errors are suppressed for ~45s. Start backend: cd selorg-dashboard-backend-v1.1 && npm run dev'
+          );
+          return;
+        }
+
+        base.error(msg, options);
+      },
+    };
+  }
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
+  import { indexHtmlMemoryPlugin } from './scripts/vite-index-html-memory';
 
   const resolveOrigin = (value: string, fallback: string) => {
     if (!value) return fallback;
@@ -39,8 +73,12 @@
     const wsServerUrl = env.VITE_WS_URL?.trim() || proxyTarget;
     const devServerPort = Number(env.VITE_DEV_PORT || '5173');
 
+    const projectRoot = path.resolve(__dirname);
+
     return {
-      plugins: [react()],
+      root: projectRoot,
+      customLogger: createThrottledProxyLogger(),
+      plugins: [indexHtmlMemoryPlugin(projectRoot), react()],
       resolve: {
         extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
         alias: {
@@ -102,10 +140,6 @@
           secure: false,
           configure: (proxy) => {
             proxy.on('error', (err: NodeJS.ErrnoException, _req, res) => {
-              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
-              if (code === 'ECONNREFUSED' || err?.message?.includes('hang up') || code === 'ECONNRESET') {
-                console.warn(`[Vite Proxy] Backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
-              }
               if (res && !res.headersSent) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'unreachable', error: 'Backend not running' }));
@@ -117,15 +151,12 @@
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          // http-proxy default timeout is 120s; CMS mastersheet imports often run longer (large XLSX + DB).
+          timeout: 1_800_000,
+          proxyTimeout: 1_800_000,
           configure: (proxy) => {
             proxy.on('error', (err: NodeJS.ErrnoException, _req, res) => {
               const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
-              const hangUp = err?.message?.includes('hang up') || code === 'ECONNRESET';
-              if (code === 'ECONNREFUSED') {
-                console.warn(`[Vite Proxy] Backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
-              } else if (hangUp) {
-                console.warn(`[Vite Proxy] Backend closed connection. Retrying...`);
-              }
               if (res && !res.headersSent) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Backend unreachable', code: code ?? 'UNKNOWN' }));
@@ -138,30 +169,12 @@
           changeOrigin: true,
           secure: false,
           ws: true,
-          configure: (proxy) => {
-            proxy.on('error', (err: NodeJS.ErrnoException) => {
-              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
-              const hangUp = err?.message?.includes('hang up') || code === 'ECONNRESET';
-              if (code === 'ECONNREFUSED' || hangUp) {
-                console.warn(`[Vite Proxy] WebSocket backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
-              }
-            });
-          },
         },
         '/hhd-socket.io': {
           target: wsServerUrl,
           changeOrigin: true,
           secure: false,
           ws: true,
-          configure: (proxy) => {
-            proxy.on('error', (err: NodeJS.ErrnoException) => {
-              const code = err?.code ?? (err?.cause as NodeJS.ErrnoException)?.code;
-              const hangUp = err?.message?.includes('hang up') || code === 'ECONNRESET';
-              if (code === 'ECONNREFUSED' || hangUp) {
-                console.warn(`[Vite Proxy] WebSocket backend unreachable. Start: cd selorg-dashboard-backend-v1.1 && npm run dev`);
-              }
-            });
-          },
         },
         },
       },

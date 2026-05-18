@@ -25,6 +25,7 @@ import { SystemTools } from './screens/admin/SystemTools';
 import { CustomerManagement } from './screens/admin/CustomerManagement';
 import { CustomerAppSettings } from './screens/admin/CustomerAppSettings';
 import { LegalPoliciesManagement } from './screens/admin/LegalPoliciesManagement';
+import { LegalManagerPage } from './screens/legal/LegalManagerPage';
 import { PickerManagement } from './screens/admin/PickerManagement';
 import { AgencyManagement } from './screens/admin/AgencyManagement';
 import { OTRequestApprovals } from './screens/admin/OTRequestApprovals';
@@ -37,6 +38,8 @@ import { ProductsIntroductionScreen } from './screens/admin/ProductsIntroduction
 import { ContentHubCategoriesScreen } from './screens/admin/ContentHubCategoriesScreen';
 import { CollectionsScreen } from './screens/admin/CollectionsScreen';
 import { CmsAdminDashboard } from './screens/admin/CmsAdminDashboard';
+import { LogisticsProvidersAdmin } from './screens/admin/LogisticsProvidersAdmin';
+import { PlatformConfigScreen } from './screens/admin/PlatformConfigScreen';
 import { 
   Tag, 
   Store, 
@@ -51,7 +54,7 @@ import {
   FileCheck,
   History,
   ShoppingCart,
-  Smartphone
+  Smartphone,
 } from 'lucide-react';
 
 export interface BreadcrumbSegment {
@@ -68,6 +71,7 @@ const TAB_LABELS: Record<string, string> = {
   'pricing': 'Coupons',
   'finance': 'Finance Rules',
   'legal-policies': 'Legal & Policies',
+  'legal-documents': 'Legal Documents',
   'support': 'Support Center',
   'fraud': 'Fraud & Risk',
   'analytics': 'Analytics',
@@ -93,6 +97,8 @@ const TAB_LABELS: Record<string, string> = {
   'products-introduction': 'Products Introduction',
   'content-hub-categories': 'Categories & Subcategories',
   'collections': 'Collections',
+  'logistics-providers': 'Logistics providers',
+  'platform-config': 'Platform configuration',
 };
 
 const CONTENT_HUB_CHILD_TABS = new Set([
@@ -314,6 +320,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'catalog' && <CatalogManagement />}
             {activeTab === 'pricing' && <PricingManagement />}
             {activeTab === 'legal-policies' && <LegalPoliciesManagement />}
+            {activeTab === 'legal-documents' && <LegalManagerPage />}
             {activeTab === 'picker-management' && <PickerManagement />}
             {activeTab === 'agencies' && <AgencyManagement />}
             {activeTab === 'ot-approvals' && <OTRequestApprovals />}
@@ -341,6 +348,8 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'app-cms' && <AppCMS onEditContent={() => setActiveTab('customer-app-home')} />}
             {activeTab === 'cms-pages' && <CmsAdminDashboard />}
             {activeTab === 'faq-management' && <FaqManagement />}
+            {activeTab === 'logistics-providers' && <LogisticsProvidersAdmin />}
+            {activeTab === 'platform-config' && <PlatformConfigScreen />}
         </main>
       </div>
     </div>
