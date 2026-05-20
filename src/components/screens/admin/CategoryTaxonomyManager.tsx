@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Category, fetchCategories, deleteCategory } from './catalogApi';
 import { AddCategoryModal } from './modals/AddCategoryModal';
+import { AdminConfirmDialog } from './modals/AdminConfirmDialog';
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, FolderTree, RefreshCw } from 'lucide-react';
 
@@ -33,6 +34,12 @@ export function CategoryTaxonomyManager({
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [editCategory, setEditCategory] = useState<Category | null>(null);
   const [addCategoryAsSubcategory, setAddCategoryAsSubcategory] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+    kind: 'category' | 'subcategory';
+  } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const loadCategories = useCallback(async () => {
     setLoading(true);
@@ -52,6 +59,27 @@ export function CategoryTaxonomyManager({
 
   const topLevelCategories = categories.filter((c) => c.parentId === null);
   const subcategories = categories.filter((c) => c.parentId !== null);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleteLoading(true);
+    try {
+      await deleteCategory(deleteConfirm.id);
+      toast.success(
+        deleteConfirm.kind === 'category'
+          ? `Category "${deleteConfirm.name}" deleted`
+          : `Subcategory "${deleteConfirm.name}" deleted`
+      );
+      setDeleteConfirm(null);
+      await loadCategories();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      const msg = e?.response?.data?.message || e?.message || 'Failed to delete';
+      toast.error(msg);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   return (
     <>
@@ -98,19 +126,6 @@ export function CategoryTaxonomyManager({
                 <div className="space-y-4">
                   {topLevelCategories.map((category) => {
                     const subcats = categories.filter((c) => c.parentId === category.id);
-                    const handleDeleteCategory = async (catId: string, catName: string) => {
-                      if (!confirm(`Are you sure you want to delete "${catName}"? This will also delete all subcategories.`))
-                        return;
-                      try {
-                        await deleteCategory(catId);
-                        toast.success(`Category "${catName}" deleted`);
-                        await loadCategories();
-                      } catch (err: unknown) {
-                        const e = err as { response?: { data?: { message?: string } }; message?: string };
-                        const msg = e?.response?.data?.message || e?.message || 'Failed to delete category';
-                        toast.error(msg);
-                      }
-                    };
                     return (
                       <div key={category.id} className="border border-[#e4e4e7] rounded-lg overflow-hidden">
                         <div className="p-4 bg-[#f9fafb] flex items-center justify-between">
@@ -139,7 +154,10 @@ export function CategoryTaxonomyManager({
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                              onClick={() => handleDeleteCategory(category.id, category.name)}
+                              type="button"
+                              onClick={() =>
+                                setDeleteConfirm({ id: category.id, name: category.name, kind: 'category' })
+                              }
                             >
                               <Trash2 size={14} />
                             </Button>
@@ -174,18 +192,10 @@ export function CategoryTaxonomyManager({
                                     variant="ghost"
                                     size="sm"
                                     className="h-7 w-7 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                                    onClick={async (e) => {
+                                    type="button"
+                                    onClick={(e) => {
                                       e.stopPropagation();
-                                      if (!confirm(`Delete subcategory "${subcat.name}"?`)) return;
-                                      try {
-                                        await deleteCategory(subcat.id);
-                                        toast.success(`Subcategory "${subcat.name}" deleted`);
-                                        await loadCategories();
-                                      } catch (err: unknown) {
-                                        const ex = err as { response?: { data?: { message?: string } }; message?: string };
-                                        const msg = ex?.response?.data?.message || ex?.message || 'Failed to delete subcategory';
-                                        toast.error(msg);
-                                      }
+                                      setDeleteConfirm({ id: subcat.id, name: subcat.name, kind: 'subcategory' });
                                     }}
                                   >
                                     <Trash2 size={12} />
@@ -242,18 +252,10 @@ export function CategoryTaxonomyManager({
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 text-rose-600 hover:bg-rose-50"
-                                  onClick={async () => {
-                                    if (!confirm(`Delete subcategory "${subcat.name}"?`)) return;
-                                    try {
-                                      await deleteCategory(subcat.id);
-                                      toast.success(`Subcategory "${subcat.name}" deleted`);
-                                      await loadCategories();
-                                    } catch (err: unknown) {
-                                      const ex = err as { response?: { data?: { message?: string } }; message?: string };
-                                      const msg = ex?.response?.data?.message || ex?.message || 'Failed to delete subcategory';
-                                      toast.error(msg);
-                                    }
-                                  }}
+                                  type="button"
+                                  onClick={() =>
+                                    setDeleteConfirm({ id: subcat.id, name: subcat.name, kind: 'subcategory' })
+                                  }
                                 >
                                   <Trash2 size={12} />
                                 </Button>
@@ -283,6 +285,32 @@ export function CategoryTaxonomyManager({
         onSuccess={loadCategories}
         editCategory={editCategory}
         subcategoryMode={addCategoryAsSubcategory}
+      />
+
+      <AdminConfirmDialog
+        open={Boolean(deleteConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirm(null);
+        }}
+        title={deleteConfirm?.kind === 'category' ? 'Delete Category' : 'Delete Subcategory'}
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        description={
+          deleteConfirm?.kind === 'category' ? (
+            <>
+              Are you sure you want to delete{' '}
+              <span className="font-semibold text-[#374151]">&quot;{deleteConfirm.name}&quot;</span>?
+              This will also remove all subcategories under it. This action cannot be undone.
+            </>
+          ) : (
+            <>
+              Are you sure you want to delete subcategory{' '}
+              <span className="font-semibold text-[#374151]">&quot;{deleteConfirm?.name}&quot;</span>?
+              This action cannot be undone.
+            </>
+          )
+        }
+        onConfirm={handleConfirmDelete}
       />
     </>
   );

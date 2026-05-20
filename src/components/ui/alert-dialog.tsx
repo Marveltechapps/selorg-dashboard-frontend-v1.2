@@ -36,7 +36,7 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[200] bg-black/50",
         className,
       )}
       {...props}
@@ -51,14 +51,21 @@ function AlertDialogContent({
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
-      <AlertDialogPrimitive.Content
-        data-slot="alert-dialog-content"
-        className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
-          className,
-        )}
-        {...props}
-      />
+      <div
+        className="fixed inset-0 z-[201] overflow-y-auto overscroll-contain p-4 sm:p-6 pointer-events-none"
+        data-slot="alert-dialog-positioner"
+      >
+        <div className="flex min-h-full w-full items-center justify-center pointer-events-none">
+          <AlertDialogPrimitive.Content
+            data-slot="alert-dialog-content"
+            className={cn(
+              "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 pointer-events-auto relative isolate z-[201] flex w-full min-h-0 max-w-[calc(100%-2rem)] max-h-[min(85dvh,calc(100dvh-2rem))] flex-col gap-4 overflow-hidden rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
+              className,
+            )}
+            {...props}
+          />
+        </div>
+      </div>
     </AlertDialogPortal>
   );
 }

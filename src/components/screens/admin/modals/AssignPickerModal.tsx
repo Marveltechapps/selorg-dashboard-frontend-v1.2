@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -68,14 +68,39 @@ export function AssignPickerModal({
   const canSave = useMemo(() => !loading, [loading]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Assign picker</DialogTitle>
-          <p className="text-sm text-[#71717a] mt-1">Set agency, store, and shift slot for {pickerName}.</p>
-        </DialogHeader>
-
-        <div className="space-y-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Assign picker"
+      subtitle={`Set agency, store, and shift slot for ${pickerName}.`}
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={async () => {
+              if (!canSave) return;
+              try {
+                await onSubmit({
+                  agencyId: agencyId === 'none' ? null : agencyId,
+                  storeId: storeId === 'none' ? null : storeId,
+                  shiftSlotId: shiftSlotId === 'none' ? null : shiftSlotId,
+                });
+                onOpenChange(false);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : 'Failed to assign picker');
+              }
+            }}
+            disabled={!canSave}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+        <div className="space-y-4 px-6 py-4">
           <div className="space-y-1.5">
             <Label>Agency</Label>
             <Select value={agencyId} onValueChange={setAgencyId}>
@@ -128,31 +153,7 @@ export function AssignPickerModal({
           </div>
         </div>
 
-        <DialogFooter className="mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={async () => {
-              if (!canSave) return;
-              try {
-                await onSubmit({
-                  agencyId: agencyId === 'none' ? null : agencyId,
-                  storeId: storeId === 'none' ? null : storeId,
-                  shiftSlotId: shiftSlotId === 'none' ? null : shiftSlotId,
-                });
-                onOpenChange(false);
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Failed to assign picker');
-              }
-            }}
-            disabled={!canSave}
-          >
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }
 

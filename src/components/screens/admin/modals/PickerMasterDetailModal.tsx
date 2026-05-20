@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { getMasterPickerDetail, type MasterPickerDetail, type MasterPickerRow } from '../masterDataApi';
 import { toast } from 'sonner';
@@ -48,43 +48,47 @@ export function PickerMasterDetailModal({ open, onOpenChange, row }: PickerMaste
   const d = detail || row;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Picker profile</DialogTitle>
-        </DialogHeader>
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Picker profile"
+      maxWidth="max-w-lg"
+      footer={
+        d ? <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Close</Button> : undefined
+      }
+    >
         {loading && !d ? (
-          <p className="text-sm text-[#71717a] py-8 text-center">Loading…</p>
+          <p className="text-sm text-gray-500 py-8 text-center">Loading...</p>
         ) : d ? (
-          <div className="space-y-4 text-sm">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 space-y-4 text-sm py-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="text-[#71717a]">Name</span>
+                <span className="text-gray-500">Name</span>
                 <p className="font-medium">{d.name}</p>
               </div>
               <div>
-                <span className="text-[#71717a]">Phone</span>
+                <span className="text-gray-500">Phone</span>
                 <p>{d.phone}</p>
               </div>
               <div>
-                <span className="text-[#71717a]">Status</span>
+                <span className="text-gray-500">Status</span>
                 <p className="font-mono">{d.status}</p>
               </div>
               <div>
-                <span className="text-[#71717a]">Onboarding</span>
+                <span className="text-gray-500">Onboarding</span>
                 <p className="capitalize">{(d as MasterPickerDetail).onboardingStage ?? d.onboardingStep}</p>
               </div>
               <div>
-                <span className="text-[#71717a]">Location</span>
+                <span className="text-gray-500">Location</span>
                 <p>{(d as MasterPickerDetail).locationName ?? d.locationName}</p>
               </div>
               <div>
-                <span className="text-[#71717a]">Last seen</span>
+                <span className="text-gray-500">Last seen</span>
                 <p>{formatTs(d.lastSeenAt)}</p>
               </div>
             </div>
             {(d as MasterPickerDetail).attendanceSummary && (
-              <div className="rounded-lg border border-[#e4e4e7] p-3 bg-[#fafafa]">
+              <div className="rounded-lg border border-[#e4e4e7] p-3 bg-gray-50">
                 <p className="font-semibold text-[#18181b] mb-2">Attendance (this month)</p>
                 <p>Days worked: {(d as MasterPickerDetail).attendanceSummary!.daysWorkedThisMonth}</p>
                 <p>Shifts recorded: {(d as MasterPickerDetail).attendanceSummary!.shiftsRecorded}</p>
@@ -92,7 +96,7 @@ export function PickerMasterDetailModal({ open, onOpenChange, row }: PickerMaste
               </div>
             )}
             <div>
-              <span className="text-[#71717a]">Documents</span>
+              <span className="text-gray-500">Documents</span>
               <p className="capitalize">{(d as MasterPickerDetail).docsStatus ?? '—'}</p>
             </div>
             {(d as MasterPickerDetail).device ? (
@@ -103,14 +107,10 @@ export function PickerMasterDetailModal({ open, onOpenChange, row }: PickerMaste
                 <p>Status: {(d as MasterPickerDetail).device!.status}</p>
               </div>
             ) : (
-              <p className="text-[#71717a]">No device assigned</p>
+              <p className="text-gray-500">No device assigned</p>
             )}
-            <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
           </div>
         ) : null}
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

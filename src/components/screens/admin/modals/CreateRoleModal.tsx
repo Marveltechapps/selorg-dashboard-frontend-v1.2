@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -372,19 +366,39 @@ export function CreateRoleModal({
   });
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">
-            {editingRoleId ? 'Edit Role' : 'Create New Role'}
-          </DialogTitle>
-          <DialogDescription>
-            Define role permissions and access scope
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-          <div className="space-y-6 overflow-y-auto flex-1 pr-2">
+    <AdminModal
+      open={open}
+      onOpenChange={handleClose}
+      title={editingRoleId ? 'Edit Role' : 'Create New Role'}
+      subtitle="Define role permissions and access scope"
+      maxWidth="max-w-4xl"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (editingRoleId) {
+                loadRoleData();
+              } else {
+                resetForm();
+              }
+              toast.info('Form reset');
+            }}
+          >
+            Reset
+          </Button>
+          <Button type="submit" form="create-role-form" disabled={loading}>
+            {loading ? 'Saving...' : editingRoleId ? 'Update Role' : 'Create Role'}
+          </Button>
+        </>
+      }
+    >
+        <form id="create-role-form" onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+          <div className="space-y-6 px-6 py-4">
             {!editingRoleId && (
               <div className="space-y-2">
                 <Label>Start From Template</Label>
@@ -616,31 +630,7 @@ export function CreateRoleModal({
             </div>
           </div>
 
-          {/* Modal Footer */}
-          <div className="flex items-center justify-end gap-3 border-t border-[#E5E7EB] pt-4 mt-4">
-            <Button type="button" variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => {
-                if (editingRoleId) {
-                  loadRoleData();
-                } else {
-                  resetForm();
-                }
-                toast.info('Form reset');
-              }}
-            >
-              Reset
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : editingRoleId ? 'Update Role' : 'Create Role'}
-            </Button>
-          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

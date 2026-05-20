@@ -10,13 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { fetchButtons, createButton, updateButton, deleteButton, type Button as ButtonType } from '@/api/cmsAdminApi';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2, Pointer } from 'lucide-react';
@@ -209,41 +204,51 @@ export function ButtonsScreen() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Button' : 'Add Button'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="name">Name *</Label>
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingId ? 'Edit Button' : 'Add Button'}
+        icon={<Pointer className="h-5 w-5" />}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid>
+            <AdminField label="Name *" htmlFor="name">
               <Input
                 id="name"
                 value={formData.name ?? ''}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Button name"
               />
-            </div>
-            <div>
-              <Label htmlFor="buttonId">Button ID</Label>
+            </AdminField>
+            <AdminField label="Button ID" htmlFor="buttonId">
               <Input
                 id="buttonId"
                 value={formData.buttonId ?? ''}
                 onChange={(e) => setFormData({ ...formData, buttonId: e.target.value })}
                 placeholder="e.g. btn_001"
               />
-            </div>
-            <div>
-              <Label htmlFor="label">Label</Label>
+            </AdminField>
+            <AdminField label="Label" htmlFor="label">
               <Input
                 id="label"
                 value={formData.label ?? ''}
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })}
                 placeholder="Display label"
               />
-            </div>
-            <div>
-              <Label htmlFor="type">Type</Label>
+            </AdminField>
+            <AdminField label="Type" htmlFor="type">
               <select
                 id="type"
                 className="w-full h-10 px-3 rounded-md border border-input bg-background"
@@ -256,74 +261,60 @@ export function ButtonsScreen() {
                 <option value="section">Section</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-            <div>
-              <Label htmlFor="action">Action</Label>
+            </AdminField>
+            <AdminField label="Action" htmlFor="action">
               <Input
                 id="action"
                 value={formData.action ?? ''}
                 onChange={(e) => setFormData({ ...formData, action: e.target.value })}
                 placeholder="Action to perform"
               />
-            </div>
-            <div>
-              <Label htmlFor="icon">Icon</Label>
+            </AdminField>
+            <AdminField label="Icon" htmlFor="icon">
               <Input
                 id="icon"
                 value={formData.icon ?? ''}
                 onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
                 placeholder="Icon name/code"
               />
-            </div>
-            <div>
-              <Label htmlFor="imageUrl">Image URL</Label>
+            </AdminField>
+            <AdminField label="Image URL" htmlFor="imageUrl">
               <Input
                 id="imageUrl"
                 value={formData.imageUrl ?? ''}
                 onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                 placeholder="https://..."
               />
-            </div>
-            <div>
-              <Label htmlFor="sectionCode">Section Code</Label>
+            </AdminField>
+            <AdminField label="Section Code" htmlFor="sectionCode">
               <Input
                 id="sectionCode"
                 value={formData.sectionCode ?? ''}
                 onChange={(e) => setFormData({ ...formData, sectionCode: e.target.value })}
                 placeholder="e.g. section_code"
               />
-            </div>
-            <div>
-              <Label htmlFor="order">Order</Label>
+            </AdminField>
+            <AdminField label="Order" htmlFor="order">
               <Input
                 id="order"
                 type="number"
                 value={formData.order ?? 0}
                 onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })}
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isActive"
-                checked={formData.isActive ?? true}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                className="rounded border-[#e4e4e7]"
-              />
-              <Label htmlFor="isActive">Active</Label>
-            </div>
+            </AdminField>
+          </AdminFormGrid>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isActive"
+              checked={formData.isActive ?? true}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              className="rounded border-[#e4e4e7]"
+            />
+            <Label htmlFor="isActive">Active</Label>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -109,12 +109,19 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{editCity ? 'Edit City' : 'Add City'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editCity ? 'Edit City' : 'Add City'}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="city-form" disabled={submitting}>{submitting ? 'Saving...' : editCity ? 'Update' : 'Create'}</Button>
+        </>
+      }
+    >
+      <form id="city-form" onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Code *</Label>
             <Input
@@ -124,12 +131,14 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
               maxLength={3}
               disabled={!!editCity}
             />
-            <p className="text-xs text-muted-foreground mt-1">Exactly 3 letters A–Z</p>
+            <p className="text-xs text-gray-500 mt-1">Exactly 3 letters A-Z</p>
           </div>
           <div>
             <Label>Name *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bangalore" />
           </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>State</Label>
             <Input value={state} onChange={(e) => setState(e.target.value)} placeholder="e.g. Karnataka" />
@@ -138,28 +147,24 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
             <Label>Country</Label>
             <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="India" />
           </div>
-          {editCity && (
-            <div className="flex items-center gap-2">
-              <Switch checked={isActive} onCheckedChange={setIsActive} id="city-active" />
-              <Label htmlFor="city-active">Active</Label>
-            </div>
-          )}
-          <div>
-            <Label>Metadata (JSON object, optional)</Label>
-            <Textarea
-              value={metadataJson}
-              onChange={(e) => setMetadataJson(e.target.value)}
-              rows={4}
-              className="font-mono text-xs"
-              placeholder="{}"
-            />
+        </div>
+        {editCity && (
+          <div className="flex items-center gap-2">
+            <Switch checked={isActive} onCheckedChange={setIsActive} id="city-active" />
+            <Label htmlFor="city-active">Active</Label>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : editCity ? 'Update' : 'Create'}</Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        )}
+        <div>
+          <Label>Metadata (JSON object, optional)</Label>
+          <Textarea
+            value={metadataJson}
+            onChange={(e) => setMetadataJson(e.target.value)}
+            rows={4}
+            className="font-mono text-xs"
+            placeholder="{}"
+          />
+        </div>
+      </form>
+    </AdminModal>
   );
 }

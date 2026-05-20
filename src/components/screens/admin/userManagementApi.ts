@@ -60,8 +60,32 @@ export interface Permission {
   module: string;
   description: string;
   action?: string;
+  category?: "read" | "write" | "delete" | "admin";
   riskLevel?: "low" | "medium" | "high";
   dependsOn?: string[];
+  isActive?: boolean;
+}
+
+export interface CreatePermissionPayload {
+  name: string;
+  displayName: string;
+  module: string;
+  description?: string;
+  category?: "read" | "write" | "delete" | "admin";
+  action?: string;
+  riskLevel?: "low" | "medium" | "high";
+  dependsOn?: string[];
+}
+
+export interface UpdatePermissionPayload {
+  displayName?: string;
+  module?: string;
+  description?: string;
+  category?: "read" | "write" | "delete" | "admin";
+  action?: string;
+  riskLevel?: "low" | "medium" | "high";
+  dependsOn?: string[];
+  isActive?: boolean;
 }
 
 export interface RoleTemplate extends Role {}
@@ -271,6 +295,24 @@ export const deleteUser = async (id: string): Promise<void> => {
   });
 };
 
+export const resetUserPassword = async (
+  id: string,
+  options?: { sendEmail?: boolean }
+): Promise<{ newPassword: string; emailSent: boolean }> => {
+  const response = await apiRequest<{
+    success: boolean;
+    data: { newPassword: string; message: string; emailSent: boolean };
+  }>(`/admin/users/${id}/reset-password`, {
+    method: 'PUT',
+    body: JSON.stringify({ sendEmail: options?.sendEmail !== false }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return {
+    newPassword: response.data.newPassword,
+    emailSent: response.data.emailSent,
+  };
+};
+
 export const fetchAllStores = async (): Promise<StoreOption[]> => {
   const response = await apiRequest<{ success: boolean; data: any[] }>('/admin/stores?limit=200');
   const data = response?.data ?? [];
@@ -387,6 +429,61 @@ export const fetchPermissions = async (): Promise<Permission[]> => {
   }));
 };
 
+export const fetchPermissionById = async (id: string): Promise<Permission | null> => {
+  try {
+    const response = await apiRequest<{ success: boolean; data: Permission }>(`/admin/permissions/${id}`);
+    const p = response.data;
+    if (!p) return null;
+    return {
+      ...p,
+      id: p.id ?? (p as any)._id?.toString?.() ?? '',
+      description: p.description ?? '',
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const createPermission = async (payload: CreatePermissionPayload): Promise<Permission> => {
+  const response = await apiRequest<{ success: boolean; data: Permission }>('/admin/permissions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.data) throw new Error('Invalid response from create permission API');
+  return {
+    ...response.data,
+    id: response.data.id ?? (response.data as any)._id?.toString?.() ?? '',
+    description: response.data.description ?? '',
+  };
+};
+
+export const updatePermission = async (id: string, payload: UpdatePermissionPayload): Promise<Permission> => {
+  const response = await apiRequest<{ success: boolean; data: Permission }>(`/admin/permissions/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return {
+    ...response.data,
+    id: response.data.id ?? id,
+    description: response.data.description ?? '',
+  };
+};
+
+export const deletePermission = async (id: string): Promise<void> => {
+  await apiRequest<{ success: boolean; message?: string }>(`/admin/permissions/${id}`, {
+    method: 'DELETE',
+  });
+};
+
+/** Whether a role's permission list includes this permission (by name or id). */
+export function roleIncludesPermission(role: Role, permission: Pick<Permission, 'id' | 'name'>): boolean {
+  return role.permissions.some(
+    (p) => p === permission.name || p === permission.id || p.toLowerCase() === permission.name.toLowerCase()
+  );
+}
+
 export const fetchAccessLogs = async (filters?: {
   userId?: string;
   action?: ActionType;
@@ -423,19 +520,36 @@ export const revokeSession = async (sessionId: string): Promise<void> => {
   });
 };
 
-export type BulkUserActionType = 'activate' | 'deactivate' | 'assign_role' | 'update';
+export type BulkUserActionType = 'activate' | 'deactivate' | 'assign_role' | 'update' | 'reset_password';
+
+export interface BulkPasswordResetResult {
+  userId: string;
+  email: string;
+  newPassword: string;
+}
 
 export const bulkUserAction = async (
   action: BulkUserActionType,
   userIds: string[],
-  options?: { roleId?: string; updates?: Partial<UpdateUserPayload> }
-): Promise<{ updated: number; failed: number; errors: { userId: string; error: string }[] }> => {
+  options?: { roleId?: string; updates?: Partial<UpdateUserPayload>; sendEmail?: boolean }
+): Promise<{
+  updated: number;
+  failed: number;
+  errors: { userId: string; error: string }[];
+  passwords?: BulkPasswordResetResult[];
+}> => {
   const body: Record<string, unknown> = { action, userIds };
   if (action === 'assign_role' && options?.roleId) body.roleId = options.roleId;
   if (action === 'update' && options?.updates) body.updates = options.updates;
+  if (action === 'reset_password') body.sendEmail = options?.sendEmail !== false;
   const response = await apiRequest<{
     success: boolean;
-    data: { updated: number; failed: number; errors: { userId: string; error: string }[] };
+    data: {
+      updated: number;
+      failed: number;
+      errors: { userId: string; error: string }[];
+      passwords?: BulkPasswordResetResult[];
+    };
   }>('/admin/users/bulk', {
     method: 'POST',
     body: JSON.stringify(body),

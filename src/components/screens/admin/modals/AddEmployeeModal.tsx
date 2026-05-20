@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,16 +76,23 @@ export function AddEmployeeModal({ open, onOpenChange, onSuccess, editEmployee, 
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editEmployee ? 'Edit Employee' : 'Add Employee'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Name *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
-          </div>
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editEmployee ? 'Edit Employee' : 'Add Employee'}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="employee-form" disabled={submitting}>{submitting ? 'Saving...' : editEmployee ? 'Update' : 'Create'}</Button>
+        </>
+      }
+    >
+      <form id="employee-form" onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
+        <div>
+          <Label>Name *</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Role</Label>
             <Select value={role} onValueChange={setRole}>
@@ -108,46 +115,42 @@ export function AddEmployeeModal({ open, onOpenChange, onSuccess, editEmployee, 
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Phone</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
-            </div>
-            <div>
-              <Label>Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-            </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>Phone</Label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Shift</Label>
-              <Select value={shift} onValueChange={setShift}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {SHIFTS.map((s) => (
-                    <SelectItem key={s} value={s}>{s.replace('_', ' ')}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <Label>Email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : editEmployee ? 'Update' : 'Create'}</Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>Shift</Label>
+            <Select value={shift} onValueChange={setShift}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SHIFTS.map((s) => (
+                  <SelectItem key={s} value={s}>{s.replace('_', ' ')}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <div>
+            <Label>Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </form>
+    </AdminModal>
   );
 }

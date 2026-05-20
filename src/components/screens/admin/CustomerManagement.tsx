@@ -18,13 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from './modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from './modals/AdminForm';
 import { toast } from 'sonner';
 import type { BreadcrumbSegment } from '@/components/AdminManagement';
 import {
@@ -79,11 +74,11 @@ import {
   fetchCustomerById,
   updateCustomer,
   fetchPasswordInfo,
-  resetCustomerPassword,
   setCustomerPassword,
   fetchCustomerAddresses,
   fetchCustomerPaymentMethods,
 } from './customerManagementApi';
+import { ResetCustomerPasswordModal } from './modals/ResetCustomerPasswordModal';
 
 const STATUS_CONFIG: Record<CustomerStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }> = {
   active: { label: 'Active', variant: 'default', className: 'bg-emerald-500 hover:bg-emerald-600 text-white' },
@@ -324,11 +319,11 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
   const [walletCreditReason, setWalletCreditReason] = useState('');
   const [walletCreditLoading, setWalletCreditLoading] = useState(false);
   const [passwordInfo, setPasswordInfo] = useState<PasswordInfo | null>(null);
-  const [passwordLoading, setPasswordLoading] = useState(false);
   const [showAutoPassword, setShowAutoPassword] = useState(false);
   const [setPasswordOpen, setSetPasswordOpen] = useState(false);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(null);
   const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
   const [customerPaymentMethods, setCustomerPaymentMethods] = useState<CustomerPaymentMethod[]>([]);
@@ -354,10 +349,26 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
           apiRequest<{ success: boolean; data: any }>(`/admin/customers/${selectedCustomer._id}/wallet`),
           fetchCustomerAddresses(selectedCustomer._id),
           fetchCustomerPaymentMethods(selectedCustomer._id),
+          fetchPasswordInfo(selectedCustomer._id),
         ]);
-        setCustomerWallet(results[0].status === 'fulfilled' ? results[0].value.data : null);
+        if (results[0].status === 'fulfilled' && results[0].value.data) {
+          const payload = results[0].value.data;
+          const wallet = payload.wallet ?? {};
+          setCustomerWallet({
+            balance: Number(wallet.balance) || 0,
+            pendingCredits: Number(wallet.pendingCredits) || 0,
+            currency: wallet.currency ?? 'INR',
+            isActive: Boolean(wallet.isActive),
+            recentTransactions: payload.recentTransactions ?? [],
+          });
+        } else {
+          setCustomerWallet(null);
+        }
         setCustomerAddresses(results[1].status === 'fulfilled' ? results[1].value.addresses : []);
         setCustomerPaymentMethods(results[2].status === 'fulfilled' ? results[2].value.paymentMethods : []);
+        setPasswordInfo(results[3].status === 'fulfilled' ? results[3].value : null);
+        setResetPasswordResult(null);
+        setShowAutoPassword(false);
       }
     } catch {
       // silent - show empty state
@@ -392,38 +403,11 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
     }
   };
 
-  const loadPasswordInfo = useCallback(async () => {
-    if (!selectedCustomer) return;
-    setPasswordLoading(true);
-    try {
-      const info = await fetchPasswordInfo(selectedCustomer._id);
-      setPasswordInfo(info);
-    } catch {
-      setPasswordInfo(null);
-    } finally {
-      setPasswordLoading(false);
-    }
-  }, [selectedCustomer]);
-
-  useEffect(() => {
-    if (viewMode === 'detail' && selectedCustomer && detailTab === 'profile') {
-      loadPasswordInfo();
-    }
-  }, [viewMode, selectedCustomer, detailTab, loadPasswordInfo]);
-
-  const handleResetPassword = async () => {
-    if (!selectedCustomer) return;
-    setPasswordLoading(true);
-    setResetPasswordResult(null);
-    try {
-      const result = await resetCustomerPassword(selectedCustomer._id);
-      setResetPasswordResult(result.newPassword);
-      toast.success('Password has been reset');
-      loadPasswordInfo();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to reset password');
-    } finally {
-      setPasswordLoading(false);
+  const handlePasswordUpdated = (info: PasswordInfo, newPassword?: string) => {
+    setPasswordInfo(info);
+    if (newPassword) {
+      setResetPasswordResult(newPassword);
+      setShowAutoPassword(true);
     }
   };
 
@@ -435,11 +419,13 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
     }
     setIsSettingPassword(true);
     try {
-      await setCustomerPassword(selectedCustomer._id, newPasswordInput);
+      const result = await setCustomerPassword(selectedCustomer._id, newPasswordInput);
+      setPasswordInfo(result.passwordInfo);
+      setResetPasswordResult(null);
+      setShowAutoPassword(false);
       toast.success('Password has been set');
       setSetPasswordOpen(false);
       setNewPasswordInput('');
-      loadPasswordInfo();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to set password');
     } finally {
@@ -544,7 +530,7 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
                             <span className={`font-medium ${txn.type === 'credit' ? 'text-emerald-600' : 'text-red-600'}`}>
                               {txn.type === 'credit' ? '+' : '-'}₹{(txn.amount || 0).toFixed(2)}
                             </span>
-                            <span className="text-xs text-[#9CA3AF] ml-2">{txn.reason || txn.reference || ''}</span>
+                            <span className="text-xs text-[#9CA3AF] ml-2">{txn.description || txn.reason || txn.reference || ''}</span>
                           </div>
                           <span className="text-xs text-[#9CA3AF]">{txn.createdAt ? new Date(txn.createdAt).toLocaleDateString() : ''}</span>
                         </div>
@@ -563,8 +549,14 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
                     <KeyRound size={16} /> Password Management
                   </h3>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={handleResetPassword} disabled={passwordLoading}>
-                      <RefreshCw size={14} className={`mr-1 ${passwordLoading ? 'animate-spin' : ''}`} /> Reset Password
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => setResetPasswordOpen(true)}
+                      disabled={tabLoading}
+                    >
+                      <RefreshCw size={14} className="mr-1" /> Reset Password
                     </Button>
                     <Button size="sm" onClick={() => { setSetPasswordOpen(true); setNewPasswordInput(''); }}>
                       <Lock size={14} className="mr-1" /> Set Password
@@ -572,7 +564,7 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
                   </div>
                 </div>
 
-                {passwordLoading && !passwordInfo ? (
+                {tabLoading && !passwordInfo ? (
                   <div className="text-sm text-[#6B7280] py-4 text-center">Loading password info...</div>
                 ) : passwordInfo ? (
                   <div className="space-y-4">
@@ -1009,45 +1001,64 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
         </Tabs>
 
         {/* Wallet Credit Modal */}
-        <Dialog open={walletCreditOpen} onOpenChange={setWalletCreditOpen}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>Credit Customer Wallet</DialogTitle></DialogHeader>
-            <div className="space-y-4">
-              <div><label className="text-sm font-medium text-[#374151]">Amount (₹)</label><Input type="number" value={walletCreditAmount} onChange={e => setWalletCreditAmount(e.target.value)} placeholder="0.00" /></div>
-              <div><label className="text-sm font-medium text-[#374151]">Reason</label><Input value={walletCreditReason} onChange={e => setWalletCreditReason(e.target.value)} placeholder="e.g. Goodwill credit" /></div>
-              <DialogFooter><Button variant="outline" onClick={() => setWalletCreditOpen(false)}>Cancel</Button><Button onClick={handleCreditWallet} disabled={walletCreditLoading}>{walletCreditLoading ? 'Processing...' : 'Credit Wallet'}</Button></DialogFooter>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <AdminModal
+          open={walletCreditOpen}
+          onOpenChange={setWalletCreditOpen}
+          title="Credit Customer Wallet"
+          maxWidth="max-w-sm"
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setWalletCreditOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreditWallet} disabled={walletCreditLoading}>
+                {walletCreditLoading ? 'Processing...' : 'Credit Wallet'}
+              </Button>
+            </>
+          }
+        >
+          <AdminFormBody>
+            <AdminField label="Amount (₹)">
+              <Input type="number" value={walletCreditAmount} onChange={e => setWalletCreditAmount(e.target.value)} placeholder="0.00" />
+            </AdminField>
+            <AdminField label="Reason">
+              <Input value={walletCreditReason} onChange={e => setWalletCreditReason(e.target.value)} placeholder="e.g. Goodwill credit" />
+            </AdminField>
+          </AdminFormBody>
+        </AdminModal>
+
+        <ResetCustomerPasswordModal
+          open={resetPasswordOpen}
+          onClose={() => setResetPasswordOpen(false)}
+          customer={selectedCustomer}
+          onPasswordUpdated={handlePasswordUpdated}
+        />
 
         {/* Set Password Modal */}
-        <Dialog open={setPasswordOpen} onOpenChange={setSetPasswordOpen}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>Set Customer Password</DialogTitle></DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-[#374151]">New Password</label>
-                <Input
-                  type="text"
-                  value={newPasswordInput}
-                  onChange={e => setNewPasswordInput(e.target.value)}
-                  placeholder="Enter password (min 6 chars)"
-                  minLength={6}
-                />
-                <p className="text-xs text-[#9CA3AF] mt-1">Minimum 6 characters. This will replace any existing password.</p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setSetPasswordOpen(false)}>Cancel</Button>
-                <Button
-                  onClick={handleSetPassword}
-                  disabled={isSettingPassword || newPasswordInput.length < 6}
-                >
-                  {isSettingPassword ? 'Setting...' : 'Set Password'}
-                </Button>
-              </DialogFooter>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <AdminModal
+          open={setPasswordOpen}
+          onOpenChange={setSetPasswordOpen}
+          title="Set Customer Password"
+          maxWidth="max-w-sm"
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setSetPasswordOpen(false)}>Cancel</Button>
+              <Button onClick={handleSetPassword} disabled={isSettingPassword || newPasswordInput.length < 6}>
+                {isSettingPassword ? 'Setting...' : 'Set Password'}
+              </Button>
+            </>
+          }
+        >
+          <AdminFormBody>
+            <AdminField label="New Password" hint="Minimum 6 characters. This will replace any existing password.">
+              <Input
+                type="text"
+                value={newPasswordInput}
+                onChange={e => setNewPasswordInput(e.target.value)}
+                placeholder="Enter password (min 6 chars)"
+                minLength={6}
+              />
+            </AdminField>
+          </AdminFormBody>
+        </AdminModal>
       </>
     );
   };
@@ -1296,21 +1307,15 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
       {viewMode === 'detail' && selectedCustomer ? renderDetailView() : renderListView()}
 
       {/* Confirmation Dialog (shared between both views) */}
-      <Dialog open={confirmDialog.open} onOpenChange={(open) => {
-        if (!open) setConfirmDialog({ open: false, customerId: '', customerName: '', action: 'block' });
-      }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {confirmDialog.action === 'block' ? 'Block Customer' : 'Unblock Customer'}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-[#6B7280]">
-            {confirmDialog.action === 'block'
-              ? `Are you sure you want to block "${confirmDialog.customerName}"? They will not be able to access the app.`
-              : `Are you sure you want to unblock "${confirmDialog.customerName}"? They will regain app access.`}
-          </p>
-          <DialogFooter className="gap-2">
+      <AdminModal
+        open={confirmDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDialog({ open: false, customerId: '', customerName: '', action: 'block' });
+        }}
+        title={confirmDialog.action === 'block' ? 'Block Customer' : 'Unblock Customer'}
+        maxWidth="max-w-sm"
+        footer={
+          <>
             <Button
               variant="outline"
               onClick={() => setConfirmDialog({ open: false, customerId: '', customerName: '', action: 'block' })}
@@ -1325,9 +1330,17 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
             >
               {actionLoading ? 'Processing...' : confirmDialog.action === 'block' ? 'Block' : 'Unblock'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <p className="text-sm text-[#6B7280]">
+            {confirmDialog.action === 'block'
+              ? `Are you sure you want to block "${confirmDialog.customerName}"? They will not be able to access the app.`
+              : `Are you sure you want to unblock "${confirmDialog.customerName}"? They will regain app access.`}
+          </p>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

@@ -12,13 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminConfirmDialog } from '@/components/screens/admin/modals/AdminConfirmDialog';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -29,6 +26,7 @@ import {
 } from '@/components/ui/table';
 import {
   fetchTickets,
+  fetchTicketById,
   fetchAgents,
   fetchSLAMetrics,
   fetchLiveChats,
@@ -37,6 +35,9 @@ import {
   assignTicket,
   addTicketNote,
   closeTicket,
+  escalateTicket,
+  triggerTicketRefund,
+  triggerTicketRedelivery,
   createTicket,
   fetchFAQs,
   createFAQ,
@@ -78,7 +79,6 @@ import {
   RotateCcw,
   Timer,
 } from 'lucide-react';
-import { apiRequest } from '@/api/apiClient';
 import { getCurrentUser } from '@/api/authApi';
 
 export function SupportCenter() {
@@ -106,12 +106,16 @@ export function SupportCenter() {
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [viewTicketOpen, setViewTicketOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [replySending, setReplySending] = useState(false);
+  const [closeTicketLoading, setCloseTicketLoading] = useState(false);
   const [createTicketOpen, setCreateTicketOpen] = useState(false);
   const [createTicketForm, setCreateTicketForm] = useState({ subject: '', description: '', customerName: '', customerEmail: '', customerPhone: '', category: 'order', priority: 'medium', orderNumber: '' });
   const [createTicketLoading, setCreateTicketLoading] = useState(false);
   const [editingFaq, setEditingFaq] = useState<SupportFAQ | null>(null);
   const [faqModalOpen, setFaqModalOpen] = useState(false);
   const [faqForm, setFaqForm] = useState({ question: '', answer: '', category: 'general', keywords: '' });
+  const [deleteFaqTarget, setDeleteFaqTarget] = useState<SupportFAQ | null>(null);
+  const [deleteFaqLoading, setDeleteFaqLoading] = useState(false);
 
   // Escalation & Refund modals (P1-44 to P1-47)
   const [escalateModalOpen, setEscalateModalOpen] = useState(false);
@@ -121,9 +125,11 @@ export function SupportCenter() {
   const [triggerRefundOpen, setTriggerRefundOpen] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
+  const [refundOrderNumber, setRefundOrderNumber] = useState('');
   const [refundLoading, setRefundLoading] = useState(false);
   const [redeliveryOpen, setRedeliveryOpen] = useState(false);
   const [redeliveryNotes, setRedeliveryNotes] = useState('');
+  const [redeliveryOrderNumber, setRedeliveryOrderNumber] = useState('');
   const [redeliveryLoading, setRedeliveryLoading] = useState(false);
 
   // Inbox selection state (P1-37)
@@ -165,56 +171,86 @@ export function SupportCenter() {
 
   const handleViewTicket = (ticket: SupportTicket) => {
     setSelectedTicket(ticket);
+    setReplyText('');
     setViewTicketOpen(true);
+    void fetchTicketById(ticket.id).then((fresh) => {
+      if (fresh) setSelectedTicket(fresh);
+    });
   };
 
   const handleAssignTicket = async (ticketId: string, agentId: string) => {
+    if (!agentId) return;
     try {
-      await assignTicket(ticketId, agentId);
+      const updated = await assignTicket(ticketId, agentId);
       toast.success('Ticket assigned successfully');
-      loadData();
-      if (selectedTicket?.id === ticketId) {
-        setViewTicketOpen(false);
-        setSelectedTicket(null);
+      if (updated && selectedTicket?.id === ticketId) {
+        setSelectedTicket(updated);
       }
-    } catch (error) {
-      toast.error('Failed to assign ticket');
+      loadData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to assign ticket';
+      toast.error(message);
     }
   };
 
   const handleSendReply = async () => {
-    if (!selectedTicket || !replyText.trim()) return;
+    if (!selectedTicket) return;
+    const text = replyText.trim();
+    if (!text) {
+      toast.error('Please enter a reply message');
+      return;
+    }
 
+    setReplySending(true);
     try {
       const user = getCurrentUser();
       await addTicketNote(selectedTicket.id, {
         ticketId: selectedTicket.id,
         authorId: user?.id || 'agent-1',
-        authorName: user?.name || 'Current Agent',
+        authorName: user?.name || user?.email || 'Admin',
         type: 'agent_reply',
-        content: replyText,
+        content: text,
         isInternal: false,
       });
 
-      await updateTicket(selectedTicket.id, { status: 'in_progress' });
+      const updated =
+        (await updateTicket(selectedTicket.id, { status: 'in_progress' }).catch(() => null)) ??
+        (await fetchTicketById(selectedTicket.id));
+
+      if (updated) {
+        setSelectedTicket(updated);
+      }
 
       toast.success('Reply sent successfully');
       setReplyText('');
       loadData();
-      setViewTicketOpen(false);
-    } catch (error) {
-      toast.error('Failed to send reply');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to send reply';
+      toast.error(message);
+    } finally {
+      setReplySending(false);
     }
   };
 
   const handleCloseTicket = async (ticketId: string) => {
+    if (closeTicketLoading) return;
+    setCloseTicketLoading(true);
     try {
-      await closeTicket(ticketId);
+      const updated = await closeTicket(ticketId);
       toast.success('Ticket closed successfully');
-      loadData();
+      if (updated && selectedTicket?.id === ticketId) {
+        setSelectedTicket(updated);
+      }
+      setReplyText('');
+      setInboxSelectedTicketId(null);
+      setSelectedTicket(null);
       setViewTicketOpen(false);
-    } catch (error) {
-      toast.error('Failed to close ticket');
+      loadData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to close ticket';
+      toast.error(message);
+    } finally {
+      setCloseTicketLoading(false);
     }
   };
 
@@ -288,95 +324,114 @@ export function SupportCenter() {
     }
   };
 
-  const handleDeleteFaq = async (id: string) => {
-    if (!confirm('Delete this FAQ?')) return;
+  const handleConfirmDeleteFaq = async () => {
+    if (!deleteFaqTarget) return;
+    setDeleteFaqLoading(true);
     try {
-      await deleteFAQ(id);
+      await deleteFAQ(deleteFaqTarget.id);
       toast.success('FAQ deleted');
+      setDeleteFaqTarget(null);
+      if (editingFaq?.id === deleteFaqTarget.id) {
+        setEditingFaq(null);
+        setFaqModalOpen(false);
+      }
       loadData();
     } catch (error) {
       toast.error('Failed to delete FAQ');
+    } finally {
+      setDeleteFaqLoading(false);
     }
   };
 
   const handleEscalate = async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || escalateLoading) return;
+    const description = escalateNotes.trim() || selectedTicket.description?.trim();
+    if (!description) {
+      toast.error('Please add escalation notes');
+      return;
+    }
     setEscalateLoading(true);
     try {
-      await apiRequest('/shared/escalations', {
-        method: 'POST',
-        body: JSON.stringify({
-          orderId: selectedTicket.orderNumber,
-          ticketId: selectedTicket.id,
-          targetTeam: escalateTarget,
-          issueType: selectedTicket.category,
-          description: escalateNotes || selectedTicket.description,
-          customerName: selectedTicket.customerName,
-          customerPhone: selectedTicket.customerPhone,
-        }),
+      const updated = await escalateTicket(selectedTicket.id, {
+        targetTeam: escalateTarget,
+        description,
       });
+      setSelectedTicket(updated);
       toast.success(`Escalated to ${escalateTarget === 'darkstore' ? 'Store' : 'Rider Ops'}`);
       setEscalateModalOpen(false);
       setEscalateNotes('');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to escalate');
+      loadData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to escalate';
+      toast.error(message);
     } finally {
       setEscalateLoading(false);
     }
   };
 
   const handleTriggerRefund = async () => {
-    if (!selectedTicket || !refundAmount) return;
+    if (!selectedTicket || refundLoading) return;
+    const amount = parseFloat(refundAmount);
+    if (!refundAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid refund amount');
+      return;
+    }
+    const orderNumber = (refundOrderNumber.trim() || selectedTicket.orderNumber || '').trim();
+    if (!orderNumber) {
+      toast.error('Enter the customer order number for this refund');
+      return;
+    }
     setRefundLoading(true);
     try {
-      await apiRequest('/finance/refunds', {
-        method: 'POST',
-        body: JSON.stringify({
-          orderId: selectedTicket.orderNumber,
-          customerId: selectedTicket.customerId,
-          customerName: selectedTicket.customerName,
-          customerEmail: selectedTicket.customerEmail,
-          amount: parseFloat(refundAmount),
-          reasonCode: 'other',
-          reasonText: refundReason || 'Triggered from support ticket',
-          channel: 'customer_support',
-          ticketId: selectedTicket.id,
-        }),
+      const result = await triggerTicketRefund(selectedTicket.id, {
+        amount,
+        reasonText: refundReason.trim() || 'Triggered from support ticket',
+        reasonCode: 'other',
+        orderNumber,
       });
-      toast.success('Refund request created');
+      setSelectedTicket(result.ticket);
+      toast.success(`Refund request created (₹${result.refund.amount.toFixed(2)})`);
       setTriggerRefundOpen(false);
       setRefundAmount('');
       setRefundReason('');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to create refund');
+      setRefundOrderNumber('');
+      loadData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create refund';
+      toast.error(message);
     } finally {
       setRefundLoading(false);
     }
   };
 
   const handleTriggerRedelivery = async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || redeliveryLoading) return;
+    const orderNumber = (redeliveryOrderNumber.trim() || selectedTicket.orderNumber || '').trim();
+    if (!orderNumber) {
+      toast.error('Enter the customer order number for re-delivery');
+      return;
+    }
     setRedeliveryLoading(true);
     try {
-      await apiRequest('/rider/dispatch/manual-order', {
-        method: 'POST',
-        body: JSON.stringify({
-          orderId: selectedTicket.orderNumber,
-          customerName: selectedTicket.customerName,
-          notes: redeliveryNotes || 'Re-delivery from support ticket',
-          isRedelivery: true,
-          ticketId: selectedTicket.id,
-        }),
+      const result = await triggerTicketRedelivery(selectedTicket.id, {
+        notes: redeliveryNotes.trim() || undefined,
+        orderNumber,
       });
-      toast.success('Re-delivery dispatch created');
+      setSelectedTicket(result.ticket);
+      toast.success(`Re-delivery dispatch created (${result.dispatch.orderId})`);
       setRedeliveryOpen(false);
       setRedeliveryNotes('');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to create re-delivery');
+      setRedeliveryOrderNumber('');
+      loadData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create re-delivery';
+      toast.error(message);
     } finally {
       setRedeliveryLoading(false);
     }
   };
+
+  const needsOrderNumberInput = !selectedTicket?.orderNumber;
 
   const getSLATimeRemaining = (ticket: SupportTicket) => {
     const slaMinutes = slaMetrics?.firstResponseSLA || 30;
@@ -616,24 +671,63 @@ export function SupportCenter() {
                     <div className="bg-[#f4f4f5] p-4 rounded-lg text-sm">{selectedTicket.description}</div>
 
                     {/* Customer info */}
-                    <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div className={`grid gap-3 text-sm ${selectedTicket.orderNumber ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
                       <div><p className="text-[#71717a] text-xs">Customer</p><p className="font-medium">{selectedTicket.customerName}</p></div>
                       <div><p className="text-[#71717a] text-xs">Email</p><p className="font-medium">{selectedTicket.customerEmail}</p></div>
-                      <div><p className="text-[#71717a] text-xs">Phone</p><p className="font-medium">{selectedTicket.customerPhone}</p></div>
+                      <div><p className="text-[#71717a] text-xs">Phone</p><p className="font-medium">{selectedTicket.customerPhone || '—'}</p></div>
+                      {selectedTicket.orderNumber ? (
+                        <div><p className="text-[#71717a] text-xs">Order</p><p className="font-medium">{selectedTicket.orderNumber}</p></div>
+                      ) : null}
                     </div>
 
                     {/* Action Buttons (P1-44 to P1-47) */}
                     <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => { setEscalateTarget('darkstore'); setEscalateModalOpen(true); }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={escalateLoading}
+                        onClick={() => {
+                          setEscalateTarget('darkstore');
+                          setEscalateNotes('');
+                          setEscalateModalOpen(true);
+                        }}
+                      >
                         <ArrowUpRight size={14} className="mr-1" /> Escalate to Store
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setEscalateTarget('rider_ops'); setEscalateModalOpen(true); }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={escalateLoading}
+                        onClick={() => {
+                          setEscalateTarget('rider_ops');
+                          setEscalateNotes('');
+                          setEscalateModalOpen(true);
+                        }}
+                      >
                         <Truck size={14} className="mr-1" /> Escalate to Rider Ops
                       </Button>
-                      <Button size="sm" variant="outline" className="text-emerald-600 border-emerald-200" onClick={() => setTriggerRefundOpen(true)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-emerald-600 border-emerald-200"
+                        disabled={refundLoading}
+                        onClick={() => {
+                          setRefundOrderNumber(selectedTicket.orderNumber || '');
+                          setTriggerRefundOpen(true);
+                        }}
+                      >
                         <RotateCcw size={14} className="mr-1" /> Trigger Refund
                       </Button>
-                      <Button size="sm" variant="outline" className="text-blue-600 border-blue-200" onClick={() => setRedeliveryOpen(true)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-blue-600 border-blue-200"
+                        disabled={redeliveryLoading}
+                        onClick={() => {
+                          setRedeliveryOrderNumber(selectedTicket.orderNumber || '');
+                          setRedeliveryOpen(true);
+                        }}
+                      >
                         <Truck size={14} className="mr-1" /> Trigger Re-delivery
                       </Button>
                     </div>
@@ -665,8 +759,18 @@ export function SupportCenter() {
                     <div className="flex gap-2">
                       <textarea className="flex-1 min-h-16 p-3 border border-[#e4e4e7] rounded-lg text-sm resize-none" placeholder="Type your response..." value={replyText} onChange={(e) => setReplyText(e.target.value)} />
                       <div className="flex flex-col gap-2">
-                        <Button size="sm" onClick={handleSendReply}><Send size={14} /></Button>
-                        <Button size="sm" variant="outline" onClick={() => handleCloseTicket(selectedTicket.id)}><CheckCircle size={14} /></Button>
+                        <Button size="sm" onClick={handleSendReply} disabled={replySending}>
+                          <Send size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCloseTicket(selectedTicket.id)}
+                          disabled={closeTicketLoading || replySending}
+                          title="Close ticket"
+                        >
+                          <CheckCircle size={14} />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -807,7 +911,12 @@ export function SupportCenter() {
                       <Button size="sm" variant="outline" onClick={() => { setEditingFaq(faq); setFaqForm({ question: faq.question, answer: faq.answer, category: faq.category, keywords: faq.keywords?.join(', ') || '' }); setFaqModalOpen(true); }}>
                         <Edit size={12} className="mr-1" /> Edit
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => handleDeleteFaq(faq.id)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-rose-600"
+                        onClick={() => setDeleteFaqTarget(faq)}
+                      >
                         <Trash2 size={12} className="mr-1" /> Delete
                       </Button>
                     </div>
@@ -909,194 +1018,282 @@ export function SupportCenter() {
         </TabsContent>
       </Tabs>
 
-      {/* Escalation Modal (P1-44/P1-45) */}
-      <Dialog open={escalateModalOpen} onOpenChange={setEscalateModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Escalate to {escalateTarget === 'darkstore' ? 'Store' : 'Rider Ops'}</DialogTitle>
-            <DialogDescription>Create an escalation for ticket {selectedTicket?.ticketNumber}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div><Label>Notes</Label><textarea className="w-full min-h-20 p-3 border border-[#e4e4e7] rounded-lg text-sm resize-none" value={escalateNotes} onChange={e => setEscalateNotes(e.target.value)} placeholder="Describe the issue..." /></div>
-            <div className="flex gap-2"><Button variant="outline" onClick={() => setEscalateModalOpen(false)}>Cancel</Button><Button onClick={handleEscalate} disabled={escalateLoading}>{escalateLoading ? 'Escalating...' : 'Escalate'}</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AdminModal
+        open={escalateModalOpen}
+        onOpenChange={setEscalateModalOpen}
+        title={`Escalate to ${escalateTarget === 'darkstore' ? 'Store' : 'Rider Ops'}`}
+        subtitle={`Create an escalation for ticket ${selectedTicket?.ticketNumber}`}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEscalateModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleEscalate} disabled={escalateLoading}>
+              {escalateLoading ? 'Escalating...' : 'Escalate'}
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Notes">
+            <Textarea
+              value={escalateNotes}
+              onChange={e => setEscalateNotes(e.target.value)}
+              placeholder="Describe the issue..."
+              rows={4}
+            />
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
 
-      {/* Trigger Refund Modal (P1-46) */}
-      <Dialog open={triggerRefundOpen} onOpenChange={setTriggerRefundOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Trigger Refund</DialogTitle><DialogDescription>Create a refund request for ticket {selectedTicket?.ticketNumber}</DialogDescription></DialogHeader>
-          <div className="space-y-4">
-            <div><Label>Amount (₹)</Label><Input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} placeholder="0.00" /></div>
-            <div><Label>Reason</Label><Input value={refundReason} onChange={e => setRefundReason(e.target.value)} placeholder="Reason for refund" /></div>
-            <div className="flex gap-2"><Button variant="outline" onClick={() => setTriggerRefundOpen(false)}>Cancel</Button><Button onClick={handleTriggerRefund} disabled={refundLoading}>{refundLoading ? 'Creating...' : 'Create Refund'}</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AdminModal
+        open={triggerRefundOpen}
+        onOpenChange={setTriggerRefundOpen}
+        title="Trigger Refund"
+        subtitle={`Create a refund request for ticket ${selectedTicket?.ticketNumber}`}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setTriggerRefundOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleTriggerRefund}
+              disabled={
+                refundLoading ||
+                !refundAmount.trim() ||
+                !(refundOrderNumber.trim() || selectedTicket?.orderNumber)
+              }
+            >
+              {refundLoading ? 'Creating...' : 'Create Refund'}
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid>
+            <AdminField label="Order Number">
+              <Input
+                value={refundOrderNumber}
+                onChange={e => setRefundOrderNumber(e.target.value)}
+                placeholder="e.g. ORD-12345"
+                disabled={Boolean(selectedTicket?.orderNumber)}
+              />
+            </AdminField>
+            <AdminField label="Amount (₹)">
+              <Input type="number" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} placeholder="0.00" />
+            </AdminField>
+            <AdminField label="Reason" className="md:col-span-2">
+              <Input value={refundReason} onChange={e => setRefundReason(e.target.value)} placeholder="Reason for refund" />
+            </AdminField>
+          </AdminFormGrid>
+          {needsOrderNumberInput && (
+            <p className="text-xs text-[#71717a]">Picker tickets need the related customer order number for refunds.</p>
+          )}
+        </AdminFormBody>
+      </AdminModal>
 
-      {/* Trigger Re-delivery Modal (P1-47) */}
-      <Dialog open={redeliveryOpen} onOpenChange={setRedeliveryOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Trigger Re-delivery</DialogTitle><DialogDescription>Create a re-delivery dispatch for ticket {selectedTicket?.ticketNumber}</DialogDescription></DialogHeader>
-          <div className="space-y-4">
-            <div><Label>Delivery Notes</Label><textarea className="w-full min-h-20 p-3 border border-[#e4e4e7] rounded-lg text-sm resize-none" value={redeliveryNotes} onChange={e => setRedeliveryNotes(e.target.value)} placeholder="Special instructions..." /></div>
-            <div className="flex gap-2"><Button variant="outline" onClick={() => setRedeliveryOpen(false)}>Cancel</Button><Button onClick={handleTriggerRedelivery} disabled={redeliveryLoading}>{redeliveryLoading ? 'Creating...' : 'Dispatch Re-delivery'}</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AdminModal
+        open={redeliveryOpen}
+        onOpenChange={setRedeliveryOpen}
+        title="Trigger Re-delivery"
+        subtitle={`Create a re-delivery dispatch for ticket ${selectedTicket?.ticketNumber}`}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setRedeliveryOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleTriggerRedelivery}
+              disabled={
+                redeliveryLoading ||
+                !(redeliveryOrderNumber.trim() || selectedTicket?.orderNumber)
+              }
+            >
+              {redeliveryLoading ? 'Creating...' : 'Dispatch Re-delivery'}
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Order Number">
+            <Input
+              value={redeliveryOrderNumber}
+              onChange={e => setRedeliveryOrderNumber(e.target.value)}
+              placeholder="e.g. ORD-12345"
+              disabled={Boolean(selectedTicket?.orderNumber)}
+            />
+          </AdminField>
+          <AdminField label="Delivery Notes">
+            <Textarea
+              value={redeliveryNotes}
+              onChange={e => setRedeliveryNotes(e.target.value)}
+              placeholder="Special instructions..."
+              rows={4}
+            />
+          </AdminField>
+          {needsOrderNumberInput && (
+            <p className="text-xs text-[#71717a]">Picker tickets need the related customer order number for re-delivery.</p>
+          )}
+        </AdminFormBody>
+      </AdminModal>
 
-      {/* Create Ticket Modal */}
-      <Dialog open={createTicketOpen} onOpenChange={setCreateTicketOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Ticket</DialogTitle>
-            <DialogDescription>Create a new support ticket on behalf of a customer.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Subject *</Label>
-              <Input value={createTicketForm.subject} onChange={(e) => setCreateTicketForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ticket subject" />
-            </div>
-            <div>
-              <Label>Description</Label>
-              <textarea className="w-full min-h-20 p-3 border border-[#e4e4e7] rounded-lg text-sm resize-none" value={createTicketForm.description} onChange={(e) => setCreateTicketForm(f => ({ ...f, description: e.target.value }))} placeholder="Issue description" />
-            </div>
-            <div>
-              <Label>Customer Name *</Label>
+      <AdminModal
+        open={createTicketOpen}
+        onOpenChange={setCreateTicketOpen}
+        title="Create Ticket"
+        subtitle="Create a new support ticket on behalf of a customer."
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCreateTicketOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateTicket} disabled={createTicketLoading}>
+              {createTicketLoading ? 'Creating...' : 'Create Ticket'}
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Subject *">
+            <Input value={createTicketForm.subject} onChange={(e) => setCreateTicketForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ticket subject" />
+          </AdminField>
+          <AdminField label="Description">
+            <Textarea value={createTicketForm.description} onChange={(e) => setCreateTicketForm(f => ({ ...f, description: e.target.value }))} placeholder="Issue description" rows={4} />
+          </AdminField>
+          <AdminFormGrid>
+            <AdminField label="Customer Name *">
               <Input value={createTicketForm.customerName} onChange={(e) => setCreateTicketForm(f => ({ ...f, customerName: e.target.value }))} placeholder="Customer name" />
-            </div>
-            <div>
-              <Label>Customer Email *</Label>
+            </AdminField>
+            <AdminField label="Customer Email *">
               <Input type="email" value={createTicketForm.customerEmail} onChange={(e) => setCreateTicketForm(f => ({ ...f, customerEmail: e.target.value }))} placeholder="customer@email.com" />
-            </div>
-            <div>
-              <Label>Customer Phone</Label>
+            </AdminField>
+            <AdminField label="Customer Phone">
               <Input value={createTicketForm.customerPhone} onChange={(e) => setCreateTicketForm(f => ({ ...f, customerPhone: e.target.value }))} placeholder="+91-98765-43210" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Category</Label>
-                <Select value={createTicketForm.category} onValueChange={(v) => setCreateTicketForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="order">Order</SelectItem>
-                    <SelectItem value="payment">Payment</SelectItem>
-                    <SelectItem value="delivery">Delivery</SelectItem>
-                    <SelectItem value="account">Account</SelectItem>
-                    <SelectItem value="technical">Technical</SelectItem>
-                    <SelectItem value="feedback">Feedback</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Priority</Label>
-                <Select value={createTicketForm.priority} onValueChange={(v) => setCreateTicketForm(f => ({ ...f, priority: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label>Order Number</Label>
+            </AdminField>
+            <AdminField label="Order Number">
               <Input value={createTicketForm.orderNumber} onChange={(e) => setCreateTicketForm(f => ({ ...f, orderNumber: e.target.value }))} placeholder="ORD-12345" />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setCreateTicketOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateTicket} disabled={createTicketLoading}>
-                {createTicketLoading ? 'Creating...' : 'Create Ticket'}
+            </AdminField>
+            <AdminField label="Category">
+              <Select value={createTicketForm.category} onValueChange={(v) => setCreateTicketForm(f => ({ ...f, category: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="order">Order</SelectItem>
+                  <SelectItem value="payment">Payment</SelectItem>
+                  <SelectItem value="delivery">Delivery</SelectItem>
+                  <SelectItem value="account">Account</SelectItem>
+                  <SelectItem value="technical">Technical</SelectItem>
+                  <SelectItem value="feedback">Feedback</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
+            <AdminField label="Priority">
+              <Select value={createTicketForm.priority} onValueChange={(v) => setCreateTicketForm(f => ({ ...f, priority: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
+          </AdminFormGrid>
+        </AdminFormBody>
+      </AdminModal>
+
+      <AdminModal
+        open={faqModalOpen}
+        onOpenChange={(open) => { setFaqModalOpen(open); if (!open) setEditingFaq(null); }}
+        title={editingFaq ? 'Edit FAQ' : 'Add FAQ'}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => { setFaqModalOpen(false); setEditingFaq(null); }}>Cancel</Button>
+            <Button onClick={handleSaveFaq}>Save FAQ</Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Question *">
+            <Input value={faqForm.question} onChange={(e) => setFaqForm(f => ({ ...f, question: e.target.value }))} placeholder="Question" />
+          </AdminField>
+          <AdminField label="Answer *">
+            <Textarea value={faqForm.answer} onChange={(e) => setFaqForm(f => ({ ...f, answer: e.target.value }))} placeholder="Answer" rows={4} />
+          </AdminField>
+          <AdminFormGrid>
+            <AdminField label="Category">
+              <Input value={faqForm.category} onChange={(e) => setFaqForm(f => ({ ...f, category: e.target.value }))} placeholder="general" />
+            </AdminField>
+            <AdminField label="Keywords (comma separated)">
+              <Input value={faqForm.keywords} onChange={(e) => setFaqForm(f => ({ ...f, keywords: e.target.value }))} placeholder="track, delivery" />
+            </AdminField>
+          </AdminFormGrid>
+        </AdminFormBody>
+      </AdminModal>
+
+      <AdminModal
+        open={viewTicketOpen}
+        onOpenChange={setViewTicketOpen}
+        title={`Ticket Details - ${selectedTicket?.ticketNumber}`}
+        subtitle={selectedTicket ? `Created on ${new Date(selectedTicket.createdAt).toLocaleString()}` : undefined}
+        maxWidth="max-w-3xl"
+        footer={
+          selectedTicket ? (
+            <div className="flex w-full justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => handleCloseTicket(selectedTicket.id)}
+                disabled={
+                  replySending ||
+                  closeTicketLoading ||
+                  selectedTicket.status === 'closed' ||
+                  (selectedTicket.id.startsWith('picker-support-') && selectedTicket.status === 'resolved')
+                }
+              >
+                <CheckCircle size={14} className="mr-1.5" />
+                {closeTicketLoading ? 'Closing…' : 'Close Ticket'}
+              </Button>
+              <Button
+                onClick={handleSendReply}
+                disabled={replySending || closeTicketLoading || !replyText.trim()}
+              >
+                <Send size={14} className="mr-1.5" />
+                {replySending ? 'Sending…' : 'Send Reply'}
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* FAQ Edit/Add Modal */}
-      <Dialog open={faqModalOpen} onOpenChange={(open) => { setFaqModalOpen(open); if (!open) setEditingFaq(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingFaq ? 'Edit FAQ' : 'Add FAQ'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Question *</Label>
-              <Input value={faqForm.question} onChange={(e) => setFaqForm(f => ({ ...f, question: e.target.value }))} placeholder="Question" />
-            </div>
-            <div>
-              <Label>Answer *</Label>
-              <textarea className="w-full min-h-24 p-3 border border-[#e4e4e7] rounded-lg text-sm resize-none" value={faqForm.answer} onChange={(e) => setFaqForm(f => ({ ...f, answer: e.target.value }))} placeholder="Answer" />
-            </div>
-            <div>
-              <Label>Category</Label>
-              <Input value={faqForm.category} onChange={(e) => setFaqForm(f => ({ ...f, category: e.target.value }))} placeholder="general" />
-            </div>
-            <div>
-              <Label>Keywords (comma separated)</Label>
-              <Input value={faqForm.keywords} onChange={(e) => setFaqForm(f => ({ ...f, keywords: e.target.value }))} placeholder="track, delivery" />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setFaqModalOpen(false); setEditingFaq(null); }}>Cancel</Button>
-              <Button onClick={handleSaveFaq}>Save FAQ</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Ticket Modal */}
-      <Dialog open={viewTicketOpen} onOpenChange={setViewTicketOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>Ticket Details - {selectedTicket?.ticketNumber}</span>
-              <Badge className={selectedTicket ? getPriorityColor(selectedTicket.priority) : ''}>
-                {selectedTicket?.priority}
+          ) : undefined
+        }
+      >
+        {selectedTicket && (
+          <AdminFormBody>
+            <div className="flex justify-end -mt-2 mb-2">
+              <Badge className={getPriorityColor(selectedTicket.priority)}>
+                {selectedTicket.priority}
               </Badge>
-            </DialogTitle>
-            <DialogDescription>
-              Created on {selectedTicket ? new Date(selectedTicket.createdAt).toLocaleString() : ''}
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedTicket && (
-            <div className="space-y-4">
-              {/* Customer Info */}
-              <div className="p-4 bg-[#f4f4f5] rounded-lg">
-                <h4 className="font-bold text-[#18181b] mb-2">Customer Information</h4>
-                <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <p className="text-[#71717a]">Name</p>
-                    <p className="font-medium">{selectedTicket.customerName}</p>
-                  </div>
-                  <div>
-                    <p className="text-[#71717a]">Email</p>
-                    <p className="font-medium">{selectedTicket.customerEmail}</p>
-                  </div>
-                  <div>
-                    <p className="text-[#71717a]">Phone</p>
-                    <p className="font-medium">{selectedTicket.customerPhone}</p>
-                  </div>
+            </div>
+            <div className="p-4 bg-[#f4f4f5] rounded-lg">
+              <h4 className="font-bold text-[#18181b] mb-2">Customer Information</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <p className="text-[#71717a]">Name</p>
+                  <p className="font-medium">{selectedTicket.customerName}</p>
+                </div>
+                <div>
+                  <p className="text-[#71717a]">Email</p>
+                  <p className="font-medium">{selectedTicket.customerEmail}</p>
+                </div>
+                <div>
+                  <p className="text-[#71717a]">Phone</p>
+                  <p className="font-medium">{selectedTicket.customerPhone}</p>
                 </div>
               </div>
-
-              {/* Ticket Details */}
-              <div>
-                <h4 className="font-bold text-[#18181b] mb-2">Subject</h4>
-                <p className="text-[#18181b]">{selectedTicket.subject}</p>
-              </div>
-
-              <div>
-                <h4 className="font-bold text-[#18181b] mb-2">Description</h4>
-                <p className="text-[#71717a]">{selectedTicket.description}</p>
-              </div>
-
-              {/* Assignment */}
-              <div>
-                <Label className="mb-2 block">Assign to Agent</Label>
+            </div>
+            <div>
+              <h4 className="font-bold text-[#18181b] mb-2">Subject</h4>
+              <p className="text-[#18181b]">{selectedTicket.subject}</p>
+            </div>
+            <div>
+              <h4 className="font-bold text-[#18181b] mb-2">Description</h4>
+              <p className="text-[#71717a]">{selectedTicket.description}</p>
+            </div>
+            <AdminFormGrid>
+              <AdminField label="Assign to Agent">
                 <Select
                   value={selectedTicket.assignedTo || ''}
                   onValueChange={(val) => handleAssignTicket(selectedTicket.id, val)}
@@ -1112,11 +1309,8 @@ export function SupportCenter() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Status */}
-              <div>
-                <Label className="mb-2 block">Status</Label>
+              </AdminField>
+              <AdminField label="Status">
                 <Select
                   value={selectedTicket.status}
                   onValueChange={(val) => handleStatusChange(selectedTicket.id, val)}
@@ -1131,49 +1325,55 @@ export function SupportCenter() {
                     <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Timeline */}
-              <div>
-                <h4 className="font-bold text-[#18181b] mb-3">Timeline</h4>
-                <div className="space-y-3">
-                  {(selectedTicket.notes || []).map((note) => (
-                    <div key={note.id} className={`p-3 rounded-lg ${note.isInternal ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-sm">{note.authorName}</span>
-                        <span className="text-xs text-[#71717a]">{new Date(note.createdAt).toLocaleString()}</span>
-                      </div>
-                      <p className="text-sm text-[#18181b]">{note.content}</p>
-                      {note.isInternal && <Badge variant="outline" className="mt-1 text-xs">Internal Note</Badge>}
+              </AdminField>
+            </AdminFormGrid>
+            <div>
+              <h4 className="font-bold text-[#18181b] mb-3">Timeline</h4>
+              <div className="space-y-3">
+                {(selectedTicket.notes || []).map((note) => (
+                  <div key={note.id} className={`p-3 rounded-lg ${note.isInternal ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{note.authorName}</span>
+                      <span className="text-xs text-[#71717a]">{new Date(note.createdAt).toLocaleString()}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Reply */}
-              <div>
-                <Label className="mb-2 block">Send Reply</Label>
-                <textarea
-                  className="w-full min-h-24 p-3 border border-[#e4e4e7] rounded-lg text-sm resize-none"
-                  placeholder="Type your response..."
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2">
-                <Button onClick={handleSendReply} className="flex-1">
-                  <Send size={14} className="mr-1.5" /> Send Reply
-                </Button>
-                <Button variant="outline" onClick={() => handleCloseTicket(selectedTicket.id)}>
-                  <CheckCircle size={14} className="mr-1.5" /> Close Ticket
-                </Button>
+                    <p className="text-sm text-[#18181b]">{note.content}</p>
+                    {note.isInternal && <Badge variant="outline" className="mt-1 text-xs">Internal Note</Badge>}
+                  </div>
+                ))}
               </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            <AdminField label="Send Reply">
+              <Textarea
+                placeholder="Type your response..."
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                rows={4}
+              />
+            </AdminField>
+          </AdminFormBody>
+        )}
+      </AdminModal>
+
+      <AdminConfirmDialog
+        open={Boolean(deleteFaqTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleteFaqLoading) setDeleteFaqTarget(null);
+        }}
+        title="Delete FAQ?"
+        description={
+          deleteFaqTarget ? (
+            <>
+              Are you sure you want to delete{' '}
+              <strong className="text-[#18181b]">{deleteFaqTarget.question}</strong>? This cannot be
+              undone.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleteFaqLoading}
+        onConfirm={handleConfirmDeleteFaq}
+      />
     </div>
   );
 }

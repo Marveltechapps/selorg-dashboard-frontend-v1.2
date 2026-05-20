@@ -18,6 +18,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import {
   Dialog,
   DialogContent,
@@ -511,109 +513,19 @@ export function TrainingContentManagement() {
       </Tabs>
 
       {/* Create/Edit Form Modal */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Video' : 'Add Training Video'}</DialogTitle>
-            <DialogDescription>
-              {editingId
-                ? 'Update training video metadata. Changes apply to the Picker app.'
-                : 'Create a new training video for the Picker app.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {!editingId && (
-              <div>
-                <Label>Video ID</Label>
-                <Input
-                  placeholder="e.g. video1"
-                  value={form.videoId ?? ''}
-                  onChange={(e) => setForm((p) => ({ ...p, videoId: e.target.value }))}
-                />
-                <p className="text-xs text-[#71717a] mt-1">
-                  Leave blank to auto-generate
-                </p>
-              </div>
-            )}
-            <div>
-              <Label>Title *</Label>
-              <Input
-                placeholder="e.g. What is Picking?"
-                value={form.title}
-                onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Textarea
-                placeholder="Brief description"
-                value={form.description ?? ''}
-                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                rows={2}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Duration (seconds)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={form.duration}
-                  onChange={(e) => handleDurationChange(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Order</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.order}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, order: parseInt(e.target.value, 10) || 0 }))
-                  }
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Video URL *</Label>
-              <Input
-                placeholder="https://..."
-                value={form.videoUrl}
-                onChange={(e) => setForm((p) => ({ ...p, videoUrl: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Thumbnail URL</Label>
-              <Input
-                placeholder="https://... (optional)"
-                value={form.thumbnailUrl ?? ''}
-                onChange={(e) => setForm((p) => ({ ...p, thumbnailUrl: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Min. watch % to complete</Label>
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={form.minimumWatchPercentage ?? 80}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    minimumWatchPercentage: Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 80)),
-                  }))
-                }
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={form.isActive}
-                onCheckedChange={(c) => setForm((p) => ({ ...p, isActive: c }))}
-              />
-              <Label>Active (visible in Picker app)</Label>
-            </div>
-          </div>
-          <DialogFooter>
+      <AdminModal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title={editingId ? 'Edit Video' : 'Add Training Video'}
+        subtitle={
+          editingId
+            ? 'Update training video metadata. Changes apply to the Picker app.'
+            : 'Create a new training video for the Picker app.'
+        }
+        icon={<Video className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
             </Button>
@@ -621,9 +533,91 @@ export function TrainingContentManagement() {
               {saving && <Loader2 size={16} className="animate-spin" />}
               {editingId ? 'Update' : 'Create'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          {!editingId && (
+            <AdminField label="Video ID" hint="Leave blank to auto-generate">
+              <Input
+                placeholder="e.g. video1"
+                value={form.videoId ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, videoId: e.target.value }))}
+              />
+            </AdminField>
+          )}
+          <AdminField label="Title *">
+            <Input
+              placeholder="e.g. What is Picking?"
+              value={form.title}
+              onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+            />
+          </AdminField>
+          <AdminField label="Description">
+            <Textarea
+              placeholder="Brief description"
+              value={form.description ?? ''}
+              onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+              rows={2}
+            />
+          </AdminField>
+          <AdminFormGrid>
+            <AdminField label="Duration (seconds)">
+              <Input
+                type="number"
+                min={1}
+                value={form.duration}
+                onChange={(e) => handleDurationChange(e.target.value)}
+              />
+            </AdminField>
+            <AdminField label="Order">
+              <Input
+                type="number"
+                min={0}
+                value={form.order}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, order: parseInt(e.target.value, 10) || 0 }))
+                }
+              />
+            </AdminField>
+          </AdminFormGrid>
+          <AdminField label="Video URL *">
+            <Input
+              placeholder="https://..."
+              value={form.videoUrl}
+              onChange={(e) => setForm((p) => ({ ...p, videoUrl: e.target.value }))}
+            />
+          </AdminField>
+          <AdminField label="Thumbnail URL">
+            <Input
+              placeholder="https://... (optional)"
+              value={form.thumbnailUrl ?? ''}
+              onChange={(e) => setForm((p) => ({ ...p, thumbnailUrl: e.target.value }))}
+            />
+          </AdminField>
+          <AdminField label="Min. watch % to complete">
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={form.minimumWatchPercentage ?? 80}
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  minimumWatchPercentage: Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 80)),
+                }))
+              }
+            />
+          </AdminField>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={form.isActive}
+              onCheckedChange={(c) => setForm((p) => ({ ...p, isActive: c }))}
+            />
+            <Label>Active (visible in Picker app)</Label>
+          </div>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={() => !deleting && setDeleteTarget(null)}>

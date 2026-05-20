@@ -12,6 +12,7 @@ import {
   resolveCategoryIds,
 } from './catalogApi';
 import { AddAttributeModal } from './modals/AddAttributeModal';
+import { AdminConfirmDialog } from './modals/AdminConfirmDialog';
 import { CategoryTaxonomyManager } from './CategoryTaxonomyManager';
 import { toast } from 'sonner';
 import {
@@ -35,6 +36,8 @@ export function CatalogManagement() {
 
   const [addAttributeOpen, setAddAttributeOpen] = useState(false);
   const [editAttribute, setEditAttribute] = useState<ProductAttribute | null>(null);
+  const [deleteAttributeConfirm, setDeleteAttributeConfirm] = useState<ProductAttribute | null>(null);
+  const [deleteAttributeLoading, setDeleteAttributeLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -267,16 +270,8 @@ export function CatalogManagement() {
                             variant="ghost"
                             size="sm"
                             className="h-7 w-7 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                            onClick={async () => {
-                              if (!confirm(`Delete attribute "${attr.name}"?`)) return;
-                              try {
-                                await deleteAttribute(attr.id);
-                                toast.success(`Attribute "${attr.name}" deleted`);
-                                await loadData();
-                              } catch {
-                                toast.error('Failed to delete attribute');
-                              }
-                            }}
+                            type="button"
+                            onClick={() => setDeleteAttributeConfirm(attr)}
                           >
                             <Trash2 size={13} />
                           </Button>
@@ -331,6 +326,37 @@ export function CatalogManagement() {
         }}
         onSuccess={loadData}
         editAttribute={editAttribute}
+      />
+
+      <AdminConfirmDialog
+        open={Boolean(deleteAttributeConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteAttributeConfirm(null);
+        }}
+        title="Delete Attribute"
+        confirmLabel="Delete"
+        loading={deleteAttributeLoading}
+        description={
+          <>
+            Are you sure you want to delete{' '}
+            <span className="font-semibold text-[#374151]">&quot;{deleteAttributeConfirm?.name}&quot;</span>?
+            This action cannot be undone.
+          </>
+        }
+        onConfirm={async () => {
+          if (!deleteAttributeConfirm) return;
+          setDeleteAttributeLoading(true);
+          try {
+            await deleteAttribute(deleteAttributeConfirm.id);
+            toast.success(`Attribute "${deleteAttributeConfirm.name}" deleted`);
+            setDeleteAttributeConfirm(null);
+            await loadData();
+          } catch {
+            toast.error('Failed to delete attribute');
+          } finally {
+            setDeleteAttributeLoading(false);
+          }
+        }}
       />
     </div>
   );

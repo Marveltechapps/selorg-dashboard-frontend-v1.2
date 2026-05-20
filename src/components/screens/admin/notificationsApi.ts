@@ -154,58 +154,64 @@ const emptyTimeSeries = (): TimeSeriesMetrics[] =>
 
 // --- API Functions (real backend only, no mocks) ---
 
+/** Bypass browser/proxy caches so lists reflect the latest writes. */
+function notificationGetUrl(path: string): string {
+  const sep = path.includes('?') ? '&' : '?';
+  return `${path}${sep}_=${Date.now()}`;
+}
+
 export async function fetchTemplates(): Promise<NotificationTemplate[]> {
   const response = await apiRequest<{ success: boolean; data: NotificationTemplate[] }>(
-    '/admin/notifications/templates'
+    notificationGetUrl('/admin/notifications/templates')
   );
   return response.data ?? [];
 }
 
 export async function fetchCampaigns(): Promise<Campaign[]> {
   const response = await apiRequest<{ success: boolean; data: Campaign[] }>(
-    '/admin/notifications/campaigns'
+    notificationGetUrl('/admin/notifications/campaigns')
   );
   return response.data ?? [];
 }
 
 export async function fetchScheduled(): Promise<ScheduledNotification[]> {
   const response = await apiRequest<{ success: boolean; data: ScheduledNotification[] }>(
-    '/admin/notifications/scheduled'
+    notificationGetUrl('/admin/notifications/scheduled')
   );
   return response.data ?? [];
 }
 
 export async function fetchAutomation(): Promise<AutomationRule[]> {
   const response = await apiRequest<{ success: boolean; data: AutomationRule[] }>(
-    '/admin/notifications/automation'
+    notificationGetUrl('/admin/notifications/automation')
   );
   return response.data ?? [];
 }
 
 export async function fetchAnalytics(): Promise<NotificationAnalytics> {
   const response = await apiRequest<{ success: boolean; data: NotificationAnalytics }>(
-    '/admin/notifications/analytics'
+    notificationGetUrl('/admin/notifications/analytics')
   );
   return response.data ?? DEFAULT_ANALYTICS;
 }
 
 export async function fetchHistory(): Promise<NotificationHistory[]> {
   const response = await apiRequest<{ success: boolean; data: NotificationHistory[] }>(
-    '/admin/notifications/history'
+    notificationGetUrl('/admin/notifications/history')
   );
   return response.data ?? [];
 }
 
 export async function fetchChannelPerformance(): Promise<ChannelPerformance[]> {
   const response = await apiRequest<{ success: boolean; data: ChannelPerformance[] }>(
-    '/admin/notifications/channels'
+    notificationGetUrl('/admin/notifications/channels')
   );
   return response.data ?? DEFAULT_CHANNELS;
 }
 
 export async function fetchTimeSeriesMetrics(): Promise<TimeSeriesMetrics[]> {
   const response = await apiRequest<{ success: boolean; data: TimeSeriesMetrics[] }>(
-    '/admin/notifications/timeseries'
+    notificationGetUrl('/admin/notifications/timeseries')
   );
   return response.data ?? emptyTimeSeries();
 }
@@ -239,7 +245,11 @@ export async function updateTemplate(
   return response.data;
 }
 
-export async function createCampaign(campaign: Partial<Campaign>): Promise<Campaign> {
+export type CreateCampaignPayload = Partial<Campaign> & {
+  scheduleType?: 'immediate' | 'scheduled';
+};
+
+export async function createCampaign(campaign: CreateCampaignPayload): Promise<Campaign> {
   const response = await apiRequest<{ success: boolean; data: Campaign }>(
     '/admin/notifications/campaigns',
     {
@@ -278,6 +288,21 @@ export async function createAutomationRule(
     }
   );
   if (!response?.data) throw new Error('No data returned from create automation rule');
+  return response.data;
+}
+
+export async function updateAutomationRule(
+  ruleId: string,
+  rule: Partial<AutomationRule>
+): Promise<AutomationRule> {
+  const response = await apiRequest<{ success: boolean; data: AutomationRule }>(
+    `/admin/notifications/automation/${ruleId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(rule),
+    }
+  );
+  if (!response?.data) throw new Error('No data returned from update automation rule');
   return response.data;
 }
 

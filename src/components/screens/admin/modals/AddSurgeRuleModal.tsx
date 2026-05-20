@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -165,7 +159,7 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
     setLoading(true);
     try {
       const conditions: any = {};
-      
+
       if (formData.type === 'time_based') {
         conditions.timeSlots = [{
           start: formData.startTime,
@@ -209,30 +203,71 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <TrendingUp className="text-amber-600" size={20} />
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editRule ? 'Edit Surge Pricing Rule' : duplicateRule ? 'Duplicate Surge Rule' : 'Create Surge Pricing Rule'}
+      subtitle={editRule ? 'Update the surge rule' : 'Set up dynamic pricing based on time, demand, or zones'}
+      icon={<TrendingUp size={20} />}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-amber-600 hover:bg-amber-700">
+            {loading ? (editRule ? 'Updating...' : 'Creating...') : (editRule ? 'Update Rule' : 'Create Surge Rule')}
+          </Button>
+        </>
+      }
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="space-y-5 py-4">
+          {/* Rule Name & Description */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="rule-name">Rule Name *</Label>
+              <Input
+                id="rule-name"
+                placeholder="e.g., Evening Rush Hour Surge"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+              />
             </div>
-            <div>
-            <DialogTitle>{editRule ? 'Edit Surge Pricing Rule' : duplicateRule ? 'Duplicate Surge Rule' : 'Create Surge Pricing Rule'}</DialogTitle>
-            <DialogDescription>{editRule ? 'Update the surge rule' : 'Set up dynamic pricing based on time, demand, or zones'}</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
 
-        <div className="space-y-5 mt-4">
-          {/* Rule Name */}
-          <div className="space-y-2">
-            <Label htmlFor="rule-name">Rule Name *</Label>
-            <Input
-              id="rule-name"
-              placeholder="e.g., Evening Rush Hour Surge"
-              value={formData.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-            />
+            <div className="space-y-2">
+              <Label>Surge Type *</Label>
+              <Select value={formData.type} onValueChange={(val: any) => handleChange('type', val)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="time_based">
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} />
+                      <span>Time-Based (Peak Hours)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="zone_based">
+                    <div className="flex items-center gap-2">
+                      <MapPin size={14} />
+                      <span>Zone-Based (Location Premium)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="event_based">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} />
+                      <span>Event-Based (Special Occasions)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="demand_based">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp size={14} />
+                      <span>Demand-Based (High Traffic)</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Description */}
@@ -245,42 +280,6 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
               onChange={(e) => handleChange('description', e.target.value)}
               rows={2}
             />
-          </div>
-
-          {/* Rule Type */}
-          <div className="space-y-2">
-            <Label>Surge Type *</Label>
-            <Select value={formData.type} onValueChange={(val: any) => handleChange('type', val)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="time_based">
-                  <div className="flex items-center gap-2">
-                    <Clock size={14} />
-                    <span>Time-Based (Peak Hours)</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="zone_based">
-                  <div className="flex items-center gap-2">
-                    <MapPin size={14} />
-                    <span>Zone-Based (Location Premium)</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="event_based">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={14} />
-                    <span>Event-Based (Special Occasions)</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="demand_based">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp size={14} />
-                    <span>Demand-Based (High Traffic)</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Multiplier */}
@@ -297,21 +296,21 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
                 onChange={(e) => handleChange('multiplier', e.target.value)}
                 className="w-24"
               />
-              <span className="text-sm text-[#71717a]">×</span>
-              <div className="flex-1 p-3 bg-[#f4f4f5] rounded-lg">
-                <p className="text-sm text-[#52525b]">
+              <span className="text-sm text-gray-500">x</span>
+              <div className="flex-1 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-500">
                   Base Price: <span className="font-bold">₹100</span> → Surge Price: <span className="font-bold text-amber-600">₹{(100 * parseFloat(formData.multiplier || '1')).toFixed(0)}</span>
                 </p>
               </div>
             </div>
-            <p className="text-xs text-[#71717a]">Multiplier range: 1.0× (no surge) to 5.0× (5x price)</p>
+            <p className="text-xs text-gray-500">Multiplier range: 1.0x (no surge) to 5.0x (5x price)</p>
           </div>
 
           {/* Time-Based Settings */}
           {formData.type === 'time_based' && (
             <div className="space-y-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
               <h4 className="font-bold text-[#18181b] text-sm">Time Settings</h4>
-              
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="start-time">Start Time</Label>
@@ -357,7 +356,7 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
               <h4 className="font-bold text-[#18181b] text-sm">Zone Settings</h4>
               <Label>Premium Zones *</Label>
               {refsLoading ? (
-                <p className="text-sm text-[#71717a]">Loading zones...</p>
+                <p className="text-sm text-gray-500">Loading zones...</p>
               ) : zones.length === 0 ? (
                 <p className="text-sm text-amber-600">No zones available. Add zones in Master Data first.</p>
               ) : (
@@ -381,7 +380,7 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
           <div className="space-y-3">
             <Label>Applicable Categories (Leave empty for all)</Label>
             {refsLoading ? (
-              <p className="text-sm text-[#71717a]">Loading categories...</p>
+              <p className="text-sm text-gray-500">Loading categories...</p>
             ) : categories.length === 0 ? (
               <p className="text-sm text-amber-600">No categories available. Add categories in Catalog first.</p>
             ) : (
@@ -412,7 +411,7 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
                 value={formData.priority}
                 onChange={(e) => handleChange('priority', e.target.value)}
               />
-              <p className="text-xs text-[#71717a]">1 = Highest</p>
+              <p className="text-xs text-gray-500">1 = Highest</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="start-date">Start Date *</Label>
@@ -434,17 +433,7 @@ export function AddSurgeRuleModal({ open, onOpenChange, onSuccess, editRule, dup
             </div>
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[#e4e4e7]">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-amber-600 hover:bg-amber-700">
-            {loading ? (editRule ? 'Updating...' : 'Creating...') : (editRule ? 'Update Rule' : 'Create Surge Rule')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AdminModal>
   );
 }

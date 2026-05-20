@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { 
   BarChart3,
@@ -100,59 +94,47 @@ export function AnalyticsModal({ open, onClose }: AnalyticsModalProps) {
 
   const PIE_COLORS = ['#10b981', '#f59e0b', '#6b7280'];
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) onClose();
+  };
+
   if (loading) {
     return (
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
-          <div className="py-12 text-center text-[#71717a]">Loading analytics...</div>
-        </DialogContent>
-      </Dialog>
+      <AdminModal open={open} onOpenChange={handleOpenChange} title="Real-Time Analytics Dashboard" icon={<BarChart3 size={24} />}>
+        <div className="py-12 text-center text-gray-500">Loading analytics...</div>
+      </AdminModal>
     );
   }
 
   if (!analytics) {
     return (
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BarChart3 size={24} />
-              Real-Time Analytics Dashboard
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-12 text-center text-[#71717a]">No analytics data available</div>
-        </DialogContent>
-      </Dialog>
+      <AdminModal open={open} onOpenChange={handleOpenChange} title="Real-Time Analytics Dashboard" icon={<BarChart3 size={24} />}>
+        <div className="py-12 text-center text-gray-500">No analytics data available</div>
+      </AdminModal>
     );
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl flex items-center gap-2">
-                <BarChart3 className="text-blue-500" size={28} />
-                Real-Time Analytics Dashboard
-              </DialogTitle>
-              <p className="text-sm text-[#71717a] mt-1">
-                Comprehensive operations insights and performance metrics
-              </p>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleExportReport}>
-              <Download size={16} className="mr-2" />
-              Export Report
-            </Button>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-6 mt-4">
+    <AdminModal
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Real-Time Analytics Dashboard"
+      subtitle="Comprehensive operations insights and performance metrics"
+      icon={<BarChart3 className="text-blue-500" size={28} />}
+      maxWidth="max-w-6xl"
+      footer={
+        <Button variant="outline" size="sm" onClick={handleExportReport}>
+          <Download size={16} className="mr-2" />
+          Export Report
+        </Button>
+      }
+    >
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 space-y-6 py-4">
           {/* Order Flow Chart */}
           <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-bold">Order Flow (Last 2 Hours)</h4>
-              <div className="text-sm text-[#71717a]">5-minute intervals</div>
+              <div className="text-sm text-gray-500">5-minute intervals</div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={analytics.orderFlowHistory ?? []}>
@@ -192,7 +174,7 @@ export function AnalyticsModal({ open, onClose }: AnalyticsModalProps) {
           <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-bold">Delivery SLA Performance by Zone</h4>
-              <div className="text-sm text-[#71717a]">
+              <div className="text-sm text-gray-500">
                 <span className="inline-block w-3 h-3 bg-emerald-500 rounded mr-1"></span> Actual
                 <span className="inline-block w-3 h-3 bg-rose-500 rounded ml-3 mr-1"></span> Target
               </div>
@@ -275,7 +257,6 @@ export function AnalyticsModal({ open, onClose }: AnalyticsModalProps) {
 
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

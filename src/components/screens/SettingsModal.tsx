@@ -1,95 +1,75 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, RefreshCw, Bell, Clock, Store, Loader2, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Save, RefreshCw, Bell, Clock, Store, Loader2, AlertCircle, Settings2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
-import * as settingsApi from '../../api/utilities/settingsApi';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { Button } from '@/components/ui/button';
+import {
+  AppSettings,
+  DEFAULT_APP_SETTINGS,
+  SettingsScope,
+  getSettings,
+  updateSettings,
+  mergeAppSettings,
+} from '../../api/utilities/settingsApi';
+import { useAuth, getActiveStoreId } from '../../contexts/AuthContext';
 
 interface SettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+  /** Prefer `open` + `onOpenChange`; `isOpen` / `onClose` kept for older callers */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  /** admin = Citywide/admin dashboard; darkstore = store ops dashboard */
+  scope?: SettingsScope;
+  storeId?: string;
 }
 
-interface AppSettings {
-  // Auto-refresh intervals (in seconds)
-  refreshIntervals: {
-    dashboard: number;
-    alerts: number;
-    orders: number;
-    inventory: number;
-    analytics: number;
-  };
-  // Store mode
-  storeMode: 'online' | 'pause' | 'maintenance';
-  // Notifications
-  notifications: {
-    enabled: boolean;
-    sound: boolean;
-    criticalOnly: boolean;
-    email: boolean;
-  };
-  // Display preferences
-  display: {
-    theme: 'light' | 'dark' | 'auto';
-    timeFormat: '12h' | '24h';
-    dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
-  };
-  // Performance
-  performance: {
-    enableRealTimeUpdates: boolean;
-    enableOptimisticUpdates: boolean;
-    cacheTimeout: number; // in seconds
-  };
+function resolveScope(propScope: SettingsScope | undefined, userRole?: string): SettingsScope {
+  if (propScope) return propScope;
+  if (userRole === 'admin' || userRole === 'super_admin') return 'admin';
+  return 'darkstore';
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
-  refreshIntervals: {
-    dashboard: 30,
-    alerts: 15,
-    orders: 10,
-    inventory: 20,
-    analytics: 30,
-  },
-  storeMode: 'online',
-  notifications: {
-    enabled: true,
-    sound: true,
-    criticalOnly: false,
-    email: false,
-  },
-  display: {
-    theme: 'light',
-    timeFormat: '24h',
-    dateFormat: 'MM/DD/YYYY',
-  },
-  performance: {
-    enableRealTimeUpdates: true,
-    enableOptimisticUpdates: true,
-    cacheTimeout: 60,
-  },
-};
+export function SettingsModal({
+  open: openProp,
+  onOpenChange,
+  isOpen,
+  onClose,
+  scope: scopeProp,
+  storeId: storeIdProp,
+}: SettingsModalProps) {
+  const open = openProp ?? isOpen ?? false;
+  const handleOpenChange = (next: boolean) => {
+    onOpenChange?.(next);
+    if (!next) onClose?.();
+  };
+  const { user } = useAuth();
+  const scope = useMemo(() => resolveScope(scopeProp, user?.role), [scopeProp, user?.role]);
+  const storeId = storeIdProp ?? getActiveStoreId() ?? undefined;
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const originalSettingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
+  const originalSettingsRef = useRef<AppSettings>(DEFAULT_APP_SETTINGS);
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
-    if (isOpen) {
+    if (open) {
       loadSettings();
     }
     return () => {
       isMounted.current = false;
     };
-  }, [isOpen]);
+  }, [open, scope, storeId]);
 
   // Auto-refresh settings every 30 seconds while modal is open
   useEffect(() => {
-    if (!isOpen) return;
+    if (!open) return;
     
     const interval = setInterval(() => {
       if (isMounted.current && !saving && !hasChanges) {
@@ -98,28 +78,38 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [isOpen, saving, hasChanges]);
+  }, [open, saving, hasChanges]);
 
-  const loadSettings = async (isSilent = false) => {
+  const loadSettings = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setLoadError(false);
+    }
     try {
-      if (!isSilent) setLoading(true);
-      const data = await settingsApi.getSettings();
+      const { settings: data, lastUpdated } = await getSettings(scope, storeId);
       if (isMounted.current) {
-        const loadedSettings = { ...DEFAULT_SETTINGS, ...data };
+        const loadedSettings = mergeAppSettings(data);
         setSettings(loadedSettings);
         originalSettingsRef.current = JSON.parse(JSON.stringify(loadedSettings));
         setHasChanges(false);
-        if (!isSilent) {
-          toast.success('Settings loaded');
+        setLoadError(false);
+        if (lastUpdated) {
+          setLastSaved(new Date(lastUpdated));
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load settings:', error);
-      if (isMounted.current && !isSilent) {
-        toast.error('Failed to load settings');
+      if (isMounted.current) {
+        setLoadError(true);
+        setSettings(mergeAppSettings(null));
+        originalSettingsRef.current = JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS));
+        if (!silent) {
+          const message = error instanceof Error ? error.message : 'Failed to load settings';
+          toast.error(message);
+        }
       }
     } finally {
-      if (isMounted.current && !isSilent) {
+      if (isMounted.current && !silent) {
         setLoading(false);
       }
     }
@@ -128,20 +118,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await settingsApi.updateSettings(settings);
-      
+      const response = await updateSettings(settings, scope, storeId);
+
       if (response.success) {
-        originalSettingsRef.current = JSON.parse(JSON.stringify(settings));
+        const saved = mergeAppSettings(response.settings);
+        setSettings(saved);
+        originalSettingsRef.current = JSON.parse(JSON.stringify(saved));
         setHasChanges(false);
-        setLastSaved(new Date());
-        toast.success('✅ Settings saved successfully');
-        
-        // Emit event for other components to react to settings changes
-        window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: settings }));
+        setLastSaved(response.lastUpdated ? new Date(response.lastUpdated) : new Date());
+        setLoadError(false);
+        toast.success('Settings saved successfully');
+
+        window.dispatchEvent(
+          new CustomEvent('settingsUpdated', { detail: { settings: saved, scope, storeId } })
+        );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to save settings:', error);
-      toast.error(error.message || 'Failed to save settings');
+      toast.error(error instanceof Error ? error.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -168,54 +162,78 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const handleReset = () => {
-    setSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+    setSettings(JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS)));
     setHasChanges(true);
   };
 
-  if (!isOpen) return null;
+  const scopeLabel = scope === 'admin' ? 'Admin dashboard' : storeId ? `Store ${storeId}` : 'Darkstore';
+  const subtitleParts = [
+    `Configure real-time updates, notifications, and preferences (${scopeLabel})`,
+    lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : null,
+  ].filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col m-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#E0E0E0] bg-[#FAFAFA]">
-          <div>
-            <h2 className="text-xl font-bold text-[#212121]">Application Settings</h2>
-            <p className="text-sm text-[#757575] mt-1">
-              Configure real-time updates, notifications, and preferences
-              {lastSaved && (
-                <span className="ml-2 text-[#16A34A]">
-                  • Last saved: {lastSaved.toLocaleTimeString()}
-                </span>
-              )}
-            </p>
+    <AdminModal
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Application Settings"
+      subtitle={subtitleParts.join(' · ')}
+      icon={<Settings2 className="h-5 w-5" />}
+      maxWidth="max-w-4xl"
+      bodyClassName="px-6 py-4"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={handleReset} disabled={saving}>
+              Reset to Defaults
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadSettings()}
+              disabled={loading || saving}
+            >
+              <RefreshCw size={16} className={cn('mr-1.5', loading && 'animate-spin')} />
+              Refresh
+            </Button>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={loadSettings}
-              disabled={loading || saving}
-              className="p-2 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg transition-colors"
-              title="Refresh settings"
-            >
-              <RefreshCw size={18} className={cn(loading && 'animate-spin')} />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg transition-colors"
-            >
-              <X size={20} />
-            </button>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleSave()} disabled={saving || !hasChanges}>
+              {saving ? (
+                <>
+                  <Loader2 size={16} className="mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={16} className="mr-1.5" />
+                  Save Changes
+                </>
+              )}
+            </Button>
           </div>
         </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading && !settings ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 size={24} className="animate-spin text-[#1677FF]" />
-            </div>
-          ) : (
-            <div className="space-y-6">
+      }
+    >
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 size={24} className="animate-spin text-[#1677FF]" />
+        </div>
+      ) : (
+        <div className="space-y-6">
+              {loadError && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+                  <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Could not load saved settings</p>
+                    <p className="text-amber-800 mt-0.5">Showing defaults. Save to persist your preferences.</p>
+                  </div>
+                </div>
+              )}
               {/* Auto-Refresh Intervals */}
               <SettingsSection
                 title="Auto-Refresh Intervals"
@@ -398,49 +416,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
               </SettingsSection>
-            </div>
-          )}
-        </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-[#E0E0E0] bg-[#FAFAFA]">
-          <button
-            onClick={handleReset}
-            className="text-sm text-[#757575] hover:text-[#212121] font-medium"
-          >
-            Reset to Defaults
-          </button>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !hasChanges}
-              className={cn(
-                "px-4 py-2 bg-[#1677FF] text-white font-medium rounded-lg hover:bg-[#409EFF] flex items-center gap-2",
-                (saving || !hasChanges) && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {saving ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save size={16} />
-                  Save Changes
-                </>
-              )}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </AdminModal>
   );
 }
 

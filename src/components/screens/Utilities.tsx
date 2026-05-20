@@ -46,7 +46,7 @@ export function Utilities() {
       </div>
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} scope="darkstore" />
     </div>
   );
 }

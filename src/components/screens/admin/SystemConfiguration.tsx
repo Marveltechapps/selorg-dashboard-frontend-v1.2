@@ -81,13 +81,8 @@ import {
   Trash2,
   RotateCw,
 } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from './modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from './modals/AdminForm';
 
 export function SystemConfiguration() {
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings | null>(null);
@@ -1435,51 +1430,14 @@ export function SystemConfiguration() {
       </Tabs>
 
       {/* Add Escalation Rule Modal */}
-      <Dialog open={addEscalationOpen} onOpenChange={setAddEscalationOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Escalation Rule</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select>
-                <SelectTrigger id="esc-category"><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Payment">Payment</SelectItem>
-                  <SelectItem value="Delivery">Delivery</SelectItem>
-                  <SelectItem value="Refund">Refund</SelectItem>
-                  <SelectItem value="Quality">Quality</SelectItem>
-                  <SelectItem value="Account">Account</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select>
-                <SelectTrigger id="esc-priority"><SelectValue placeholder="Select priority" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>No Response Threshold (minutes)</Label>
-              <Input id="esc-minutes" type="number" placeholder="15" />
-            </div>
-            <div className="space-y-2">
-              <Label>Escalate To (Team)</Label>
-              <Input id="esc-team" placeholder="e.g. Operations Lead" />
-            </div>
-          </div>
-          <DialogFooter>
+      <AdminModal
+        open={addEscalationOpen}
+        onOpenChange={setAddEscalationOpen}
+        title="Add Escalation Rule"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setAddEscalationOpen(false)}>Cancel</Button>
             <Button onClick={() => {
-              const catEl = document.querySelector('#esc-category + [data-value]') as any;
               const minutes = parseInt((document.getElementById('esc-minutes') as HTMLInputElement)?.value || '0');
               const team = (document.getElementById('esc-team') as HTMLInputElement)?.value;
               if (minutes > 0 && team) {
@@ -1499,19 +1457,65 @@ export function SystemConfiguration() {
             }}>
               Add Rule
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Category">
+              <Select>
+                <SelectTrigger id="esc-category"><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Payment">Payment</SelectItem>
+                  <SelectItem value="Delivery">Delivery</SelectItem>
+                  <SelectItem value="Refund">Refund</SelectItem>
+                  <SelectItem value="Quality">Quality</SelectItem>
+                  <SelectItem value="Account">Account</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+          </AdminField>
+          <AdminField label="Priority">
+              <Select>
+                <SelectTrigger id="esc-priority"><SelectValue placeholder="Select priority" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
+                </SelectContent>
+              </Select>
+          </AdminField>
+          <AdminField label="No Response Threshold (minutes)" htmlFor="esc-minutes">
+              <Input id="esc-minutes" type="number" placeholder="15" />
+          </AdminField>
+          <AdminField label="Escalate To (Team)" htmlFor="esc-team">
+            <Input id="esc-team" placeholder="e.g. Operations Lead" />
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Create API Key Modal */}
-      <Dialog open={createKeyOpen} onOpenChange={(open) => {
-        setCreateKeyOpen(open);
-        if (!open) setNewKeyPlain(null);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{newKeyPlain ? 'API Key Created' : 'Create New API Key'}</DialogTitle>
-          </DialogHeader>
+      <AdminModal
+        open={createKeyOpen}
+        onOpenChange={(open) => {
+          setCreateKeyOpen(open);
+          if (!open) setNewKeyPlain(null);
+        }}
+        title={newKeyPlain ? 'API Key Created' : 'Create New API Key'}
+        footer={
+          newKeyPlain ? (
+            <Button onClick={() => { setCreateKeyOpen(false); setNewKeyPlain(null); }}>Close</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setCreateKeyOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreateApiKey} disabled={!newKeyName.trim() || newKeyScopes.length === 0}>
+                Create Key
+              </Button>
+            </>
+          )
+        }
+      >
+        <AdminFormBody>
           {newKeyPlain ? (
             <div className="space-y-4">
               <p className="text-sm text-amber-700 bg-amber-50 p-3 rounded-lg">
@@ -1531,39 +1535,25 @@ export function SystemConfiguration() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div>
-                <Label>Name</Label>
+            <>
+              <AdminField label="Name">
                 <Input
                   placeholder="e.g. Production API"
                   value={newKeyName}
                   onChange={(e) => setNewKeyName(e.target.value)}
                 />
-              </div>
-              <div>
-                <Label>Scopes (comma-separated)</Label>
+              </AdminField>
+              <AdminField label="Scopes (comma-separated)">
                 <Input
                   placeholder="read, write, admin"
                   value={newKeyScopes.join(', ')}
                   onChange={(e) => setNewKeyScopes(e.target.value.split(/[\s,]+/).map(s => s.trim()).filter(Boolean))}
                 />
-              </div>
-            </div>
+              </AdminField>
+            </>
           )}
-          <DialogFooter>
-            {newKeyPlain ? (
-              <Button onClick={() => { setCreateKeyOpen(false); setNewKeyPlain(null); }}>Close</Button>
-            ) : (
-              <>
-                <Button variant="outline" onClick={() => setCreateKeyOpen(false)}>Cancel</Button>
-                <Button onClick={handleCreateApiKey} disabled={!newKeyName.trim() || newKeyScopes.length === 0}>
-                  Create Key
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

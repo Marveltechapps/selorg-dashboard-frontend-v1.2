@@ -12,13 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -197,32 +192,43 @@ export function CollectionsScreen() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Collection' : 'Add Collection'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="name">Name *</Label>
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingId ? 'Edit Collection' : 'Add Collection'}
+        icon={<Layers className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid>
+            <AdminField label="Name *" htmlFor="name">
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g. Top Deals"
               />
-            </div>
-            <div>
-              <Label htmlFor="slug">Slug</Label>
+            </AdminField>
+            <AdminField label="Slug" htmlFor="slug">
               <Input
                 id="slug"
                 value={formData.slug}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
                 placeholder="e.g. top-deals (auto from name if empty)"
               />
-            </div>
-            <div>
-              <Label htmlFor="type">Type</Label>
+            </AdminField>
+            <AdminField label="Type" htmlFor="type">
               <select
                 id="type"
                 className="w-full h-10 px-3 rounded-md border border-input bg-background"
@@ -234,18 +240,8 @@ export function CollectionsScreen() {
                 <option value="manual">Manual (pick products)</option>
                 <option value="rule-based">Rule-based (filter by category, etc.)</option>
               </select>
-            </div>
-            {formData.type === 'manual' && (
-              <div>
-                <Label>Products (from Products Introduction)</Label>
-                <ProductPicker
-                  selectedIds={formData.productIds}
-                  onChange={(ids) => setFormData({ ...formData, productIds: ids })}
-                />
-              </div>
-            )}
-            <div>
-              <Label htmlFor="sortBy">Sort By</Label>
+            </AdminField>
+            <AdminField label="Sort By" htmlFor="sortBy">
               <select
                 id="sortBy"
                 className="w-full h-10 px-3 rounded-md border border-input bg-background"
@@ -258,19 +254,18 @@ export function CollectionsScreen() {
                 <option value="createdAt">Newest first</option>
                 <option value="name">Name</option>
               </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AdminField>
+          </AdminFormGrid>
+          {formData.type === 'manual' && (
+            <AdminField label="Products (from Products Introduction)">
+              <ProductPicker
+                selectedIds={formData.productIds}
+                onChange={(ids) => setFormData({ ...formData, productIds: ids })}
+              />
+            </AdminField>
+          )}
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

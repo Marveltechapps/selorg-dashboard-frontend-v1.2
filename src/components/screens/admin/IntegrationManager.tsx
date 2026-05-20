@@ -2,14 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from './modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from './modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -930,16 +924,22 @@ export function IntegrationManager() {
       </Tabs>
 
       {/* Create Webhook Modal */}
-      <Dialog open={showWebhookModal} onOpenChange={setShowWebhookModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Webhook</DialogTitle>
-            <DialogDescription>Configure a new webhook endpoint for event notifications</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Integration</label>
+      <AdminModal
+        open={showWebhookModal}
+        onOpenChange={setShowWebhookModal}
+        title="Create New Webhook"
+        subtitle="Configure a new webhook endpoint for event notifications"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowWebhookModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateWebhook}>Create Webhook</Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Integration">
               <Select
                 value={webhookForm.integrationId}
                 onValueChange={(value) => {
@@ -964,47 +964,41 @@ export function IntegrationManager() {
                     ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Event Type</label>
+          </AdminField>
+          <AdminField label="Event Type">
               <Input
                 placeholder="e.g., payment.captured, order.created"
                 value={webhookForm.event}
                 onChange={(e) => setWebhookForm({ ...webhookForm, event: e.target.value })}
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Webhook URL</label>
+          </AdminField>
+          <AdminField label="Webhook URL">
               <Input
                 placeholder="https://api.quickcommerce.com/webhooks/..."
                 value={webhookForm.url}
                 onChange={(e) => setWebhookForm({ ...webhookForm, url: e.target.value })}
               />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowWebhookModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateWebhook}>Create Webhook</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Generate API Key Modal */}
-      <Dialog open={showKeyModal} onOpenChange={setShowKeyModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate API Key</DialogTitle>
-            <DialogDescription>Create a new authentication key for integration access</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Integration</label>
+      <AdminModal
+        open={showKeyModal}
+        onOpenChange={setShowKeyModal}
+        title="Generate API Key"
+        subtitle="Create a new authentication key for integration access"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowKeyModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleGenerateKey}>Generate Key</Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Integration">
               <Select
                 value={keyForm.integrationId}
                 onValueChange={(value) => {
@@ -1029,19 +1023,15 @@ export function IntegrationManager() {
                     ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Key Name</label>
+          </AdminField>
+          <AdminField label="Key Name">
               <Input
                 placeholder="e.g., Production Key - Primary"
                 value={keyForm.name}
                 onChange={(e) => setKeyForm({ ...keyForm, name: e.target.value })}
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Environment</label>
+          </AdminField>
+          <AdminField label="Environment">
               <Select
                 value={keyForm.environment}
                 onValueChange={(value: any) => setKeyForm({ ...keyForm, environment: value })}
@@ -1054,29 +1044,22 @@ export function IntegrationManager() {
                   <SelectItem value="sandbox">Sandbox / Testing</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowKeyModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleGenerateKey}>Generate Key</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Integration Details Modal */}
-      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="text-2xl">{selectedIntegration?.logo}</span>
-              {selectedIntegration?.name}
-            </DialogTitle>
-            <DialogDescription>{selectedIntegration?.provider}</DialogDescription>
-          </DialogHeader>
+      <AdminModal
+        open={showDetailsModal}
+        onOpenChange={setShowDetailsModal}
+        title={selectedIntegration?.name ?? 'Integration Details'}
+        subtitle={selectedIntegration?.provider}
+        icon={selectedIntegration?.logo ? <span className="text-2xl">{selectedIntegration.logo}</span> : undefined}
+        maxWidth="max-w-2xl"
+        footer={<Button onClick={() => setShowDetailsModal(false)}>Close</Button>}
+      >
 
+        <AdminFormBody>
           {selectedIntegration && (
             <div className="space-y-4">
               {/* Status Overview */}
@@ -1161,23 +1144,23 @@ export function IntegrationManager() {
             </div>
           )}
 
-          <DialogFooter>
-            <Button onClick={() => setShowDetailsModal(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
+          )}
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Edit Integration Modal */}
-      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Integration - {selectedIntegration?.name}</DialogTitle>
-            <DialogDescription>Update integration configuration and settings</DialogDescription>
-          </DialogHeader>
-          {selectedIntegration && (
-            <div className="space-y-4">
-              <div>
-                <Label>Status</Label>
+      <AdminModal
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        title={`Edit Integration${selectedIntegration ? ` - ${selectedIntegration.name}` : ''}`}
+        subtitle="Update integration configuration and settings"
+        maxWidth="max-w-md"
+        footer={<Button variant="outline" onClick={() => setShowEditModal(false)}>Close</Button>}
+      >
+        {selectedIntegration && (
+          <AdminFormBody>
+            <AdminField label="Status">
                 <Select 
                   value={selectedIntegration.status} 
                   onValueChange={async (val: any) => {
@@ -1200,9 +1183,8 @@ export function IntegrationManager() {
                     <SelectItem value="testing">Testing</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label>Environment</Label>
+            </AdminField>
+            <AdminField label="Environment">
                 <Select value={selectedIntegration.config.environment} onValueChange={async (val: any) => {
                   try {
                     const updated = await updateIntegration(selectedIntegration.id, {
@@ -1228,14 +1210,10 @@ export function IntegrationManager() {
                     <SelectItem value="sandbox">Sandbox</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditModal(false)}>Cancel</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AdminField>
+          </AdminFormBody>
+        )}
+      </AdminModal>
     </div>
   );
 }

@@ -34,39 +34,51 @@ import {
   seedCitywideData,
 } from './citywideControlApi';
 import { ZoneDetailModal } from './modals/ZoneDetailModal';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminField } from '@/components/screens/admin/modals/AdminForm';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { IncidentDetailModal } from './modals/IncidentDetailModal';
+import { SurgeControlModal } from './modals/SurgeControlModal';
+import { DispatchEngineModal } from './modals/DispatchEngineModal';
+import { SettingsModal } from '@/components/screens/SettingsModal';
+import { toast } from 'sonner';
 
 function OutageManageModalContent({
   selectedOutage,
-  onSave,
-  onCancel,
+  status,
+  setStatus,
+  estimatedResolution,
+  setEstimatedResolution,
+  actionsTaken,
+  setActionsTaken,
 }: {
   selectedOutage: { id: string; storeId: string; storeName: string; outageReason?: string } | null;
-  onSave: (status: string, estimatedResolution: string, actionsTaken: string) => Promise<void>;
-  onCancel: () => void;
+  status: string;
+  setStatus: (v: string) => void;
+  estimatedResolution: string;
+  setEstimatedResolution: (v: string) => void;
+  actionsTaken: string;
+  setActionsTaken: (v: string) => void;
 }) {
-  const [status, setStatus] = useState('Investigating');
-  const [estimatedResolution, setEstimatedResolution] = useState('');
-  const [actionsTaken, setActionsTaken] = useState('');
-  const [saving, setSaving] = useState(false);
-
   if (!selectedOutage) return null;
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await onSave(status, estimatedResolution, actionsTaken);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <div className="space-y-4 mt-4">
+    <AdminFormBody>
       <div className="bg-rose-50 border border-rose-200 rounded-lg p-4">
         <div className="flex items-start gap-3">
           <AlertTriangle className="text-rose-600 mt-0.5" size={20} />
           <div className="flex-1">
-            <h4 className="font-bold text-rose-900">Store Outage: {selectedOutage.storeName || selectedOutage.storeId}</h4>
+            <h4 className="font-bold text-rose-900">
+              Store Outage: {selectedOutage.storeName || selectedOutage.storeId}
+            </h4>
             <p className="text-sm text-rose-700 mt-1">{selectedOutage.outageReason || 'Unknown reason'}</p>
             <p className="text-xs text-rose-600 mt-2">
               This store is currently offline. Update status and actions below.
@@ -74,60 +86,38 @@ function OutageManageModalContent({
           </div>
         </div>
       </div>
-      <div className="space-y-3">
-        <div>
-          <label className="text-sm font-medium text-[#18181b] mb-2 block">Status</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-          >
-            <option value="Investigating">Investigating</option>
-            <option value="Maintenance Required">Maintenance Required</option>
-            <option value="Resolved">Resolved</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-medium text-[#18181b] mb-2 block">Estimated Resolution</label>
-          <input
-            type="datetime-local"
-            value={estimatedResolution}
-            onChange={(e) => setEstimatedResolution(e.target.value)}
-            className="w-full px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium text-[#18181b] mb-2 block">Actions Taken</label>
-          <textarea
-            rows={4}
-            value={actionsTaken}
-            onChange={(e) => setActionsTaken(e.target.value)}
-            placeholder="Describe actions taken to resolve the outage..."
-            className="w-full px-3 py-2 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-          />
-        </div>
-      </div>
-      <div className="flex gap-3 pt-4">
-        <Button variant="outline" className="flex-1" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button
-          className="flex-1 bg-rose-600 hover:bg-rose-700"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
-    </div>
+      <AdminField label="Status">
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Investigating">Investigating</SelectItem>
+            <SelectItem value="Maintenance Required">Maintenance Required</SelectItem>
+            <SelectItem value="Resolved">Resolved</SelectItem>
+          </SelectContent>
+        </Select>
+      </AdminField>
+      <AdminField label="Estimated Resolution" htmlFor="outage-est-resolution">
+        <Input
+          id="outage-est-resolution"
+          type="datetime-local"
+          value={estimatedResolution}
+          onChange={(e) => setEstimatedResolution(e.target.value)}
+        />
+      </AdminField>
+      <AdminField label="Actions Taken" htmlFor="outage-actions">
+        <Textarea
+          id="outage-actions"
+          rows={4}
+          value={actionsTaken}
+          onChange={(e) => setActionsTaken(e.target.value)}
+          placeholder="Describe actions taken to resolve the outage..."
+        />
+      </AdminField>
+    </AdminFormBody>
   );
 }
-import { IncidentDetailModal } from './modals/IncidentDetailModal';
-import { SurgeControlModal } from './modals/SurgeControlModal';
-import { DispatchEngineModal } from './modals/DispatchEngineModal';
-import { SettingsModal } from '@/components/screens/SettingsModal';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { toast } from 'sonner';
 
 export function CitywideControl() {
   const [metrics, setMetrics] = useState<LiveMetrics | null>(null);
@@ -152,6 +142,10 @@ export function CitywideControl() {
   const [showAlerts, setShowAlerts] = useState(false);
   const [showOutageManage, setShowOutageManage] = useState(false);
   const [selectedOutage, setSelectedOutage] = useState<{ id: string; storeId: string; storeName: string; outageReason?: string } | null>(null);
+  const [outageStatus, setOutageStatus] = useState('Investigating');
+  const [outageEstimatedResolution, setOutageEstimatedResolution] = useState('');
+  const [outageActionsTaken, setOutageActionsTaken] = useState('');
+  const [outageSaving, setOutageSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -484,6 +478,10 @@ export function CitywideControl() {
                            className="px-2 py-1 text-xs font-bold bg-white border border-rose-200 text-rose-600 rounded shadow-sm hover:bg-rose-50"
                            onClick={() => {
                              setSelectedOutage({ id: outage.id, storeId: outage.storeId, storeName: outage.storeName || outage.storeId, outageReason: outage.outageReason });
+                             setOutageStatus('Investigating');
+                             setOutageEstimatedResolution('');
+                             setOutageActionsTaken('');
+                             setOutageSaving(false);
                              setShowOutageManage(true);
                            }}
                          >
@@ -652,113 +650,148 @@ export function CitywideControl() {
       <DispatchEngineModal
         open={showDispatchEngine}
         onClose={() => setShowDispatchEngine(false)}
+        onStatusChange={() => loadAllData()}
       />
       <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
+        open={showSettings}
+        onOpenChange={setShowSettings}
+        scope="admin"
       />
-      <Dialog open={showAlerts} onOpenChange={setShowAlerts}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl flex items-center gap-2">
-              <Bell className="text-amber-500" size={24} />
-              System Alerts & Notifications
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="text-amber-600 mt-0.5" size={20} />
-                <div className="flex-1">
-                  <h4 className="font-bold text-amber-900">Active Alerts</h4>
-                  <p className="text-sm text-amber-700 mt-1">
-                    {incidents.filter(i => i.severity === 'critical').length} critical, {incidents.filter(i => i.severity === 'warning').length} warning incidents
-                  </p>
-                </div>
+      <AdminModal
+        open={showAlerts}
+        onOpenChange={setShowAlerts}
+        title="System Alerts & Notifications"
+        icon={<Bell className="h-5 w-5 text-amber-500" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <Button variant="outline" onClick={() => setShowAlerts(false)}>
+            Close
+          </Button>
+        }
+      >
+        <AdminFormBody>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-amber-600 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h4 className="font-bold text-amber-900">Active Alerts</h4>
+                <p className="text-sm text-amber-700 mt-1">
+                  {incidents.filter((i) => i.severity === 'critical').length} critical,{' '}
+                  {incidents.filter((i) => i.severity === 'warning').length} warning incidents
+                </p>
               </div>
             </div>
-            <div className="space-y-2">
-              <h4 className="font-bold text-[#18181b]">Recent Incidents</h4>
-              {incidents.slice(0, 5).map((incident) => (
-                <div key={incident.id} className="border border-[#e4e4e7] rounded-lg p-3 hover:bg-[#f4f4f5]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                          incident.severity === 'critical' ? 'bg-rose-100 text-rose-700' :
-                          incident.severity === 'warning' ? 'bg-amber-100 text-amber-700' :
-                          'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {incident.severity.toUpperCase()}
-                        </span>
-                        <span className="text-sm font-medium text-[#18181b]">{incident.title}</span>
-                      </div>
-                      <p className="text-xs text-[#71717a] mt-1">{incident.description}</p>
-                      <p className="text-[10px] text-[#a1a1aa] mt-1">
-                        Started: {formatTimeAgo(incident.startTime)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {incidents.length === 0 && (
-                <p className="text-sm text-[#71717a] text-center py-4">No active incidents</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-bold text-[#18181b]">Exception Queue</h4>
-              {exceptions.slice(0, 3).map((exception) => (
-                <div key={exception.id} className="border border-[#e4e4e7] rounded-lg p-3 hover:bg-[#f4f4f5]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <span className={`text-xs font-bold ${getExceptionTypeColor(exception.type)}`}>
-                        {exception.type.replace('_', ' ').toUpperCase()}
-                      </span>
-                      <p className="text-sm font-medium text-[#18181b] mt-1">{exception.description}</p>
-                      <p className="text-[10px] text-[#a1a1aa] mt-1">
-                        Order {exception.orderId} • {formatTimeAgo(exception.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {exceptions.length === 0 && (
-                <p className="text-sm text-[#71717a] text-center py-4">No exceptions</p>
-              )}
-            </div>
           </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={showOutageManage} onOpenChange={(open) => { setShowOutageManage(open); if (!open) setSelectedOutage(null); }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl flex items-center gap-2">
-              <AlertTriangle className="text-rose-500" size={24} />
-              Outage Management
-            </DialogTitle>
-          </DialogHeader>
-          <OutageManageModalContent
-            selectedOutage={selectedOutage}
-            onSave={async (statusSelect, estimatedResolution, actionsTaken) => {
-              if (!selectedOutage?.id) return;
-              const status = statusSelect === 'Resolved' ? 'resolved' : 'ongoing';
-              const payload: Record<string, string | null> = { status };
-              if (estimatedResolution) payload.estimatedResolution = estimatedResolution;
-              if (actionsTaken) payload.actionsTaken = actionsTaken;
-              try {
-                await updateIncident(selectedOutage.id, payload);
-                toast.success('Outage management updated');
+          <div className="space-y-2">
+            <h4 className="font-bold text-[#18181b]">Recent Incidents</h4>
+            {incidents.slice(0, 5).map((incident) => (
+              <div key={incident.id} className="border border-[#e4e4e7] rounded-lg p-3 hover:bg-[#f4f4f5]">
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className={`text-xs font-bold px-2 py-0.5 rounded ${
+                      incident.severity === 'critical'
+                        ? 'bg-rose-100 text-rose-700'
+                        : incident.severity === 'warning'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {incident.severity.toUpperCase()}
+                  </span>
+                  <span className="text-sm font-medium text-[#18181b]">{incident.title}</span>
+                </div>
+                <p className="text-xs text-[#71717a] mt-1">{incident.description}</p>
+                <p className="text-[10px] text-[#a1a1aa] mt-1">Started: {formatTimeAgo(incident.startTime)}</p>
+              </div>
+            ))}
+            {incidents.length === 0 && (
+              <p className="text-sm text-[#71717a] text-center py-4">No active incidents</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <h4 className="font-bold text-[#18181b]">Exception Queue</h4>
+            {exceptions.slice(0, 3).map((exception) => (
+              <div key={exception.id} className="border border-[#e4e4e7] rounded-lg p-3 hover:bg-[#f4f4f5]">
+                <span className={`text-xs font-bold ${getExceptionTypeColor(exception.type)}`}>
+                  {exception.type.replace('_', ' ').toUpperCase()}
+                </span>
+                <p className="text-sm font-medium text-[#18181b] mt-1">{exception.description}</p>
+                <p className="text-[10px] text-[#a1a1aa] mt-1">
+                  Order {exception.orderId} · {formatTimeAgo(exception.timestamp)}
+                </p>
+              </div>
+            ))}
+            {exceptions.length === 0 && (
+              <p className="text-sm text-[#71717a] text-center py-4">No exceptions</p>
+            )}
+          </div>
+        </AdminFormBody>
+      </AdminModal>
+      <AdminModal
+        open={showOutageManage}
+        onOpenChange={(open) => {
+          setShowOutageManage(open);
+          if (!open) {
+            setSelectedOutage(null);
+            setOutageStatus('Investigating');
+            setOutageEstimatedResolution('');
+            setOutageActionsTaken('');
+            setOutageSaving(false);
+          }
+        }}
+        title="Outage Management"
+        subtitle={selectedOutage ? selectedOutage.storeName || selectedOutage.storeId : undefined}
+        icon={<AlertTriangle className="h-5 w-5 text-rose-500" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
                 setShowOutageManage(false);
                 setSelectedOutage(null);
-                loadAllData();
-              } catch {
-                toast.error('Failed to update outage');
-              }
-            }}
-            onCancel={() => { setShowOutageManage(false); setSelectedOutage(null); }}
-          />
-        </DialogContent>
-      </Dialog>
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700"
+              disabled={outageSaving || !selectedOutage?.id}
+              onClick={async () => {
+                if (!selectedOutage?.id) return;
+                setOutageSaving(true);
+                const statusVal = outageStatus === 'Resolved' ? 'resolved' : 'ongoing';
+                const payload: Record<string, string | null> = { status: statusVal };
+                if (outageEstimatedResolution) payload.estimatedResolution = outageEstimatedResolution;
+                if (outageActionsTaken) payload.actionsTaken = outageActionsTaken;
+                try {
+                  await updateIncident(selectedOutage.id, payload);
+                  toast.success('Outage management updated');
+                  setShowOutageManage(false);
+                  setSelectedOutage(null);
+                  loadAllData();
+                } catch {
+                  toast.error('Failed to update outage');
+                } finally {
+                  setOutageSaving(false);
+                }
+              }}
+            >
+              {outageSaving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </>
+        }
+      >
+        <OutageManageModalContent
+          selectedOutage={selectedOutage}
+          status={outageStatus}
+          setStatus={setOutageStatus}
+          estimatedResolution={outageEstimatedResolution}
+          setEstimatedResolution={setOutageEstimatedResolution}
+          actionsTaken={outageActionsTaken}
+          setActionsTaken={setOutageActionsTaken}
+        />
+      </AdminModal>
     </div>
   );
 }

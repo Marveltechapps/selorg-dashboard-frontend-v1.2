@@ -153,7 +153,9 @@ export async function fetchTickets(
 }
 
 export async function fetchTicketById(id: string): Promise<SupportTicket | null> {
-  const res = await apiRequest<{ success: boolean; data: SupportTicket }>(`${PREFIX}/tickets/${id}`);
+  const res = await apiRequest<{ success: boolean; data: SupportTicket }>(
+    `${PREFIX}/tickets/${encodeURIComponent(id)}`
+  );
   return res.data ?? null;
 }
 
@@ -181,17 +183,20 @@ export async function createTicket(
 }
 
 export async function updateTicket(id: string, data: Partial<SupportTicket>): Promise<SupportTicket> {
-  const res = await apiRequest<{ success: boolean; data: SupportTicket }>(`${PREFIX}/tickets/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
+  const res = await apiRequest<{ success: boolean; data: SupportTicket }>(
+    `${PREFIX}/tickets/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
   if (!res.data) throw new Error('Failed to update ticket');
   return res.data;
 }
 
 export async function assignTicket(ticketId: string, agentId: string, agentName?: string): Promise<SupportTicket> {
   const res = await apiRequest<{ success: boolean; data: SupportTicket }>(
-    `${PREFIX}/tickets/${ticketId}/assign`,
+    `${PREFIX}/tickets/${encodeURIComponent(ticketId)}/assign`,
     {
       method: 'POST',
       body: JSON.stringify({ agentId, agentName }),
@@ -206,7 +211,7 @@ export async function addTicketNote(
   note: Omit<TicketNote, 'id' | 'createdAt'>
 ): Promise<TicketNote> {
   const res = await apiRequest<{ success: boolean; data: TicketNote }>(
-    `${PREFIX}/tickets/${ticketId}/notes`,
+    `${PREFIX}/tickets/${encodeURIComponent(ticketId)}/notes`,
     {
       method: 'POST',
       body: JSON.stringify(note),
@@ -218,12 +223,73 @@ export async function addTicketNote(
 
 export async function closeTicket(ticketId: string): Promise<SupportTicket> {
   const res = await apiRequest<{ success: boolean; data: SupportTicket }>(
-    `${PREFIX}/tickets/${ticketId}/close`,
+    `${PREFIX}/tickets/${encodeURIComponent(ticketId)}/close`,
     {
       method: 'POST',
     }
   );
   if (!res.data) throw new Error('Failed to close ticket');
+  return res.data;
+}
+
+export async function escalateTicket(
+  ticketId: string,
+  payload: { targetTeam: 'darkstore' | 'rider_ops'; description?: string; notes?: string }
+): Promise<SupportTicket> {
+  const res = await apiRequest<{ success: boolean; data: SupportTicket; error?: string }>(
+    `${PREFIX}/tickets/${encodeURIComponent(ticketId)}/escalate`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.data) throw new Error(res.error || 'Failed to escalate ticket');
+  return res.data;
+}
+
+export interface TicketRefundResult {
+  ticket: SupportTicket;
+  refund: { id: string; amount: number; status: string; orderNumber?: string };
+}
+
+export async function triggerTicketRefund(
+  ticketId: string,
+  payload: {
+    amount: number;
+    reasonText?: string;
+    reason?: string;
+    reasonCode?: string;
+    orderNumber?: string;
+  }
+): Promise<TicketRefundResult> {
+  const res = await apiRequest<{ success: boolean; data: TicketRefundResult; error?: string }>(
+    `${PREFIX}/tickets/${encodeURIComponent(ticketId)}/refund`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.data) throw new Error(res.error || 'Failed to create refund');
+  return res.data;
+}
+
+export interface TicketRedeliveryResult {
+  ticket: SupportTicket;
+  dispatch: { orderId: string; status: string; message?: string };
+}
+
+export async function triggerTicketRedelivery(
+  ticketId: string,
+  payload: { notes?: string; orderNumber?: string }
+): Promise<TicketRedeliveryResult> {
+  const res = await apiRequest<{ success: boolean; data: TicketRedeliveryResult; error?: string }>(
+    `${PREFIX}/tickets/${encodeURIComponent(ticketId)}/redelivery`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.data) throw new Error(res.error || 'Failed to create re-delivery');
   return res.data;
 }
 

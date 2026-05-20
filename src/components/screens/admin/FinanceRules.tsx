@@ -51,13 +51,8 @@ import {
   FinancialLimit,
   FinancialYear,
 } from './financeRulesApi';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from './modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from './modals/AdminForm';
 import { toast } from 'sonner';
 import {
   Receipt,
@@ -1013,22 +1008,27 @@ export function FinanceRules() {
       </Tabs>
 
       {/* Add Tax Rule Modal */}
-      <Dialog open={taxModalOpen} onOpenChange={setTaxModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Tax Rule</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Tax Name</Label>
+      <AdminModal
+        open={taxModalOpen}
+        onOpenChange={setTaxModalOpen}
+        title="Add Tax Rule"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setTaxModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateTaxRule}>Create Tax Rule</Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Tax Name">
               <Input
                 value={taxForm.name}
                 onChange={(e) => setTaxForm({ ...taxForm, name: e.target.value })}
                 placeholder="e.g. GST 18%"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
+          </AdminField>
+          <AdminField label="Type">
               <Select
                 value={taxForm.type}
                 onValueChange={(val) => setTaxForm({ ...taxForm, type: val as TaxRule['type'] })}
@@ -1043,9 +1043,8 @@ export function FinanceRules() {
                   <SelectItem value="VAT">VAT</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Rate (%)</Label>
+          </AdminField>
+          <AdminField label="Rate (%)">
               <Input
                 type="number"
                 min="0"
@@ -1053,47 +1052,49 @@ export function FinanceRules() {
                 value={taxForm.rate || ''}
                 onChange={(e) => setTaxForm({ ...taxForm, rate: parseFloat(e.target.value) || 0 })}
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Applicable On</Label>
+          </AdminField>
+          <AdminField label="Applicable On">
               <Input
                 value={taxForm.applicableOn}
                 onChange={(e) => setTaxForm({ ...taxForm, applicableOn: e.target.value })}
                 placeholder="e.g. All goods"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Effective From</Label>
+          </AdminField>
+          <AdminField label="Effective From">
               <Input
                 type="date"
                 value={taxForm.effectiveFrom || ''}
                 onChange={(e) => setTaxForm({ ...taxForm, effectiveFrom: e.target.value })}
               />
-            </div>
-            <div className="flex items-center gap-2">
+          </AdminField>
+          <AdminField label="Active">
+            <div className="flex items-center gap-2 pt-1">
               <Switch
                 checked={taxForm.isActive}
                 onCheckedChange={(checked) => setTaxForm({ ...taxForm, isActive: checked })}
+                id="tax-active"
               />
-              <Label>Active</Label>
+              <Label htmlFor="tax-active" className="font-normal">Active</Label>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTaxModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateTaxRule}>Create Tax Rule</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Add Payout Schedule Modal */}
-      <Dialog open={payoutAddOpen} onOpenChange={setPayoutAddOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Payout Schedule</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Vendor Tier</Label>
+      <AdminModal
+        open={payoutAddOpen}
+        onOpenChange={setPayoutAddOpen}
+        title="Add Payout Schedule"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPayoutAddOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreatePayoutSchedule}>Create</Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Vendor Tier">
               <Select
                 value={payoutForm.vendorTier}
                 onValueChange={(val) => setPayoutForm({ ...payoutForm, vendorTier: val as PayoutSchedule['vendorTier'] })}
@@ -1108,138 +1109,132 @@ export function FinanceRules() {
                   <SelectItem value="bronze">Bronze</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Cycle</Label>
-              <Select
-                value={payoutForm.cycle}
-                onValueChange={(val) => setPayoutForm({ ...payoutForm, cycle: val as PayoutSchedule['cycle'] })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="bi-weekly">Bi-weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Processing Day</Label>
+          </AdminField>
+          <AdminField label="Cycle">
+            <Select
+              value={payoutForm.cycle}
+              onValueChange={(val) => setPayoutForm({ ...payoutForm, cycle: val as PayoutSchedule['cycle'] })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="bi-weekly">Bi-weekly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
+          <AdminField label="Processing Day">
+            <Input
+              value={payoutForm.processingDay}
+              onChange={(e) => setPayoutForm({ ...payoutForm, processingDay: e.target.value })}
+              placeholder="e.g. Monday"
+            />
+          </AdminField>
+          <AdminFormGrid cols={2}>
+            <AdminField label="Min Payout (₹)">
               <Input
-                value={payoutForm.processingDay}
-                onChange={(e) => setPayoutForm({ ...payoutForm, processingDay: e.target.value })}
-                placeholder="e.g. Monday"
+                type="number"
+                min="0"
+                value={payoutForm.minPayout || ''}
+                onChange={(e) => setPayoutForm({ ...payoutForm, minPayout: parseInt(e.target.value) || 0 })}
               />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Min Payout (₹)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={payoutForm.minPayout || ''}
-                  onChange={(e) => setPayoutForm({ ...payoutForm, minPayout: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Max Payout (₹)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={payoutForm.maxPayout || ''}
-                  onChange={(e) => setPayoutForm({ ...payoutForm, maxPayout: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+            </AdminField>
+            <AdminField label="Max Payout (₹)">
+              <Input
+                type="number"
+                min="0"
+                value={payoutForm.maxPayout || ''}
+                onChange={(e) => setPayoutForm({ ...payoutForm, maxPayout: parseInt(e.target.value) || 0 })}
+              />
+            </AdminField>
+          </AdminFormGrid>
+          <AdminField label="Auto-Approve">
+            <div className="flex items-center gap-2 pt-1">
               <Switch
                 checked={payoutForm.autoApprove}
                 onCheckedChange={(checked) => setPayoutForm({ ...payoutForm, autoApprove: checked })}
+                id="payout-auto-approve"
               />
-              <Label>Auto-Approve</Label>
+              <Label htmlFor="payout-auto-approve" className="font-normal">Enable auto-approve</Label>
             </div>
-            {payoutForm.autoApprove && (
-              <div className="space-y-2">
-                <Label>Auto-Approve Threshold (₹)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={payoutForm.autoApproveThreshold || ''}
-                  onChange={(e) => setPayoutForm({ ...payoutForm, autoApproveThreshold: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayoutAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreatePayoutSchedule}>Create</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminField>
+          {payoutForm.autoApprove && (
+            <AdminField label="Auto-Approve Threshold (₹)">
+              <Input
+                type="number"
+                min="0"
+                value={payoutForm.autoApproveThreshold || ''}
+                onChange={(e) => setPayoutForm({ ...payoutForm, autoApproveThreshold: parseInt(e.target.value) || 0 })}
+              />
+            </AdminField>
+          )}
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Edit Payout Schedule Modal */}
-      <Dialog open={!!payoutEditSchedule} onOpenChange={(open) => !open && setPayoutEditSchedule(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Payout Schedule</DialogTitle>
-          </DialogHeader>
-          {payoutEditSchedule && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Processing Day</Label>
-                <Input
-                  value={payoutEditSchedule.processingDay}
-                  onChange={(e) => setPayoutEditSchedule({ ...payoutEditSchedule, processingDay: e.target.value })}
-                  placeholder="e.g. Monday"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Min Payout (₹)</Label>
+      <AdminModal
+        open={!!payoutEditSchedule}
+        onOpenChange={(open) => !open && setPayoutEditSchedule(null)}
+        title="Edit Payout Schedule"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPayoutEditSchedule(null)}>Cancel</Button>
+            <Button onClick={handleSavePayoutSchedule}>Save Changes</Button>
+          </>
+        }
+      >
+        {payoutEditSchedule && (
+          <AdminFormBody>
+            <AdminField label="Processing Day">
+              <Input
+                value={payoutEditSchedule.processingDay}
+                onChange={(e) => setPayoutEditSchedule({ ...payoutEditSchedule, processingDay: e.target.value })}
+                placeholder="e.g. Monday"
+              />
+            </AdminField>
+            <AdminField label="Min Payout (₹)">
                 <Input
                   type="number"
                   min="0"
                   value={payoutEditSchedule.minPayout || ''}
                   onChange={(e) => setPayoutEditSchedule({ ...payoutEditSchedule, minPayout: parseInt(e.target.value) || 0 })}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label>Max Payout (₹)</Label>
+            </AdminField>
+            <AdminField label="Max Payout (₹)">
                 <Input
                   type="number"
                   min="0"
                   value={payoutEditSchedule.maxPayout || ''}
                   onChange={(e) => setPayoutEditSchedule({ ...payoutEditSchedule, maxPayout: parseInt(e.target.value) || 0 })}
                 />
-              </div>
-              <div className="flex items-center gap-2">
+            </AdminField>
+            <AdminField label="Auto-Approve">
+              <div className="flex items-center gap-2 pt-1">
                 <Switch
                   checked={payoutEditSchedule.autoApprove}
                   onCheckedChange={(checked) => setPayoutEditSchedule({ ...payoutEditSchedule, autoApprove: checked })}
+                  id="payout-edit-auto"
                 />
-                <Label>Auto-Approve</Label>
+                <Label htmlFor="payout-edit-auto" className="font-normal">Enable auto-approve</Label>
               </div>
-              {payoutEditSchedule.autoApprove && (
-                <div className="space-y-2">
-                  <Label>Auto-Approve Threshold (₹)</Label>
+            </AdminField>
+            {payoutEditSchedule.autoApprove && (
+              <AdminField label="Auto-Approve Threshold (₹)">
                   <Input
                     type="number"
                     min="0"
                     value={payoutEditSchedule.autoApproveThreshold || ''}
                     onChange={(e) => setPayoutEditSchedule({ ...payoutEditSchedule, autoApproveThreshold: parseInt(e.target.value) || 0 })}
                   />
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayoutEditSchedule(null)}>Cancel</Button>
-            <Button onClick={handleSavePayoutSchedule}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              </AdminField>
+            )}
+          </AdminFormBody>
+        )}
+      </AdminModal>
     </div>
   );
 }

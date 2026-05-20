@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,7 +46,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
       }).finally(() => setRefsLoading(false));
     }
   }, [open]);
-  
+
   const addTier = () => {
     setFormData(prev => ({
       ...prev,
@@ -128,7 +122,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
       if (dType === 'percentage') dType = 'PERCENTAGE';
       if (dType === 'flat') dType = 'FLAT_DISCOUNT';
       if (dType === 'free_delivery') dType = 'FREE_DELIVERY';
-      
+
       setFormData({
         code: editCoupon.code,
         name: editCoupon.name,
@@ -205,7 +199,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
       });
     }
   }, [open, editCoupon]);
-  
+
   const [formData, setFormData] = useState({
     code: '',
     name: '',
@@ -368,7 +362,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
         validDays: formData.validDays,
         validTimeSlots: formData.validTimeSlots,
       };
-      
+
       if (editCoupon) {
         await updateCoupon(editCoupon.id, couponData as any);
         toast.success(`Coupon "${couponCode}" updated successfully`);
@@ -376,7 +370,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
         await createCoupon(couponData as any);
         toast.success(`Coupon "${couponCode}" created successfully`);
       }
-      
+
       onSuccess();
       onOpenChange(false);
     } catch (error) {
@@ -387,28 +381,34 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <Ticket className="text-purple-600" size={20} />
-            </div>
-            <div>
-              <DialogTitle>{editCoupon ? 'Edit Coupon Code' : 'Create Coupon Code'}</DialogTitle>
-              <DialogDescription>{editCoupon ? 'Update coupon details and logic' : 'Generate a new discount coupon for customers'}</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-8 mt-6">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      scrollBody={false}
+      title={editCoupon ? 'Edit Coupon Code' : 'Create Coupon Code'}
+      subtitle={editCoupon ? 'Update coupon details and logic' : 'Generate a new discount coupon for customers'}
+      icon={<Ticket size={20} />}
+      maxWidth="max-w-4xl"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-purple-600 hover:bg-purple-700 min-w-[140px]">
+            {loading ? (editCoupon ? 'Updating...' : 'Creating...') : (editCoupon ? 'Update Coupon' : 'Create Coupon')}
+          </Button>
+        </>
+      }
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="space-y-8 mt-6 pb-6">
           {/* SECTION 1 — Basic identity */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 pb-2 border-b">
               <Ticket className="w-4 h-4 text-purple-600" />
               <h3 className="font-semibold text-base">SECTION 1 — Basic Identity</h3>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="coupon-code">Coupon Code *</Label>
@@ -425,18 +425,18 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                     className="flex-1 font-mono"
                     disabled={!!editCoupon}
                   />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     size="icon"
                     onClick={handleGenerateCode}
                     title="Generate random code"
                   >
                     <RefreshCw size={14} />
                   </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     size="icon"
                     onClick={handleCopyCode}
                     disabled={!formData.code}
@@ -445,7 +445,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                     <Copy size={14} />
                   </Button>
                 </div>
-                <p className="text-xs text-[#71717a]">Uppercase only, no spaces, no special chars</p>
+                <p className="text-xs text-gray-500">Uppercase only, no spaces, no special chars</p>
               </div>
 
               <div className="space-y-2">
@@ -456,7 +456,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   value={formData.name}
                   onChange={(e) => handleChange('name', e.target.value)}
                 />
-                <p className="text-xs text-[#71717a]">Shown to customer in app</p>
+                <p className="text-xs text-gray-500">Shown to customer in app</p>
               </div>
             </div>
 
@@ -469,7 +469,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                 onChange={(e) => handleChange('description', e.target.value)}
                 rows={2}
               />
-              <p className="text-xs text-[#71717a]">Shown in coupon detail screen</p>
+              <p className="text-xs text-gray-500">Shown in coupon detail screen</p>
             </div>
 
             <div className="space-y-2">
@@ -526,7 +526,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onChange={(e) => handleChange('minOrderValue', e.target.value)}
                   min="0"
                 />
-                <p className="text-xs text-[#71717a]">Minimum cart value to unlock</p>
+                <p className="text-xs text-gray-500">Minimum cart value to unlock</p>
               </div>
 
               {(formData.discountType === 'PERCENTAGE' || formData.discountType === 'FREE_DELIVERY') && (
@@ -560,10 +560,10 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
             </div>
 
             {formData.discountOn === 'CATEGORY' && (
-              <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+              <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                 <Label>Applicable Categories *</Label>
                 {refsLoading ? (
-                  <p className="text-sm text-[#71717a]">Loading categories...</p>
+                  <p className="text-sm text-gray-500">Loading categories...</p>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {categories.map(cat => (
@@ -590,12 +590,12 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   value={formData.applicableSkuIds}
                   onChange={(e) => handleChange('applicableSkuIds', e.target.value)}
                 />
-                <p className="text-xs text-[#71717a]">Comma-separated list of product SKUs</p>
+                <p className="text-xs text-gray-500">Comma-separated list of product SKUs</p>
               </div>
             )}
 
             {formData.discountType === 'TIERED_FLAT' && (
-              <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+              <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <Label>Discount Tiers</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addTier}>
@@ -640,7 +640,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onChange={(e) => handleChange('bogoMinQty', e.target.value)}
                   min="1"
                 />
-                <p className="text-xs text-[#71717a]">Default: 2 (Buy 1 Get 1)</p>
+                <p className="text-xs text-gray-500">Default: 2 (Buy 1 Get 1)</p>
               </div>
             )}
           </div>
@@ -689,7 +689,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-[#71717a]">Empty = all days valid</p>
+              <p className="text-xs text-gray-500">Empty = all days valid</p>
             </div>
 
             <div className="space-y-3">
@@ -701,8 +701,8 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {formData.validTimeSlots.map((slot, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 bg-muted/20 rounded border">
-                    <Clock className="w-3 h-3 text-muted-foreground" />
+                  <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded border">
+                    <Clock className="w-3 h-3 text-gray-500" />
                     <Input
                       type="time"
                       value={slot.from}
@@ -722,7 +722,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-[#71717a]">Empty = all day valid</p>
+              <p className="text-xs text-gray-500">Empty = all day valid</p>
             </div>
           </div>
 
@@ -746,7 +746,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onChange={(e) => handleChange('usageLimit', e.target.value)}
                   min="0"
                 />
-                <p className="text-xs text-[#71717a]">0 means unlimited usage</p>
+                <p className="text-xs text-gray-500">0 means unlimited usage</p>
               </div>
 
               <div className="space-y-2">
@@ -759,12 +759,12 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onChange={(e) => handleChange('usagePerUser', e.target.value)}
                   min="1"
                 />
-                <p className="text-xs text-[#71717a]">Times each user can use this</p>
+                <p className="text-xs text-gray-500">Times each user can use this</p>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4 py-2">
-              <div className="flex items-center justify-between p-3 bg-muted/20 rounded border">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
                 <div className="space-y-0.5">
                   <Label className="text-xs">First Order Only</Label>
                 </div>
@@ -773,7 +773,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onCheckedChange={(val) => handleChange('isFirstOrderOnly', val)}
                 />
               </div>
-              <div className="flex items-center justify-between p-3 bg-muted/20 rounded border">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
                 <div className="space-y-0.5">
                   <Label className="text-xs">Stackable</Label>
                 </div>
@@ -782,7 +782,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onCheckedChange={(val) => handleChange('isStackable', val)}
                 />
               </div>
-              <div className="flex items-center justify-between p-3 bg-muted/20 rounded border">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
                 <div className="space-y-0.5">
                   <Label className="text-xs">Exclude Sale Items</Label>
                 </div>
@@ -850,10 +850,10 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
               </div>
             )}
 
-            <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+            <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
               <Label>Target Zones (Empty = all zones)</Label>
               {refsLoading ? (
-                <p className="text-sm text-[#71717a]">Loading zones...</p>
+                <p className="text-sm text-gray-500">Loading zones...</p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {zones.map(zone => (
@@ -906,7 +906,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                   onChange={(e) => handleChange('priorityRank', e.target.value)}
                   min="1"
                 />
-                <p className="text-xs text-[#71717a]">1 = shown first in app</p>
+                <p className="text-xs text-gray-500">1 = shown first in app</p>
               </div>
             </div>
 
@@ -945,7 +945,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                 id="deep-link"
                 value={formData.deepLink || (formData.code ? `organicapp://coupon/${formData.code}` : '')}
                 readOnly
-                className="bg-muted font-mono text-xs"
+                className="bg-gray-50 font-mono text-xs"
               />
             </div>
 
@@ -993,7 +993,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
                       onChange={(e) => handleChange('cashbackExpiryDays', e.target.value)}
                       min="1"
                     />
-                    <p className="text-xs text-[#71717a]">Days wallet credit is valid</p>
+                    <p className="text-xs text-gray-500">Days wallet credit is valid</p>
                   </div>
                 </div>
               </div>
@@ -1004,7 +1004,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
           {formData.code && (
             <div className="mt-8 space-y-3">
               <Label>App Preview</Label>
-              <div 
+              <div
                 className="p-6 rounded-2xl text-white relative overflow-hidden shadow-lg"
                 style={{ backgroundColor: formData.themeColor }}
               >
@@ -1050,17 +1050,7 @@ export function AddCouponModal({ open, onOpenChange, onSuccess, editCoupon }: Ad
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-3 mt-10 pt-6 border-t border-[#e4e4e7]">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-purple-600 hover:bg-purple-700 min-w-[140px]">
-            {loading ? (editCoupon ? 'Updating...' : 'Creating...') : (editCoupon ? 'Update Coupon' : 'Create Coupon')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AdminModal>
   );
 }

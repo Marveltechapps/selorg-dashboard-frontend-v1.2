@@ -2,14 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from './modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from './modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -997,26 +991,33 @@ export function GeofenceManager() {
       </Tabs>
 
       {/* Create Zone Modal */}
-      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create New Zone</DialogTitle>
-            <DialogDescription>Define a new delivery zone with custom boundaries</DialogDescription>
-          </DialogHeader>
+      <AdminModal
+        open={showCreateModal}
+        onOpenChange={setShowCreateModal}
+        title="Create New Zone"
+        subtitle="Define a new delivery zone with custom boundaries"
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateZone}>Create Zone</Button>
+          </>
+        }
+      >
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Zone Name</label>
+        <AdminFormBody>
+          <AdminField label="Zone Name">
               <Input
                 placeholder="e.g., Whitefield Tech Park"
                 value={zoneForm.name}
                 onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
               />
-            </div>
+          </AdminField>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">City</label>
+          <AdminFormGrid cols={2}>
+            <AdminField label="City">
                 <Select value={zoneForm.city} onValueChange={(value) => setZoneForm({ ...zoneForm, city: value })}>
                   <SelectTrigger>
                     <SelectValue />
@@ -1028,10 +1029,9 @@ export function GeofenceManager() {
                     <SelectItem value="Kolkata">Kolkata</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+            </AdminField>
 
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Region</label>
+            <AdminField label="Region">
                 <Select
                   value={zoneForm.region}
                   onValueChange={(value) => setZoneForm({ ...zoneForm, region: value })}
@@ -1046,12 +1046,11 @@ export function GeofenceManager() {
                     <SelectItem value="West">West</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
+            </AdminField>
+          </AdminFormGrid>
 
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Zone Type</label>
-              <Select value={zoneForm.type} onValueChange={(value: any) => setZoneForm({ ...zoneForm, type: value })}>
+          <AdminField label="Zone Type">
+            <Select value={zoneForm.type} onValueChange={(value: GeofenceZone['type']) => setZoneForm({ ...zoneForm, type: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1062,12 +1061,14 @@ export function GeofenceManager() {
                   <SelectItem value="surge">Surge Zone</SelectItem>
                   <SelectItem value="no-service">No Service Zone</SelectItem>
                 </SelectContent>
-              </Select>
-            </div>
+            </Select>
+          </AdminField>
 
-            <div className="bg-[#f4f4f5] rounded-lg p-4">
-              <p className="text-sm font-medium text-[#18181b] mb-2">Draw Zone Boundaries</p>
-              <p className="text-xs text-[#71717a] mb-3">Click on the map to add points and create a polygon boundary</p>
+          <div className="bg-[#f4f4f5] rounded-lg p-4">
+            <AdminField
+              label="Draw Zone Boundaries"
+              hint="Click on the map to add points and create a polygon boundary (minimum 3 points)."
+            >
               <div className="flex gap-2 mb-3">
                 <Button 
                   size="sm" 
@@ -1148,33 +1149,22 @@ export function GeofenceManager() {
                   </div>
                 </div>
               )}
-              <div className="mt-3 text-xs text-[#71717a]">
-                <p>💡 Tip: Add at least 3 points to create a zone. Click "Start Drawing" then click on the map to add points.</p>
-              </div>
-            </div>
+            </AdminField>
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateZone}>Create Zone</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Zone Details Modal */}
-      <Dialog open={showMapModal} onOpenChange={setShowMapModal}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{selectedZone?.name}</DialogTitle>
-            <DialogDescription>
-              {selectedZone?.city}, {selectedZone?.region} • {selectedZone?.id}
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedZone && (
-            <div className="space-y-4">
+      <AdminModal
+        open={showMapModal}
+        onOpenChange={setShowMapModal}
+        title={selectedZone?.name ?? 'Zone Details'}
+        subtitle={selectedZone ? `${selectedZone.city}, ${selectedZone.region} • ${selectedZone.id}` : undefined}
+        maxWidth="max-w-3xl"
+        footer={<Button onClick={() => setShowMapModal(false)}>Close</Button>}
+      >
+        {selectedZone && (
+          <AdminFormBody>
               {/* Zone Map */}
               <div
                 className="h-64 rounded-lg flex items-center justify-center relative overflow-hidden"
@@ -1230,53 +1220,83 @@ export function GeofenceManager() {
                   ))}
                 </div>
               </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button onClick={() => setShowMapModal(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminFormBody>
+        )}
+      </AdminModal>
 
       {/* Edit Zone Modal */}
-      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Zone - {selectedZone?.name}</DialogTitle>
-            <DialogDescription>
-              Update zone details and polygon boundary
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedZone && (
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Zone Name *</label>
+      <AdminModal
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        title={`Edit Zone${selectedZone ? ` - ${selectedZone.name}` : ''}`}
+        subtitle="Update zone details and polygon boundary"
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowEditModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!selectedZone || !zoneForm.name.trim()) {
+                  toast.error('Zone name is required');
+                  return;
+                }
+                const polygonToSave = editDrawingPoints.length >= 3 ? editDrawingPoints : selectedZone.polygon;
+                if (!polygonToSave || polygonToSave.length < 3) {
+                  toast.error('Zone must have at least 3 boundary points');
+                  return;
+                }
+                try {
+                  const center = {
+                    lat: polygonToSave.reduce((sum, p) => sum + p.lat, 0) / polygonToSave.length,
+                    lng: polygonToSave.reduce((sum, p) => sum + p.lng, 0) / polygonToSave.length,
+                  };
+                  await updateZone(selectedZone.id, {
+                    name: zoneForm.name,
+                    city: zoneForm.city,
+                    region: zoneForm.region,
+                    type: zoneForm.type,
+                    polygon: polygonToSave,
+                    center,
+                  });
+                  toast.success('Zone updated successfully');
+                  setShowEditModal(false);
+                  loadData();
+                } catch {
+                  toast.error('Failed to update zone');
+                }
+              }}
+            >
+              Save Changes
+            </Button>
+          </>
+        }
+      >
+        {selectedZone && (
+          <AdminFormBody>
+            <AdminField label="Zone Name *">
+              <Input
+                value={zoneForm.name}
+                onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
+              />
+            </AdminField>
+            <AdminFormGrid cols={2}>
+              <AdminField label="City">
                 <Input
-                  value={zoneForm.name}
-                  onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
+                  value={zoneForm.city}
+                  onChange={(e) => setZoneForm({ ...zoneForm, city: e.target.value })}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-[#18181b] mb-1 block">City</label>
-                  <Input
-                    value={zoneForm.city}
-                    onChange={(e) => setZoneForm({ ...zoneForm, city: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[#18181b] mb-1 block">Region</label>
-                  <Input
-                    value={zoneForm.region}
-                    onChange={(e) => setZoneForm({ ...zoneForm, region: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Zone Type</label>
-                <Select value={zoneForm.type} onValueChange={(val: any) => setZoneForm({ ...zoneForm, type: val })}>
+              </AdminField>
+              <AdminField label="Region">
+                <Input
+                  value={zoneForm.region}
+                  onChange={(e) => setZoneForm({ ...zoneForm, region: e.target.value })}
+                />
+              </AdminField>
+            </AdminFormGrid>
+            <AdminField label="Zone Type">
+              <Select value={zoneForm.type} onValueChange={(val: GeofenceZone['type']) => setZoneForm({ ...zoneForm, type: val })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1287,12 +1307,14 @@ export function GeofenceManager() {
                     <SelectItem value="premium">Premium</SelectItem>
                     <SelectItem value="surge">Surge</SelectItem>
                   </SelectContent>
-                </Select>
-              </div>
+              </Select>
+            </AdminField>
 
-              <div className="bg-[#f4f4f5] rounded-lg p-4">
-                <p className="text-sm font-medium text-[#18181b] mb-2">Edit Zone Boundary (Polygon)</p>
-                <p className="text-xs text-[#71717a] mb-3">Click on the map to add points. Changes are saved when you click Update Zone.</p>
+            <div className="bg-[#f4f4f5] rounded-lg p-4">
+              <AdminField
+                label="Edit Zone Boundary (Polygon)"
+                hint="Click on the map to add points. Changes are saved when you click Save Changes."
+              >
                 <div className="flex gap-2 mb-3">
                   <Button
                     size="sm"
@@ -1353,150 +1375,100 @@ export function GeofenceManager() {
                     </>
                   )}
                 </div>
-              </div>
+              </AdminField>
             </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={async () => {
-              if (!selectedZone || !zoneForm.name.trim()) {
-                toast.error('Zone name is required');
-                return;
-              }
-              const polygonToSave = editDrawingPoints.length >= 3 ? editDrawingPoints : selectedZone.polygon;
-              if (!polygonToSave || polygonToSave.length < 3) {
-                toast.error('Zone must have at least 3 boundary points');
-                return;
-              }
-              try {
-                const center = {
-                  lat: polygonToSave.reduce((sum, p) => sum + p.lat, 0) / polygonToSave.length,
-                  lng: polygonToSave.reduce((sum, p) => sum + p.lng, 0) / polygonToSave.length,
-                };
-                await updateZone(selectedZone.id, {
-                  name: zoneForm.name,
-                  city: zoneForm.city,
-                  region: zoneForm.region,
-                  type: zoneForm.type,
-                  polygon: polygonToSave,
-                  center,
-                });
-                toast.success('Zone updated successfully');
-                setShowEditModal(false);
-                loadData();
-              } catch (error) {
-                toast.error('Failed to update zone');
-              }
-            }}>
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminFormBody>
+        )}
+      </AdminModal>
 
       {/* Settings Modal */}
-      <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Zone Settings - {selectedZone?.name}</DialogTitle>
-            <DialogDescription>
-              Update delivery settings and operational parameters for this zone
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Delivery Fee (₹)</label>
+      <AdminModal
+        open={showSettingsModal}
+        onOpenChange={setShowSettingsModal}
+        title={`Edit Zone Settings${selectedZone ? ` - ${selectedZone.name}` : ''}`}
+        subtitle="Update delivery settings and operational parameters for this zone"
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!selectedZone) return;
+                try {
+                  await updateZone(selectedZone.id, {
+                    settings: {
+                      ...selectedZone.settings,
+                      deliveryFee: settingsForm.deliveryFee,
+                      minOrderValue: settingsForm.minOrderValue,
+                      maxDeliveryRadius: settingsForm.maxDeliveryRadius,
+                      estimatedDeliveryTime: settingsForm.estimatedDeliveryTime,
+                      surgeMultiplier: settingsForm.surgeMultiplier,
+                      maxCapacity: settingsForm.maxCapacity,
+                    },
+                  });
+                  toast.success('Zone settings updated successfully');
+                  setShowSettingsModal(false);
+                  loadData();
+                } catch {
+                  toast.error('Failed to update zone settings');
+                }
+              }}
+            >
+              Save Settings
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid cols={2}>
+            <AdminField label="Delivery Fee (₹)">
                 <Input
                   type="number"
                   value={settingsForm.deliveryFee}
                   onChange={(e) => setSettingsForm({ ...settingsForm, deliveryFee: parseFloat(e.target.value) || 0 })}
                 />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Min Order Value (₹)</label>
+            </AdminField>
+            <AdminField label="Min Order Value (₹)">
                 <Input
                   type="number"
                   value={settingsForm.minOrderValue}
                   onChange={(e) => setSettingsForm({ ...settingsForm, minOrderValue: parseFloat(e.target.value) || 0 })}
                 />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Max Delivery Radius (km)</label>
+            </AdminField>
+            <AdminField label="Max Delivery Radius (km)">
                 <Input
                   type="number"
                   value={settingsForm.maxDeliveryRadius}
                   onChange={(e) => setSettingsForm({ ...settingsForm, maxDeliveryRadius: parseFloat(e.target.value) || 0 })}
                 />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Est. Delivery Time (min)</label>
+            </AdminField>
+            <AdminField label="Est. Delivery Time (min)">
                 <Input
                   type="number"
                   value={settingsForm.estimatedDeliveryTime}
                   onChange={(e) => setSettingsForm({ ...settingsForm, estimatedDeliveryTime: parseFloat(e.target.value) || 0 })}
                 />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Surge Multiplier</label>
+            </AdminField>
+            <AdminField label="Surge Multiplier">
                 <Input
                   type="number"
                   step="0.1"
                   value={settingsForm.surgeMultiplier}
                   onChange={(e) => setSettingsForm({ ...settingsForm, surgeMultiplier: parseFloat(e.target.value) || 1.0 })}
                 />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Max Capacity</label>
-                <Input
-                  type="number"
-                  value={settingsForm.maxCapacity}
+            </AdminField>
+            <AdminField label="Max Capacity">
+              <Input
+                type="number"
+                value={settingsForm.maxCapacity}
                   onChange={(e) => setSettingsForm({ ...settingsForm, maxCapacity: parseFloat(e.target.value) || 0 })}
                 />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={async () => {
-              if (!selectedZone) return;
-              try {
-                await updateZone(selectedZone.id, {
-                  settings: {
-                    ...selectedZone.settings,
-                    deliveryFee: settingsForm.deliveryFee,
-                    minOrderValue: settingsForm.minOrderValue,
-                    maxDeliveryRadius: settingsForm.maxDeliveryRadius,
-                    estimatedDeliveryTime: settingsForm.estimatedDeliveryTime,
-                    surgeMultiplier: settingsForm.surgeMultiplier,
-                    maxCapacity: settingsForm.maxCapacity,
-                  },
-                });
-                toast.success('Zone settings updated successfully');
-                setShowSettingsModal(false);
-                loadData();
-              } catch (error) {
-                toast.error('Failed to update zone settings');
-              }
-            }}>
-              Save Settings
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AdminField>
+          </AdminFormGrid>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

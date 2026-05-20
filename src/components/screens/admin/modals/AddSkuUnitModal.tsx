@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -66,12 +66,19 @@ export function AddSkuUnitModal({ open, onOpenChange, onSuccess, editItem }: Add
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editItem ? 'Edit SKU Unit' : 'Add SKU Unit'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editItem ? 'Edit SKU Unit' : 'Add SKU Unit'}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="sku-unit-form" disabled={submitting}>{submitting ? 'Saving...' : editItem ? 'Update' : 'Create'}</Button>
+        </>
+      }
+    >
+      <form id="sku-unit-form" onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Code *</Label>
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. kg" disabled={!!editItem} />
@@ -80,6 +87,8 @@ export function AddSkuUnitModal({ open, onOpenChange, onSuccess, editItem }: Add
             <Label>Name *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Kilogram" />
           </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Base Unit</Label>
             <Input value={baseUnit} onChange={(e) => setBaseUnit(e.target.value)} placeholder="e.g. kg" />
@@ -88,12 +97,8 @@ export function AddSkuUnitModal({ open, onOpenChange, onSuccess, editItem }: Add
             <Label>Conversion Factor</Label>
             <Input type="number" step="any" value={conversionFactor} onChange={(e) => setConversionFactor(e.target.value)} placeholder="e.g. 0.001 for g->kg" />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : editItem ? 'Update' : 'Create'}</Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </form>
+    </AdminModal>
   );
 }

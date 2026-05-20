@@ -8,13 +8,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -230,14 +225,26 @@ export function CmsPagesScreen() {
         </Table>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Page' : 'Create Page'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="slug">Slug</Label>
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingId ? 'Edit Page' : 'Create Page'}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid>
+            <AdminField label="Slug" htmlFor="slug">
               <Input
                 id="slug"
                 value={formData.slug}
@@ -245,18 +252,16 @@ export function CmsPagesScreen() {
                 placeholder="e.g. home, summer-sale"
                 disabled={!!editingId && formData.slug === 'home'}
               />
-            </div>
-            <div>
-              <Label htmlFor="title">Title</Label>
+            </AdminField>
+            <AdminField label="Title" htmlFor="title">
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Page title"
               />
-            </div>
-            <div>
-              <Label htmlFor="status">Status</Label>
+            </AdminField>
+            <AdminField label="Status" htmlFor="status">
               <select
                 id="status"
                 className="w-full h-10 px-3 rounded-md border border-input bg-background"
@@ -266,101 +271,92 @@ export function CmsPagesScreen() {
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
               </select>
-            </div>
-            {(editingId || blocks.length > 0) && (
-              <div className="border-t pt-4">
-                <Label className="mb-2 block">Blocks (order & count)</Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Add blocks, reorder with arrows, set maxItems. Optional style JSON: {`{"borderRadius":8}`, `{"columns":4}`, `{"height":200}`}.
-                </p>
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {BLOCK_TYPES.map((bt) => (
-                    <Button
-                      key={bt.value}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addBlock(bt.value)}
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      {bt.label}
-                    </Button>
-                  ))}
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {blocks.map((b, idx) => (
-                    <div
-                      key={b._id ?? `${b.type}-${idx}`}
-                      className="flex items-center gap-2 p-2 rounded border bg-muted/30"
-                    >
-                      <div className="flex flex-col">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => moveBlock(idx, 'up')}
-                          disabled={idx === 0}
-                        >
-                          <ChevronUp className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => moveBlock(idx, 'down')}
-                          disabled={idx === blocks.length - 1}
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <span className="font-mono text-sm flex-1">{b.type}</span>
-                      <Input
-                        type="number"
-                        placeholder="maxItems"
-                        className="w-20"
-                        min={1}
-                        value={String((b.config as Record<string, unknown>)?.maxItems ?? '')}
-                        onChange={(e) =>
-                          setBlockMaxItems(idx, e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)
-                        }
-                      />
-                      <Input
-                        placeholder='{"borderRadius":8}'
-                        className="w-28 text-xs font-mono"
-                        value={(() => {
-                          const s = (b.config as Record<string, unknown>)?.style;
-                          return s && typeof s === 'object' ? JSON.stringify(s) : '';
-                        })()}
-                        onChange={(e) => setBlockStyle(idx, e.target.value)}
-                      />
+            </AdminField>
+          </AdminFormGrid>
+          {(editingId || blocks.length > 0) && (
+            <div className="border-t pt-4">
+              <Label className="mb-2 block">Blocks (order & count)</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Add blocks, reorder with arrows, set maxItems. Optional style JSON: {`{"borderRadius":8}`, `{"columns":4}`, `{"height":200}`}.
+              </p>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {BLOCK_TYPES.map((bt) => (
+                  <Button
+                    key={bt.value}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => addBlock(bt.value)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {bt.label}
+                  </Button>
+                ))}
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {blocks.map((b, idx) => (
+                  <div
+                    key={b._id ?? `${b.type}-${idx}`}
+                    className="flex items-center gap-2 p-2 rounded border bg-muted/30"
+                  >
+                    <div className="flex flex-col">
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-destructive"
-                        onClick={() => removeBlock(idx)}
+                        className="h-6 w-6"
+                        onClick={() => moveBlock(idx, 'up')}
+                        disabled={idx === 0}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <ChevronUp className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => moveBlock(idx, 'down')}
+                        disabled={idx === blocks.length - 1}
+                      >
+                        <ChevronDown className="h-3 w-3" />
                       </Button>
                     </div>
-                  ))}
-                </div>
+                    <span className="font-mono text-sm flex-1">{b.type}</span>
+                    <Input
+                      type="number"
+                      placeholder="maxItems"
+                      className="w-20"
+                      min={1}
+                      value={String((b.config as Record<string, unknown>)?.maxItems ?? '')}
+                      onChange={(e) =>
+                        setBlockMaxItems(idx, e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)
+                      }
+                    />
+                    <Input
+                      placeholder='{"borderRadius":8}'
+                      className="w-28 text-xs font-mono"
+                      value={(() => {
+                        const s = (b.config as Record<string, unknown>)?.style;
+                        return s && typeof s === 'object' ? JSON.stringify(s) : '';
+                      })()}
+                      onChange={(e) => setBlockStyle(idx, e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      onClick={() => removeBlock(idx)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
+          )}
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

@@ -20,6 +20,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import {
   Dialog,
   DialogContent,
@@ -235,66 +237,65 @@ export function FaqManagement() {
       </Card>
 
       {/* Edit/Create Dialog */}
-      <Dialog open={dialog} onOpenChange={(v) => { if (!v) setEditing(null); setDialog(v); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editing?._id ? 'Edit FAQ' : 'New FAQ'}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <div className="space-y-4">
-              <div>
-                <Label>Question</Label>
-                <Input
-                  value={editing.question ?? ''}
-                  onChange={(e) => setEditing({ ...editing, question: e.target.value })}
-                  placeholder="e.g. How fast is delivery?"
-                />
-              </div>
-              <div>
-                <Label>Answer</Label>
-                <Textarea
-                  rows={4}
-                  value={editing.answer ?? ''}
-                  onChange={(e) => setEditing({ ...editing, answer: e.target.value })}
-                  placeholder="e.g. We deliver in 10-15 minutes..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Order</Label>
-                  <Input
-                    type="number"
-                    value={editing.order ?? 0}
-                    onChange={(e) => setEditing({ ...editing, order: parseInt(e.target.value, 10) || 0 })}
-                  />
-                </div>
-                <div>
-                  <Label>Category (optional)</Label>
-                  <Input
-                    value={editing.category ?? ''}
-                    onChange={(e) => setEditing({ ...editing, category: e.target.value })}
-                    placeholder="e.g. Delivery"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={editing.isActive !== false}
-                  onCheckedChange={(v) => setEditing({ ...editing, isActive: v })}
-                />
-                <Label>Active (visible in app)</Label>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
+      <AdminModal
+        open={dialog}
+        onOpenChange={(v) => { if (!v) setEditing(null); setDialog(v); }}
+        title={editing?._id ? 'Edit FAQ' : 'New FAQ'}
+        icon={<HelpCircle className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setDialog(false)}>Cancel</Button>
             <Button onClick={save} disabled={saving || !editing?.question?.trim() || !editing?.answer?.trim()}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Save
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        {editing && (
+          <AdminFormBody>
+            <AdminField label="Question">
+              <Input
+                value={editing.question ?? ''}
+                onChange={(e) => setEditing({ ...editing, question: e.target.value })}
+                placeholder="e.g. How fast is delivery?"
+              />
+            </AdminField>
+            <AdminField label="Answer">
+              <Textarea
+                rows={4}
+                value={editing.answer ?? ''}
+                onChange={(e) => setEditing({ ...editing, answer: e.target.value })}
+                placeholder="e.g. We deliver in 10-15 minutes..."
+              />
+            </AdminField>
+            <AdminFormGrid>
+              <AdminField label="Order">
+                <Input
+                  type="number"
+                  value={editing.order ?? 0}
+                  onChange={(e) => setEditing({ ...editing, order: parseInt(e.target.value, 10) || 0 })}
+                />
+              </AdminField>
+              <AdminField label="Category (optional)">
+                <Input
+                  value={editing.category ?? ''}
+                  onChange={(e) => setEditing({ ...editing, category: e.target.value })}
+                  placeholder="e.g. Delivery"
+                />
+              </AdminField>
+            </AdminFormGrid>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={editing.isActive !== false}
+                onCheckedChange={(v) => setEditing({ ...editing, isActive: v })}
+              />
+              <Label>Active (visible in app)</Label>
+            </div>
+          </AdminFormBody>
+        )}
+      </AdminModal>
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>

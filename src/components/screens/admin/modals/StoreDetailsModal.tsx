@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Store, getStore } from '../storeWarehouseApi';
 import { Store as StoreIcon, MapPin, Clock, Phone, Mail, Edit } from 'lucide-react';
@@ -60,37 +54,30 @@ export function StoreDetailsModal({
   if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <StoreIcon className="text-blue-600" size={20} />
-              </div>
-              <div>
-                <DialogTitle>
-                  {loading ? 'Loading...' : store?.name ?? 'Store Details'}
-                </DialogTitle>
-                <DialogDescription>
-                  {store ? `${store.code} • ${store.type}` : 'View store information'}
-                </DialogDescription>
-              </div>
-            </div>
-            {store && onEdit && (
-              <Button variant="outline" size="sm" onClick={handleEdit} className="gap-2">
-                <Edit size={14} /> Edit
-              </Button>
-            )}
-          </div>
-        </DialogHeader>
-
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={loading ? 'Loading...' : store?.name ?? 'Store Details'}
+      subtitle={store ? `${store.code} • ${store.type}` : 'View store information'}
+      icon={
+        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+          <StoreIcon className="text-blue-600" size={20} />
+        </div>
+      }
+      footer={
+        store && onEdit ? (
+          <Button variant="outline" size="sm" onClick={handleEdit} className="gap-2">
+            <Edit size={14} /> Edit
+          </Button>
+        ) : undefined
+      }
+    >
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
           </div>
         ) : store ? (
-          <div className="space-y-6 pt-2">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 space-y-6 pt-2 pb-4">
             {/* Status & Type */}
             <div className="flex gap-2 flex-wrap">
               <span
@@ -112,7 +99,7 @@ export function StoreDetailsModal({
             {/* Address */}
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 text-sm font-medium text-[#18181b]">
-                <MapPin size={14} className="text-[#71717a]" /> Address
+                <MapPin size={14} className="text-gray-500" /> Address
               </div>
               <p className="text-sm text-[#52525b] pl-6">
                 {store.address}
@@ -123,7 +110,7 @@ export function StoreDetailsModal({
                 {store.pincode && ` ${store.pincode}`}
               </p>
               {(store.latitude || store.longitude) && (
-                <p className="text-xs text-[#71717a] pl-6">
+                <p className="text-xs text-gray-500 pl-6">
                   Coordinates: {store.latitude?.toFixed(4)}, {store.longitude?.toFixed(4)}
                 </p>
               )}
@@ -136,19 +123,19 @@ export function StoreDetailsModal({
                 <div className="space-y-1.5 text-sm text-[#52525b]">
                   {store.phone && (
                     <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-[#71717a]" />
+                      <Phone size={14} className="text-gray-500" />
                       {store.phone}
                     </div>
                   )}
                   {store.email && (
                     <div className="flex items-center gap-2">
-                      <Mail size={14} className="text-[#71717a]" />
+                      <Mail size={14} className="text-gray-500" />
                       {store.email}
                     </div>
                   )}
                   {store.manager && (
                     <div className="flex items-center gap-2">
-                      <span className="text-[#71717a]">Manager:</span>
+                      <span className="text-gray-500">Manager:</span>
                       {store.manager}
                     </div>
                   )}
@@ -159,11 +146,11 @@ export function StoreDetailsModal({
             {/* Operations */}
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-[#71717a]">Delivery radius</span>
+                <span className="text-gray-500">Delivery radius</span>
                 <p className="font-medium">{store.deliveryRadius} km</p>
               </div>
               <div>
-                <span className="text-[#71717a]">Max capacity</span>
+                <span className="text-gray-500">Max capacity</span>
                 <p className="font-medium">{store.maxCapacity} orders/hr</p>
               </div>
             </div>
@@ -172,7 +159,7 @@ export function StoreDetailsModal({
             {store.operationalHours && Object.keys(store.operationalHours).length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-[#18181b]">
-                  <Clock size={14} className="text-[#71717a]" /> Operational Hours
+                  <Clock size={14} className="text-gray-500" /> Operational Hours
                 </div>
                 <div className="grid gap-1.5 text-sm">
                   {DAYS.map((day) => {
@@ -184,7 +171,7 @@ export function StoreDetailsModal({
                       : 'Closed';
                     return (
                       <div key={day} className="flex justify-between pl-6">
-                        <span className="text-[#71717a]">{label}</span>
+                        <span className="text-gray-500">{label}</span>
                         <span className="text-[#52525b]">{text}</span>
                       </div>
                     );
@@ -194,7 +181,6 @@ export function StoreDetailsModal({
             )}
           </div>
         ) : null}
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

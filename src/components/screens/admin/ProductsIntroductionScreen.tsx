@@ -15,13 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody } from '@/components/screens/admin/modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -813,12 +808,25 @@ export function ProductsIntroductionScreen() {
         }}
       />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Product' : 'Add Product'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingId ? 'Edit Product' : 'Add Product'}
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <div className="space-y-4">
             <div>
               <Label htmlFor="name">Product Name *</Label>
               <Input
@@ -1076,7 +1084,7 @@ export function ProductsIntroductionScreen() {
             </div>
           </div>
 
-          <div className="space-y-2 border-t border-[#e4e4e7] pt-4 px-4">
+          <div className="space-y-2 border-t border-[#e4e4e7] pt-4">
             <Label>Advanced Fields (JSON)</Label>
             <Textarea
               value={advancedJson}
@@ -1087,18 +1095,8 @@ export function ProductsIntroductionScreen() {
               Edit structured mastersheet fields (dimensions, taxBreakup, shipping, flags, etc.). Save persists these values.
             </p>
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

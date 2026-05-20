@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -142,17 +136,24 @@ export function EditUserModal({ open, onClose, onUserUpdated, user }: EditUserMo
   };
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Edit User</DialogTitle>
-          <DialogDescription>
-            Update user information and role assignment
-          </DialogDescription>
-        </DialogHeader>
-
+    <AdminModal
+      open={open}
+      onOpenChange={(isOpen) => !isOpen && handleClose()}
+      title="Edit User"
+      subtitle="Update user information and role assignment"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="edit-user-form" disabled={loading}>
+            {loading ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </>
+      }
+    >
         {user && (
-          <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+          <form id="edit-user-form" onSubmit={handleSubmit} className="space-y-6 px-6 py-4">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -173,9 +174,9 @@ export function EditUserModal({ open, onClose, onUserUpdated, user }: EditUserMo
                     type="email"
                     value={user.email}
                     disabled
-                    className="bg-muted"
+                    className="bg-gray-50"
                   />
-                  <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+                  <p className="text-xs text-gray-500">Email cannot be changed</p>
                 </div>
               </div>
 
@@ -346,17 +347,8 @@ export function EditUserModal({ open, onClose, onUserUpdated, user }: EditUserMo
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={handleClose}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </div>
           </form>
         )}
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

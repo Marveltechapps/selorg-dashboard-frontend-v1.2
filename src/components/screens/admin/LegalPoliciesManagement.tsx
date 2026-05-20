@@ -6,7 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { adminFormClass } from '@/components/screens/admin/modals/adminFormLayout';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -26,52 +27,220 @@ interface LegalDoc {
   isCurrent: boolean;
 }
 
+function normalizeLegalDoc(raw: Record<string, unknown> | LegalDoc | null | undefined): LegalDoc {
+  const doc = (raw ?? {}) as Record<string, unknown>;
+  const idRaw = doc._id ?? doc.id;
+  const _id = idRaw != null ? String(idRaw) : '';
+  const isCurrent =
+    doc.isCurrent === true || doc.isCurrent === 'true' || doc.isCurrent === 1;
+  return {
+    _id,
+    type: doc.type === 'privacy' ? 'privacy' : 'terms',
+    version: String(doc.version ?? ''),
+    title: String(doc.title ?? ''),
+    effectiveDate: doc.effectiveDate as string | undefined,
+    lastUpdated: doc.lastUpdated as string | undefined,
+    contentFormat: String(doc.contentFormat ?? 'plain'),
+    content: String(doc.content ?? ''),
+    isCurrent,
+  };
+}
+
+/** Keep table status in sync when current version changes for a document type. */
+function applyCurrentToDocList(
+  docs: LegalDoc[],
+  targetId: string,
+  type: LegalDoc['type'],
+  isCurrent: boolean
+): LegalDoc[] {
+  return docs.map((d) => {
+    if (d.type !== type) return d;
+    if (isCurrent) {
+      return { ...d, isCurrent: d._id === targetId };
+    }
+    if (d._id === targetId) {
+      return { ...d, isCurrent: false };
+    }
+    return d;
+  });
+}
+
 export function LegalPoliciesManagement() {
   const [docs, setDocs] = useState<LegalDoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState(false);
   const [editing, setEditing] = useState<Partial<LegalDoc> | null>(null);
   const [previewDoc, setPreviewDoc] = useState<LegalDoc | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [currentToggleLoading, setCurrentToggleLoading] = useState(false);
 
-  const loadDocs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await apiRequest<{ success: boolean; data: LegalDoc[] }>(
-        API_ENDPOINTS.customerLegal.documents
-      );
-      setDocs(res.data ?? []);
-    } catch {
-      toast.error('Failed to load legal documents');
-    } finally {
-      setLoading(false);
+  const syncEditingFromDocs = useCallback((list: LegalDoc[], docId?: string) => {
+    if (!docId) return;
+    const fresh = list.find((d) => d._id === docId);
+    if (fresh) {
+      setEditing(fresh);
     }
   }, []);
+
+  const loadDocs = useCallback(
+    async (opts?: { silent?: boolean }): Promise<LegalDoc[]> => {
+      if (!opts?.silent) setLoading(true);
+      try {
+        const res = await apiRequest<{ success: boolean; data: Record<string, unknown>[] }>(
+          API_ENDPOINTS.customerLegal.documents
+        );
+        const normalized = (res.data ?? []).map((d) => normalizeLegalDoc(d));
+        setDocs(normalized);
+        return normalized;
+      } catch {
+        toast.error('Failed to load legal documents');
+        return [];
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     loadDocs();
   }, [loadDocs]);
 
-  const saveDoc = async () => {
+  const buildDocPayload = (doc: Partial<LegalDoc>) => ({
+    type: doc.type || 'terms',
+    version: doc.version?.trim() || '',
+    title: doc.title?.trim() || '',
+    effectiveDate: doc.effectiveDate || new Date().toISOString(),
+    lastUpdated: new Date().toISOString(),
+    contentFormat: doc.contentFormat || 'plain',
+    content: doc.content?.trim() || '',
+    isCurrent: doc.isCurrent === true,
+  });
+
+  const handleCurrentToggle = async (checked: boolean) => {
+    const docId = editing?._id;
+    const docType = editing?.type ?? 'terms';
+    if (!docId) {
+      setEditing((prev) => (prev ? { ...prev, isCurrent: checked } : null));
+      return;
+    }
+
+    const previousDocs = docs;
+    setDocs((prev) => applyCurrentToDocList(prev, docId, docType, checked));
+    setEditing((prev) => (prev ? { ...prev, isCurrent: checked } : null));
+
+    setCurrentToggleLoading(true);
+    try {
+      let updated: LegalDoc;
+      if (checked) {
+        const res = await apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+          API_ENDPOINTS.customerLegal.setCurrentDocument(docId),
+          { method: 'POST' }
+        );
+        updated = normalizeLegalDoc(res.data);
+        toast.success('Set as current version');
+      } else {
+        const res = await apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+          API_ENDPOINTS.customerLegal.updateDocument(docId),
+          {
+            method: 'PUT',
+            body: JSON.stringify({ isCurrent: false }),
+          }
+        );
+        updated = normalizeLegalDoc(res.data);
+        toast.success('Removed from current version');
+      }
+
+      setDocs((prev) => applyCurrentToDocList(prev, docId, updated.type, checked));
+      setEditing(updated);
+      if (previewDoc?._id === docId) {
+        setPreviewDoc(updated);
+      }
+
+      const fresh = await loadDocs({ silent: true });
+      syncEditingFromDocs(fresh, docId);
+      if (previewDoc?._id === docId) {
+        const previewFresh = fresh.find((d) => d._id === docId);
+        if (previewFresh) setPreviewDoc(previewFresh);
+      }
+    } catch (err: any) {
+      setDocs(previousDocs);
+      setEditing((prev) => {
+        if (!prev) return null;
+        const rollback = previousDocs.find((d) => d._id === docId);
+        return rollback ?? { ...prev, isCurrent: !checked };
+      });
+      toast.error(err.message || 'Failed to update current version');
+    } finally {
+      setCurrentToggleLoading(false);
+    }
+  };
+
+  const saveDoc = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!editing) return;
+    if (!editing.title?.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!editing.version?.trim()) {
+      toast.error('Version is required');
+      return;
+    }
+    if (!editing.content?.trim()) {
+      toast.error('Content is required');
+      return;
+    }
+    const payload = buildDocPayload(editing);
+    setSaving(true);
     try {
       if (editing._id) {
-        await apiRequest(API_ENDPOINTS.customerLegal.updateDocument(editing._id), {
-          method: 'PUT',
-          body: JSON.stringify(editing),
-        });
-        toast.success('Document updated');
+        const res = await apiRequest<{ success: boolean; data: LegalDoc }>(
+          API_ENDPOINTS.customerLegal.updateDocument(editing._id),
+          {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          }
+        );
+        const updated = normalizeLegalDoc(res.data as Record<string, unknown>);
+        if (payload.isCurrent) {
+          await apiRequest(API_ENDPOINTS.customerLegal.setCurrentDocument(editing._id), {
+            method: 'POST',
+          });
+          setDocs((prev) => applyCurrentToDocList(prev, editing._id, updated.type, true));
+          toast.success('Document updated and set as current');
+        } else {
+          setDocs((prev) =>
+            prev.map((d) => (d._id === editing._id ? { ...d, ...updated, isCurrent: false } : d))
+          );
+          toast.success('Document updated');
+        }
       } else {
-        await apiRequest(API_ENDPOINTS.customerLegal.createDocument, {
-          method: 'POST',
-          body: JSON.stringify(editing),
-        });
-        toast.success('Document created');
+        const res = await apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+          API_ENDPOINTS.customerLegal.createDocument,
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          }
+        );
+        const created = normalizeLegalDoc(res.data);
+        if (payload.isCurrent && created._id) {
+          await apiRequest(API_ENDPOINTS.customerLegal.setCurrentDocument(created._id), {
+            method: 'POST',
+          });
+          setDocs((prev) => applyCurrentToDocList(prev, created._id, created.type, true));
+        }
+        toast.success(
+          payload.isCurrent ? 'Document created and set as current' : 'Document created'
+        );
       }
       setDialog(false);
       setEditing(null);
-      loadDocs();
+      await loadDocs({ silent: true });
     } catch (err: any) {
       toast.error(err.message || 'Failed to save document');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -86,11 +255,24 @@ export function LegalPoliciesManagement() {
   };
 
   const setCurrent = async (id: string) => {
+    const previousDocs = docs;
+    const target = docs.find((d) => d._id === id);
+    if (target) {
+      setDocs((prev) => applyCurrentToDocList(prev, id, target.type, true));
+    }
     try {
-      await apiRequest(API_ENDPOINTS.customerLegal.setCurrentDocument(id), { method: 'POST' });
+      const res = await apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+        API_ENDPOINTS.customerLegal.setCurrentDocument(id),
+        { method: 'POST' }
+      );
+      const updated = normalizeLegalDoc(res.data);
+      setDocs((prev) => applyCurrentToDocList(prev, id, updated.type, true));
+      if (editing?._id === id) setEditing(updated);
+      if (previewDoc?._id === id) setPreviewDoc(updated);
       toast.success('Set as current version');
-      loadDocs();
+      await loadDocs({ silent: true });
     } catch (err: any) {
+      setDocs(previousDocs);
       toast.error(err.message || 'Failed to set current');
     }
   };
@@ -98,7 +280,7 @@ export function LegalPoliciesManagement() {
   const termsDocs = docs.filter(d => d.type === 'terms');
   const privacyDocs = docs.filter(d => d.type === 'privacy');
   const allDocs = [...termsDocs, ...privacyDocs];
-  const currentDocsCount = docs.filter(d => d.isCurrent).length;
+  const currentDocsCount = docs.filter((d) => d.isCurrent === true).length;
 
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full">
@@ -219,7 +401,7 @@ export function LegalPoliciesManagement() {
                             <Badge variant="outline">{d.contentFormat}</Badge>
                           </TableCell>
                           <TableCell>
-                            {d.isCurrent ? (
+                            {d.isCurrent === true ? (
                               <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
                                 Current
                               </Badge>
@@ -239,14 +421,19 @@ export function LegalPoliciesManagement() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => setPreviewDoc(d)} title="Preview">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setPreviewDoc(normalizeLegalDoc(d))}
+                                title="Preview"
+                              >
                                 <Eye className="w-4 h-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => {
-                                  setEditing(d);
+                                  setEditing(normalizeLegalDoc(d));
                                   setDialog(true);
                                 }}
                                 title="Edit"
@@ -269,96 +456,156 @@ export function LegalPoliciesManagement() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={dialog} onOpenChange={setDialog}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing?._id ? 'Edit Document' : 'New Legal Document'}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label>Type</Label>
-                  <Select
-                    value={editing.type || 'terms'}
-                    onValueChange={v => setEditing({ ...editing, type: v as 'terms' | 'privacy' })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="terms">Terms of Service</SelectItem>
-                      <SelectItem value="privacy">Privacy Policy</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Version</Label>
-                  <Input
-                    value={editing.version || ''}
-                    onChange={e => setEditing({ ...editing, version: e.target.value })}
-                    placeholder="e.g. 1.0"
-                  />
-                </div>
-                <div>
-                  <Label>Content Format</Label>
-                  <Select
-                    value={editing.contentFormat || 'plain'}
-                    onValueChange={v => setEditing({ ...editing, contentFormat: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="plain">Plain Text</SelectItem>
-                      <SelectItem value="html">HTML</SelectItem>
-                      <SelectItem value="markdown">Markdown</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+      <AdminModal
+        open={dialog}
+        onOpenChange={(open) => {
+          setDialog(open);
+          if (!open) {
+            setEditing(null);
+            setSaving(false);
+            setCurrentToggleLoading(false);
+          }
+        }}
+        title={editing?._id ? 'Edit Document' : 'New Legal Document'}
+        subtitle="Create or update a versioned Terms of Service or Privacy Policy"
+        icon={<FileText className="h-5 w-5" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setDialog(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" form="legal-doc-form" disabled={saving}>
+              {saving ? 'Saving...' : editing?._id ? 'Update' : 'Create'}
+            </Button>
+          </>
+        }
+      >
+        {editing && (
+          <form id="legal-doc-form" onSubmit={saveDoc} className={adminFormClass}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label>Type *</Label>
+                <Select
+                  value={editing.type || 'terms'}
+                  onValueChange={v =>
+                    setEditing(prev => (prev ? { ...prev, type: v as 'terms' | 'privacy' } : null))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="terms">Terms of Service</SelectItem>
+                    <SelectItem value="privacy">Privacy Policy</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
-                <Label>Title</Label>
+                <Label>Version *</Label>
+                <Input
+                  value={editing.version || ''}
+                  onChange={e =>
+                    setEditing(prev => (prev ? { ...prev, version: e.target.value } : null))
+                  }
+                  placeholder="e.g. 1.0"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label>Content Format</Label>
+                <Select
+                  value={editing.contentFormat || 'plain'}
+                  onValueChange={v =>
+                    setEditing(prev => (prev ? { ...prev, contentFormat: v } : null))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="plain">Plain Text</SelectItem>
+                    <SelectItem value="html">HTML</SelectItem>
+                    <SelectItem value="markdown">Markdown</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">How apps render this document</p>
+              </div>
+              <div>
+                <Label>Title *</Label>
                 <Input
                   value={editing.title || ''}
-                  onChange={e => setEditing({ ...editing, title: e.target.value })}
+                  onChange={e =>
+                    setEditing(prev => (prev ? { ...prev, title: e.target.value } : null))
+                  }
                   placeholder="e.g. Terms of Service"
                 />
               </div>
-              <div>
-                <Label>Content</Label>
-                <Textarea
-                  rows={14}
-                  value={editing.content || ''}
-                  onChange={e => setEditing({ ...editing, content: e.target.value })}
-                  placeholder="Enter the full document content..."
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={editing.isCurrent !== false}
-                  onCheckedChange={v => setEditing({ ...editing, isCurrent: v })}
-                />
-                <Label>Set as Current Version (apps will use this)</Label>
-              </div>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={saveDoc}>Save Document</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div>
+              <Label>Content *</Label>
+              <Textarea
+                rows={14}
+                value={editing.content || ''}
+                onChange={e =>
+                  setEditing(prev => (prev ? { ...prev, content: e.target.value } : null))
+                }
+                placeholder="Enter the full document content..."
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="legal-doc-current"
+                checked={editing.isCurrent === true}
+                disabled={saving || currentToggleLoading}
+                onCheckedChange={v => void handleCurrentToggle(v)}
+              />
+              <Label htmlFor="legal-doc-current" className="cursor-pointer">
+                Set as Current Version (apps will use this)
+                {currentToggleLoading && (
+                  <Loader2 className="ml-2 inline h-3.5 w-3.5 animate-spin text-[#6B7280]" />
+                )}
+              </Label>
+            </div>
+          </form>
+        )}
+      </AdminModal>
 
-      <Dialog open={!!previewDoc} onOpenChange={() => setPreviewDoc(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{previewDoc?.title || 'Preview'}</DialogTitle>
-          </DialogHeader>
-          {previewDoc && (
-            <div className="space-y-3">
+      <AdminModal
+        open={!!previewDoc}
+        onOpenChange={(open) => {
+          if (!open) setPreviewDoc(null);
+        }}
+        title={previewDoc?.title || 'Document Preview'}
+        subtitle={
+          previewDoc
+            ? `${previewDoc.type === 'terms' ? 'Terms of Service' : 'Privacy Policy'} · v${previewDoc.version}`
+            : undefined
+        }
+        icon={<Eye className="h-5 w-5" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPreviewDoc(null)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                if (previewDoc) {
+                  setEditing(normalizeLegalDoc(previewDoc));
+                  setPreviewDoc(null);
+                  setDialog(true);
+                }
+              }}
+            >
+              Edit Document
+            </Button>
+          </>
+        }
+      >
+        {previewDoc && (
+          <div className={`${adminFormClass} space-y-3`}>
               <div className="flex gap-2 text-sm text-muted-foreground">
                 <Badge variant="outline">
                   {previewDoc.type === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
@@ -366,11 +613,11 @@ export function LegalPoliciesManagement() {
                 <span>v{previewDoc.version}</span>
                 <span>·</span>
                 <span>{previewDoc.contentFormat}</span>
-                {previewDoc.isCurrent && (
+                {previewDoc.isCurrent === true && (
                   <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Current</Badge>
                 )}
               </div>
-              <div className="border rounded-lg p-4 max-h-[60vh] overflow-y-auto">
+              <div className="max-h-[50vh] overflow-y-auto rounded-lg border p-4">
                 {previewDoc.contentFormat === 'html' ? (
                   <div
                     dangerouslySetInnerHTML={{ __html: previewDoc.content }}
@@ -380,26 +627,9 @@ export function LegalPoliciesManagement() {
                   <pre className="whitespace-pre-wrap text-sm font-sans">{previewDoc.content}</pre>
                 )}
               </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewDoc(null)}>
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                if (previewDoc) {
-                  setEditing(previewDoc);
-                  setPreviewDoc(null);
-                  setDialog(true);
-                }
-              }}
-            >
-              Edit Document
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+      </AdminModal>
     </div>
   );
 }

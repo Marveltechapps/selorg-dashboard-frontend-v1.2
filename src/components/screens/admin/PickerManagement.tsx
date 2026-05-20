@@ -215,7 +215,35 @@ export function PickerManagement() {
                                   </Button>
                                 </>
                               )}
-                              {p.status !== 'deactivated' && (
+                              {p.status === 'deactivated' && (
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700"
+                                  onClick={async () => {
+                                    if (!confirm(`Reactivate picker "${p.name}"? They will be able to work again.`)) return;
+                                    await updatePickerOpsStatus(p.pickerId, 'approved');
+                                    toast.success('Picker reactivated');
+                                    await loadPickers();
+                                  }}
+                                >
+                                  <UserCheck size={14} className="mr-1.5" /> Activate
+                                </Button>
+                              )}
+                              {p.status === 'rejected' && (
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700"
+                                  onClick={async () => {
+                                    if (!confirm(`Approve picker "${p.name}"?`)) return;
+                                    await updatePickerOpsStatus(p.pickerId, 'approved');
+                                    toast.success('Picker approved');
+                                    await loadPickers();
+                                  }}
+                                >
+                                  <UserCheck size={14} className="mr-1.5" /> Approve
+                                </Button>
+                              )}
+                              {p.status !== 'deactivated' && p.status !== 'rejected' && (
                                 <Button
                                   size="sm"
                                   variant="outline"

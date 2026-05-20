@@ -11,13 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody } from '@/components/screens/admin/modals/AdminForm';
 import {
   fetchBanners,
   createBanner,
@@ -842,22 +837,51 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
 
       </Tabs>
 
-      {/* Generic add/edit dialog for list resources */}
-      <Dialog
+      <AdminModal
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) setBannerFormStep(1);
         }}
+        title={`${editingId ? 'Edit' : 'Add'} ${
+          activeTab === 'sectionlist' ? 'section' : activeTab === 'lifestyle' ? 'lifestyle' : activeTab === 'promoblocks' ? 'promo block' : activeTab === 'sections' ? 'section' : 'banner'
+        }`}
+        maxWidth="max-w-xl"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                setBannerFormStep(1);
+              }}
+            >
+              Cancel
+            </Button>
+            {activeTab === 'banners' && bannerFormStep < 3 ? (
+              <>
+                {bannerFormStep > 1 && (
+                  <Button variant="outline" onClick={() => setBannerFormStep((s) => (s - 1) as 1 | 2 | 3)}>
+                    Back
+                  </Button>
+                )}
+                <Button onClick={() => setBannerFormStep((s) => Math.min(3, s + 1) as 1 | 2 | 3)}>Next</Button>
+              </>
+            ) : (
+              !(activeTab === 'sectionlist' && !editingId && (!formData.type || ((formData.type as string) === 'collections' && !formData.collectionId) || ((formData.type as string) === 'banner' && !(formData.bannerIds as string[])?.[0]))) &&
+              !(activeTab === 'lifestyle' && !editingId && !(formData.name as string)?.trim()) &&
+              !(activeTab === 'promoblocks' && !editingId && (!(formData.blockKey as string)?.trim() || !(formData.imageUrl as string)?.trim())) &&
+              !(activeTab === 'sections' && !editingId && !(formData.sectionKey as string)?.trim()) && (
+                <Button onClick={saveForm} disabled={formLoading}>
+                  {formLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                </Button>
+              )
+            )}
+          </>
+        }
       >
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingId ? 'Edit' : 'Add'}{' '}
-              {activeTab === 'sectionlist' ? 'section' : activeTab === 'lifestyle' ? 'lifestyle' : activeTab === 'promoblocks' ? 'promo block' : activeTab === 'sections' ? 'section' : 'banner'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+        <AdminFormBody>
+          <div className="space-y-4">
             {activeTab === 'sectionlist' && (
               <>
                 <div>
@@ -1736,38 +1760,8 @@ export function CustomerAppHome({ onDataChange, hideTitle, activeTab: controlled
               </>
             )}
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDialogOpen(false);
-                setBannerFormStep(1);
-              }}
-            >
-              Cancel
-            </Button>
-            {activeTab === 'banners' && bannerFormStep < 3 ? (
-              <>
-                {bannerFormStep > 1 && (
-                  <Button variant="outline" onClick={() => setBannerFormStep((s) => (s - 1) as 1 | 2 | 3)}>
-                    Back
-                  </Button>
-                )}
-                <Button onClick={() => setBannerFormStep((s) => Math.min(3, s + 1) as 1 | 2 | 3)}>Next</Button>
-              </>
-            ) : (
-              !(activeTab === 'sectionlist' && !editingId && (!formData.type || ((formData.type as string) === 'collections' && !formData.collectionId) || ((formData.type as string) === 'banner' && !(formData.bannerIds as string[])?.[0]))) &&
-              !(activeTab === 'lifestyle' && !editingId && !(formData.name as string)?.trim()) &&
-              !(activeTab === 'promoblocks' && !editingId && (!(formData.blockKey as string)?.trim() || !(formData.imageUrl as string)?.trim())) &&
-              !(activeTab === 'sections' && !editingId && !(formData.sectionKey as string)?.trim()) && (
-                <Button onClick={saveForm} disabled={formLoading}>
-                  {formLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-                </Button>
-              )
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
 
     </div>
   );

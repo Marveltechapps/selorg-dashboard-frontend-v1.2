@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -117,23 +111,28 @@ export function AddAttributeModal({ open, onOpenChange, onSuccess, editAttribute
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <Tag className="text-purple-600" size={20} />
-            </div>
-            <div>
-              <DialogTitle>{isEditing ? 'Edit Attribute' : 'Add New Attribute'}</DialogTitle>
-              <DialogDescription>
-                {isEditing ? 'Update attribute details' : 'Create a reusable product attribute'}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? 'Edit Attribute' : 'Add New Attribute'}
+      subtitle={isEditing ? 'Update attribute details' : 'Create a reusable product attribute'}
+      icon={<Tag size={20} />}
+      maxWidth="max-w-md"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
+            {loading
+              ? (isEditing ? 'Updating...' : 'Creating...')
+              : (isEditing ? 'Update Attribute' : 'Create Attribute')}
+          </Button>
+        </>
+      }
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="attr-name">Attribute Name *</Label>
             <Input
@@ -160,7 +159,7 @@ export function AddAttributeModal({ open, onOpenChange, onSuccess, editAttribute
                 <SelectItem value="boolean">Boolean (Yes/No)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-[#71717a]">
+            <p className="text-xs text-gray-500">
               {formData.type === 'text' && 'Free-form text input'}
               {formData.type === 'select' && 'Dropdown with predefined options'}
               {formData.type === 'number' && 'Numeric value input'}
@@ -205,18 +204,7 @@ export function AddAttributeModal({ open, onOpenChange, onSuccess, editAttribute
             </div>
           )}
         </div>
-
-        <div className="flex justify-end gap-3 mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
-            {loading
-              ? (isEditing ? 'Updating...' : 'Creating...')
-              : (isEditing ? 'Update Attribute' : 'Create Attribute')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AdminModal>
   );
 }

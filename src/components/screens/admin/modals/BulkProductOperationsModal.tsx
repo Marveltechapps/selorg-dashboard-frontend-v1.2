@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -180,23 +174,25 @@ export function BulkProductOperationsModal({
     : [];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <Zap className="text-purple-600" size={20} />
-            </div>
-            <div>
-              <DialogTitle>Bulk Operations</DialogTitle>
-              <DialogDescription>
-                Apply changes to {selectedIds.length} selected product{selectedIds.length !== 1 ? 's' : ''}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-5 mt-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Bulk Operations"
+      subtitle={`Apply changes to ${selectedIds.length} selected product${selectedIds.length !== 1 ? 's' : ''}`}
+      maxWidth="max-w-lg"
+      icon={<Zap className="text-purple-600" size={20} />}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
+            {loading ? 'Processing...' : `Apply to ${selectedIds.length} Product${selectedIds.length !== 1 ? 's' : ''}`}
+          </Button>
+        </>
+      }
+    >
+        <div className="space-y-5 px-6 py-4">
           {/* Operation Type Selector */}
           <div className="space-y-3">
             <Label>Select Operation</Label>
@@ -410,16 +406,6 @@ export function BulkProductOperationsModal({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[#e4e4e7]">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
-            {loading ? 'Processing...' : `Apply to ${selectedIds.length} Product${selectedIds.length !== 1 ? 's' : ''}`}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

@@ -44,14 +44,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import {
   Select,
   SelectContent,
@@ -1392,198 +1386,184 @@ export function CustomerAppSettings(props?: CustomerAppSettingsProps) {
         </div>
       </Tabs>
 
-      {/* ─── Coupon Dialog ────────────────────────────── */}
-      <Dialog open={couponDialog} onOpenChange={setCouponDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingCoupon?._id ? 'Edit Coupon' : 'New Coupon'}</DialogTitle>
-          </DialogHeader>
-          {editingCoupon && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Code</Label>
-                  <Input value={editingCoupon.code || ''} onChange={e => setEditingCoupon({ ...editingCoupon, code: e.target.value })} placeholder="E.g. SAVE20" />
-                </div>
-                <div>
-                  <Label>Discount Type</Label>
-                  <Select value={editingCoupon.discountType || 'percent'} onValueChange={v => setEditingCoupon({ ...editingCoupon, discountType: v as 'percent' | 'fixed' })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percent">Percentage</SelectItem>
-                      <SelectItem value="fixed">Fixed Amount</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Discount Value</Label>
-                  <Input type="number" value={editingCoupon.discountValue ?? ''} onChange={e => setEditingCoupon({ ...editingCoupon, discountValue: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <Label>Min Order (₹)</Label>
-                  <Input type="number" value={editingCoupon.minOrderAmount ?? 0} onChange={e => setEditingCoupon({ ...editingCoupon, minOrderAmount: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <Label>Max Discount (₹)</Label>
-                  <Input type="number" value={editingCoupon.maxDiscountAmount ?? ''} onChange={e => setEditingCoupon({ ...editingCoupon, maxDiscountAmount: e.target.value ? Number(e.target.value) : null })} placeholder="No limit" />
-                </div>
-                <div>
-                  <Label>Usage Limit</Label>
-                  <Input type="number" value={editingCoupon.usageLimit ?? ''} onChange={e => setEditingCoupon({ ...editingCoupon, usageLimit: e.target.value ? Number(e.target.value) : null })} placeholder="Unlimited" />
-                </div>
-                <div>
-                  <Label>Valid From</Label>
-                  <Input type="date" value={editingCoupon.validFrom ? new Date(editingCoupon.validFrom).toISOString().split('T')[0] : ''} onChange={e => setEditingCoupon({ ...editingCoupon, validFrom: e.target.value || null })} />
-                </div>
-                <div>
-                  <Label>Valid Until</Label>
-                  <Input type="date" value={editingCoupon.validTo ? new Date(editingCoupon.validTo).toISOString().split('T')[0] : ''} onChange={e => setEditingCoupon({ ...editingCoupon, validTo: e.target.value || null })} />
-                </div>
-              </div>
-              <div>
-                <Label>Description</Label>
-                <Textarea value={editingCoupon.description || ''} onChange={e => setEditingCoupon({ ...editingCoupon, description: e.target.value })} />
+      <AdminModal
+        open={couponDialog}
+        onOpenChange={setCouponDialog}
+        title={editingCoupon?._id ? 'Edit Coupon' : 'New Coupon'}
+        icon={<Tag className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCouponDialog(false)}>Cancel</Button>
+            <Button onClick={saveCoupon}>Save</Button>
+          </>
+        }
+      >
+        {editingCoupon && (
+          <AdminFormBody>
+            <AdminFormGrid>
+              <AdminField label="Code">
+                <Input value={editingCoupon.code || ''} onChange={e => setEditingCoupon({ ...editingCoupon, code: e.target.value })} placeholder="E.g. SAVE20" />
+              </AdminField>
+              <AdminField label="Discount Type">
+                <Select value={editingCoupon.discountType || 'percent'} onValueChange={v => setEditingCoupon({ ...editingCoupon, discountType: v as 'percent' | 'fixed' })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percent">Percentage</SelectItem>
+                    <SelectItem value="fixed">Fixed Amount</SelectItem>
+                  </SelectContent>
+                </Select>
+              </AdminField>
+              <AdminField label="Discount Value">
+                <Input type="number" value={editingCoupon.discountValue ?? ''} onChange={e => setEditingCoupon({ ...editingCoupon, discountValue: Number(e.target.value) })} />
+              </AdminField>
+              <AdminField label="Min Order (₹)">
+                <Input type="number" value={editingCoupon.minOrderAmount ?? 0} onChange={e => setEditingCoupon({ ...editingCoupon, minOrderAmount: Number(e.target.value) })} />
+              </AdminField>
+              <AdminField label="Max Discount (₹)">
+                <Input type="number" value={editingCoupon.maxDiscountAmount ?? ''} onChange={e => setEditingCoupon({ ...editingCoupon, maxDiscountAmount: e.target.value ? Number(e.target.value) : null })} placeholder="No limit" />
+              </AdminField>
+              <AdminField label="Usage Limit">
+                <Input type="number" value={editingCoupon.usageLimit ?? ''} onChange={e => setEditingCoupon({ ...editingCoupon, usageLimit: e.target.value ? Number(e.target.value) : null })} placeholder="Unlimited" />
+              </AdminField>
+              <AdminField label="Valid From">
+                <Input type="date" value={editingCoupon.validFrom ? new Date(editingCoupon.validFrom).toISOString().split('T')[0] : ''} onChange={e => setEditingCoupon({ ...editingCoupon, validFrom: e.target.value || null })} />
+              </AdminField>
+              <AdminField label="Valid Until">
+                <Input type="date" value={editingCoupon.validTo ? new Date(editingCoupon.validTo).toISOString().split('T')[0] : ''} onChange={e => setEditingCoupon({ ...editingCoupon, validTo: e.target.value || null })} />
+              </AdminField>
+            </AdminFormGrid>
+            <AdminField label="Description">
+              <Textarea value={editingCoupon.description || ''} onChange={e => setEditingCoupon({ ...editingCoupon, description: e.target.value })} />
+            </AdminField>
+            <div className="flex items-center gap-2">
+              <Switch checked={editingCoupon.isActive !== false} onCheckedChange={v => setEditingCoupon({ ...editingCoupon, isActive: v })} />
+              <Label>Active</Label>
+            </div>
+          </AdminFormBody>
+        )}
+      </AdminModal>
+
+      <AdminModal
+        open={legalDialog}
+        onOpenChange={setLegalDialog}
+        title={editingLegal?._id ? 'Edit Document' : 'New Document'}
+        icon={<FileText className="h-5 w-5" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setLegalDialog(false)}>Cancel</Button>
+            <Button onClick={saveLegal}>Save</Button>
+          </>
+        }
+      >
+        {editingLegal && (
+          <AdminFormBody>
+            <AdminFormGrid cols={3}>
+              <AdminField label="Type">
+                <Select value={editingLegal.type || 'terms'} onValueChange={v => setEditingLegal({ ...editingLegal, type: v as 'terms' | 'privacy' })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="terms">Terms of Service</SelectItem>
+                    <SelectItem value="privacy">Privacy Policy</SelectItem>
+                  </SelectContent>
+                </Select>
+              </AdminField>
+              <AdminField label="Version">
+                <Input value={editingLegal.version || ''} onChange={e => setEditingLegal({ ...editingLegal, version: e.target.value })} placeholder="e.g. 1.0" />
+              </AdminField>
+              <AdminField label="Format">
+                <Select value={editingLegal.contentFormat || 'plain'} onValueChange={v => setEditingLegal({ ...editingLegal, contentFormat: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="plain">Plain Text</SelectItem>
+                    <SelectItem value="html">HTML</SelectItem>
+                    <SelectItem value="markdown">Markdown</SelectItem>
+                  </SelectContent>
+                </Select>
+              </AdminField>
+            </AdminFormGrid>
+            <AdminField label="Title">
+              <Input value={editingLegal.title || ''} onChange={e => setEditingLegal({ ...editingLegal, title: e.target.value })} />
+            </AdminField>
+            <AdminField label="Content">
+              <Textarea rows={12} value={editingLegal.content || ''} onChange={e => setEditingLegal({ ...editingLegal, content: e.target.value })} />
+            </AdminField>
+            <div className="flex items-center gap-2">
+              <Switch checked={editingLegal.isCurrent !== false} onCheckedChange={v => setEditingLegal({ ...editingLegal, isCurrent: v })} />
+              <Label>Set as Current Version</Label>
+            </div>
+          </AdminFormBody>
+        )}
+      </AdminModal>
+
+      <AdminModal
+        open={cancelDialog}
+        onOpenChange={setCancelDialog}
+        title={editingCancel?._id ? 'Edit Policy' : 'New Cancellation Policy'}
+        icon={<Scale className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCancelDialog(false)}>Cancel</Button>
+            <Button onClick={saveCancel}>Save</Button>
+          </>
+        }
+      >
+        {editingCancel && (
+          <AdminFormBody>
+            <AdminField label="Policy Name">
+              <Input value={editingCancel.name || ''} onChange={e => setEditingCancel({ ...editingCancel, name: e.target.value })} />
+            </AdminField>
+            <AdminFormGrid>
+              <AdminField label="Free Window (minutes)">
+                <Input type="number" value={editingCancel.freeWindowMinutes ?? 2} onChange={e => setEditingCancel({ ...editingCancel, freeWindowMinutes: Number(e.target.value) })} />
+              </AdminField>
+              <AdminField label="Cancellation Fee (%)">
+                <Input type="number" value={editingCancel.cancellationFeePercent ?? 0} onChange={e => setEditingCancel({ ...editingCancel, cancellationFeePercent: Number(e.target.value) })} />
+              </AdminField>
+              <AdminField label="Max Cancellations/Day">
+                <Input type="number" value={editingCancel.maxCancellationsPerDay ?? 3} onChange={e => setEditingCancel({ ...editingCancel, maxCancellationsPerDay: Number(e.target.value) })} />
+              </AdminField>
+              <AdminField label="Refund Method">
+                <Select value={editingCancel.refundMethod || 'original_payment'} onValueChange={v => setEditingCancel({ ...editingCancel, refundMethod: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="original_payment">Original Payment</SelectItem>
+                    <SelectItem value="wallet">Wallet</SelectItem>
+                    <SelectItem value="manual">Manual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </AdminField>
+              <AdminField label="Applies To">
+                <Select value={editingCancel.appliesTo || 'all'} onValueChange={v => setEditingCancel({ ...editingCancel, appliesTo: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Orders</SelectItem>
+                    <SelectItem value="cod">COD Only</SelectItem>
+                    <SelectItem value="online">Online Only</SelectItem>
+                    <SelectItem value="wallet">Wallet Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </AdminField>
+            </AdminFormGrid>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch checked={editingCancel.customerCanCancel !== false} onCheckedChange={v => setEditingCancel({ ...editingCancel, customerCanCancel: v })} />
+                <Label>Customer Can Cancel</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch checked={editingCoupon.isActive !== false} onCheckedChange={v => setEditingCoupon({ ...editingCoupon, isActive: v })} />
+                <Switch checked={editingCancel.autoRefundOnCancel !== false} onCheckedChange={v => setEditingCancel({ ...editingCancel, autoRefundOnCancel: v })} />
+                <Label>Auto Refund on Cancel</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={editingCancel.isActive !== false} onCheckedChange={v => setEditingCancel({ ...editingCancel, isActive: v })} />
                 <Label>Active</Label>
               </div>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCouponDialog(false)}>Cancel</Button>
-            <Button onClick={saveCoupon}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Legal Dialog ─────────────────────────────── */}
-      <Dialog open={legalDialog} onOpenChange={setLegalDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingLegal?._id ? 'Edit Document' : 'New Document'}</DialogTitle>
-          </DialogHeader>
-          {editingLegal && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label>Type</Label>
-                  <Select value={editingLegal.type || 'terms'} onValueChange={v => setEditingLegal({ ...editingLegal, type: v as 'terms' | 'privacy' })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="terms">Terms of Service</SelectItem>
-                      <SelectItem value="privacy">Privacy Policy</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Version</Label>
-                  <Input value={editingLegal.version || ''} onChange={e => setEditingLegal({ ...editingLegal, version: e.target.value })} placeholder="e.g. 1.0" />
-                </div>
-                <div>
-                  <Label>Format</Label>
-                  <Select value={editingLegal.contentFormat || 'plain'} onValueChange={v => setEditingLegal({ ...editingLegal, contentFormat: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="plain">Plain Text</SelectItem>
-                      <SelectItem value="html">HTML</SelectItem>
-                      <SelectItem value="markdown">Markdown</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label>Title</Label>
-                <Input value={editingLegal.title || ''} onChange={e => setEditingLegal({ ...editingLegal, title: e.target.value })} />
-              </div>
-              <div>
-                <Label>Content</Label>
-                <Textarea rows={12} value={editingLegal.content || ''} onChange={e => setEditingLegal({ ...editingLegal, content: e.target.value })} />
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={editingLegal.isCurrent !== false} onCheckedChange={v => setEditingLegal({ ...editingLegal, isCurrent: v })} />
-                <Label>Set as Current Version</Label>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLegalDialog(false)}>Cancel</Button>
-            <Button onClick={saveLegal}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Cancellation Dialog ──────────────────────── */}
-      <Dialog open={cancelDialog} onOpenChange={setCancelDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingCancel?._id ? 'Edit Policy' : 'New Cancellation Policy'}</DialogTitle>
-          </DialogHeader>
-          {editingCancel && (
-            <div className="space-y-4">
-              <div>
-                <Label>Policy Name</Label>
-                <Input value={editingCancel.name || ''} onChange={e => setEditingCancel({ ...editingCancel, name: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Free Window (minutes)</Label>
-                  <Input type="number" value={editingCancel.freeWindowMinutes ?? 2} onChange={e => setEditingCancel({ ...editingCancel, freeWindowMinutes: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <Label>Cancellation Fee (%)</Label>
-                  <Input type="number" value={editingCancel.cancellationFeePercent ?? 0} onChange={e => setEditingCancel({ ...editingCancel, cancellationFeePercent: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <Label>Max Cancellations/Day</Label>
-                  <Input type="number" value={editingCancel.maxCancellationsPerDay ?? 3} onChange={e => setEditingCancel({ ...editingCancel, maxCancellationsPerDay: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <Label>Refund Method</Label>
-                  <Select value={editingCancel.refundMethod || 'original_payment'} onValueChange={v => setEditingCancel({ ...editingCancel, refundMethod: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="original_payment">Original Payment</SelectItem>
-                      <SelectItem value="wallet">Wallet</SelectItem>
-                      <SelectItem value="manual">Manual</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Applies To</Label>
-                  <Select value={editingCancel.appliesTo || 'all'} onValueChange={v => setEditingCancel({ ...editingCancel, appliesTo: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Orders</SelectItem>
-                      <SelectItem value="cod">COD Only</SelectItem>
-                      <SelectItem value="online">Online Only</SelectItem>
-                      <SelectItem value="wallet">Wallet Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Switch checked={editingCancel.customerCanCancel !== false} onCheckedChange={v => setEditingCancel({ ...editingCancel, customerCanCancel: v })} />
-                  <Label>Customer Can Cancel</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={editingCancel.autoRefundOnCancel !== false} onCheckedChange={v => setEditingCancel({ ...editingCancel, autoRefundOnCancel: v })} />
-                  <Label>Auto Refund on Cancel</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={editingCancel.isActive !== false} onCheckedChange={v => setEditingCancel({ ...editingCancel, isActive: v })} />
-                  <Label>Active</Label>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelDialog(false)}>Cancel</Button>
-            <Button onClick={saveCancel}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AdminFormBody>
+        )}
+      </AdminModal>
     </div>
   );
 }

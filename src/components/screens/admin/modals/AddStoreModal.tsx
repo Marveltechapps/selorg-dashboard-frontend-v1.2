@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +13,6 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Store, City, Zone, Manager, createStore, updateStore, createWarehouse, Warehouse, fetchCities, fetchZones, fetchManagers } from '../storeWarehouseApi';
 import { toast } from 'sonner';
 import { Store as StoreIcon } from 'lucide-react';
@@ -393,432 +386,426 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
     }
   };
 
+  const modalTitle = editStore
+    ? `Edit ${editStore.type === 'warehouse' ? 'Warehouse' : 'Store'}`
+    : storeType === 'warehouse'
+      ? 'Add New Warehouse'
+      : 'Add New Store';
+
+  const modalSubtitle = editStore
+    ? `Update ${editStore.type === 'warehouse' ? 'warehouse' : 'store'} information and settings`
+    : storeType === 'warehouse'
+      ? 'Create a new warehouse or fulfillment center'
+      : 'Create a new store or fulfillment center';
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[95vh] p-0 flex flex-col overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#e4e4e7] flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <StoreIcon className="text-blue-600" size={20} />
-            </div>
-            <div>
-              <DialogTitle className="text-xl">
-                {editStore 
-                  ? `Edit ${editStore.type === 'warehouse' ? 'Warehouse' : 'Store'}` 
-                  : storeType === 'warehouse' 
-                    ? 'Add New Warehouse' 
-                    : 'Add New Store'}
-              </DialogTitle>
-              <DialogDescription>
-                {editStore 
-                  ? `Update ${editStore.type === 'warehouse' ? 'warehouse' : 'store'} information and settings` 
-                  : storeType === 'warehouse'
-                    ? 'Create a new warehouse or fulfillment center'
-                    : 'Create a new store or fulfillment center'}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <Tabs defaultValue="basic" className="flex-1 flex flex-col min-h-0">
-          <div className="px-6 pt-2 flex-shrink-0">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="basic">Basic Info</TabsTrigger>
-              <TabsTrigger value="location">Location & Contact</TabsTrigger>
-              <TabsTrigger value="hours">Operational Hours</TabsTrigger>
-              <TabsTrigger value="advanced">Advanced</TabsTrigger>
-            </TabsList>
-          </div>
-
-          <ScrollArea className="flex-1 px-6 min-h-0 overflow-y-auto">
-            <TabsContent value="basic" className="space-y-4 mt-4 pb-6">
-              <div className="grid grid-cols-2 gap-4">
-                {/* City */}
-                <div className="space-y-2">
-                  <Label>City *</Label>
-                  <Select
-                    value={formData.cityId || '_none'}
-                    onValueChange={(v) => handleChange('cityId', v === '_none' ? '' : v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select city" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">— Select —</SelectItem>
-                      {cities.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Zone */}
-                <div className="space-y-2">
-                  <Label>Zone *</Label>
-                  <Select
-                    value={formData.zoneId || '_none'}
-                    onValueChange={handleZoneChange}
-                    disabled={!formData.cityId}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={formData.cityId ? 'Select zone' : 'Select city first'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">— Select —</SelectItem>
-                      {availableZones.map((z) => (
-                        <SelectItem key={z.id} value={z.id}>
-                          {z.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="store-name">Store Name *</Label>
-                <Input
-                  id="store-name"
-                  placeholder="e.g., Indiranagar Express"
-                  value={formData.name}
-                  onChange={(e) => handleChange('name', e.target.value)}
-                />
-              </div>
-
-              {/* Store Code */}
-              <div className="space-y-2">
-                <Label htmlFor="store-code">Store Code *</Label>
-                <Input
-                  id="store-code"
-                  placeholder="e.g., BLR-IND-001"
-                  value={formData.code}
-                  onChange={(e) => handleChange('code', e.target.value.toUpperCase())}
-                  disabled={!!editStore}
-                  className="font-mono"
-                />
-                {editStore && (
-                  <p className="text-xs text-[#71717a]">Store code cannot be changed</p>
-                )}
-              </div>
-
-              {/* Manager */}
-              <div className="space-y-2">
-                <Label>Store Manager</Label>
-                <Select
-                  value={formData.managerId || '_none'}
-                  onValueChange={(v) => handleChange('managerId', v === '_none' ? '' : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select manager" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None</SelectItem>
-                    {managers.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Capacity & Radius */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="capacity">Max Capacity (orders/hour)</Label>
-                  <Input
-                    id="capacity"
-                    type="number"
-                    placeholder="100"
-                    value={formData.maxCapacity}
-                    onChange={(e) => handleChange('maxCapacity', e.target.value)}
-                    min="10"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="current-load">Current Load</Label>
-                  <Input
-                    id="current-load"
-                    type="number"
-                    placeholder="0"
-                    value={formData.currentLoad}
-                    onChange={(e) => handleChange('currentLoad', e.target.value)}
-                    min="0"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="radius">Delivery Radius (km)</Label>
-                  <Input
-                    id="radius"
-                    type="number"
-                    placeholder="5"
-                    value={formData.deliveryRadius}
-                    onChange={(e) => handleChange('deliveryRadius', e.target.value)}
-                    min="1"
-                    max="100"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Service Status</Label>
-                  <Select
-                    value={formData.serviceStatus}
-                    onValueChange={(v: 'Full' | 'Partial' | 'None') => handleChange('serviceStatus', v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Full">Full</SelectItem>
-                      <SelectItem value="Partial">Partial</SelectItem>
-                      <SelectItem value="None">None</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={formData.status} onValueChange={(val: any) => handleChange('status', val)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">🟢 Active</SelectItem>
-                    <SelectItem value="offline">⚫ Offline</SelectItem>
-                    <SelectItem value="inactive">⚪ Inactive</SelectItem>
-                    <SelectItem value="maintenance">🔧 Maintenance</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="location" className="space-y-4 mt-4 pb-6">
-              {/* Address */}
-              <div className="space-y-2">
-                <Label htmlFor="address">Street Address *</Label>
-                <Textarea
-                  id="address"
-                  placeholder="100 Feet Road, Indiranagar"
-                  value={formData.address}
-                  onChange={(e) => handleChange('address', e.target.value)}
-                  rows={2}
-                />
-              </div>
-
-              {/* City, State, Pincode */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City *</Label>
-                  <Input
-                    id="city"
-                    placeholder="Auto-filled from selected zone"
-                    value={formData.city}
-                    readOnly
-                    disabled
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    placeholder="Karnataka"
-                    value={formData.state}
-                    onChange={(e) => handleChange('state', e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    placeholder="560038"
-                    value={formData.pincode}
-                    onChange={(e) => handleChange('pincode', e.target.value)}
-                  />
-                </div>
-                <div />
-              </div>
-
-              {/* Coordinates */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="latitude">Latitude</Label>
-                  <Input
-                    id="latitude"
-                    type="number"
-                    step="0.0001"
-                    placeholder="12.9716"
-                    value={formData.latitude}
-                    onChange={(e) => handleChange('latitude', e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="longitude">Longitude</Label>
-                  <Input
-                    id="longitude"
-                    type="number"
-                    step="0.0001"
-                    placeholder="77.5946"
-                    value={formData.longitude}
-                    onChange={(e) => handleChange('longitude', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-800">
-                  💡 Tip: Use Google Maps to find accurate coordinates. Right-click on location → "What's here?"
-                </p>
-              </div>
-
-              {/* Contact */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    placeholder="+91-80-4567-8901"
-                    value={formData.phone}
-                    onChange={(e) => handleChange('phone', e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="store@quickcommerce.com"
-                    value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="hours" className="space-y-4 mt-4 pb-6">
-              <div className="space-y-3">
-                {DAYS.map(day => (
-                  <div key={day} className="flex items-center gap-3 p-3 bg-[#f4f4f5] rounded-lg">
-                    <div className="flex items-center gap-2 w-32">
-                      <Switch
-                        checked={operationalHours[day].isOpen}
-                        onCheckedChange={(checked) => handleHourChange(day, 'isOpen', checked)}
-                      />
-                      <Label className="capitalize cursor-pointer">
-                        {day}
-                      </Label>
-                    </div>
-
-                    {operationalHours[day].isOpen ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <Input
-                          type="time"
-                          value={operationalHours[day].open}
-                          onChange={(e) => handleHourChange(day, 'open', e.target.value)}
-                          className="w-32"
-                        />
-                        <span className="text-[#71717a]">to</span>
-                        <Input
-                          type="time"
-                          value={operationalHours[day].close}
-                          onChange={(e) => handleHourChange(day, 'close', e.target.value)}
-                          className="w-32"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-[#a1a1aa] text-sm">Closed</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const allOpen = { open: '06:00', close: '23:00', isOpen: true };
-                    setOperationalHours(DAYS.reduce((acc, day) => ({ ...acc, [day]: allOpen }), {}));
-                  }}
-                >
-                  Set All 6AM - 11PM
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const allDay = { open: '00:00', close: '23:59', isOpen: true };
-                    setOperationalHours(DAYS.reduce((acc, day) => ({ ...acc, [day]: allDay }), {}));
-                  }}
-                >
-                  Set 24/7
-                </Button>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="advanced" className="space-y-4 mt-4 pb-6">
-              <p className="text-xs text-muted-foreground">Legacy map coordinates and tag list; optional JSON metadata stored on the store document.</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="legacy-x">Legacy X</Label>
-                  <Input
-                    id="legacy-x"
-                    type="number"
-                    step="any"
-                    value={formData.legacyX}
-                    onChange={(e) => handleChange('legacyX', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="legacy-y">Legacy Y</Label>
-                  <Input
-                    id="legacy-y"
-                    type="number"
-                    step="any"
-                    value={formData.legacyY}
-                    onChange={(e) => handleChange('legacyY', e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="zones-csv">Legacy zone tags (comma-separated)</Label>
-                <Input
-                  id="zones-csv"
-                  value={formData.zonesCsv}
-                  onChange={(e) => handleChange('zonesCsv', e.target.value)}
-                  placeholder="tag1, tag2"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="store-metadata">Metadata (JSON object)</Label>
-                <Textarea
-                  id="store-metadata"
-                  className="font-mono text-xs"
-                  rows={6}
-                  value={formData.metadataJson}
-                  onChange={(e) => handleChange('metadataJson', e.target.value)}
-                  placeholder="{}"
-                />
-              </div>
-            </TabsContent>
-          </ScrollArea>
-        </Tabs>
-
-        {/* Footer - Always visible */}
-        <div className="px-6 py-4 border-t border-[#e4e4e7] flex justify-end gap-3 flex-shrink-0 bg-white">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      scrollBody={false}
+      title={modalTitle}
+      subtitle={modalSubtitle}
+      icon={<StoreIcon className="text-blue-600" size={20} />}
+      maxWidth="max-w-3xl"
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
             {loading ? 'Saving...' : editStore ? 'Update Store' : 'Create Store'}
           </Button>
+        </>
+      }
+    >
+      <Tabs defaultValue="basic" className="flex-1 flex flex-col min-h-0">
+        <div className="px-6 pt-2 flex-shrink-0">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="basic">Basic Info</TabsTrigger>
+            <TabsTrigger value="location">Location & Contact</TabsTrigger>
+            <TabsTrigger value="hours">Operational Hours</TabsTrigger>
+            <TabsTrigger value="advanced">Advanced</TabsTrigger>
+          </TabsList>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+          <TabsContent value="basic" className="space-y-4 mt-4 pb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* City */}
+              <div className="space-y-2">
+                <Label>City *</Label>
+                <Select
+                  value={formData.cityId || '_none'}
+                  onValueChange={(v) => handleChange('cityId', v === '_none' ? '' : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select city" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">— Select —</SelectItem>
+                    {cities.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Zone */}
+              <div className="space-y-2">
+                <Label>Zone *</Label>
+                <Select
+                  value={formData.zoneId || '_none'}
+                  onValueChange={handleZoneChange}
+                  disabled={!formData.cityId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={formData.cityId ? 'Select zone' : 'Select city first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">— Select —</SelectItem>
+                    {availableZones.map((z) => (
+                      <SelectItem key={z.id} value={z.id}>
+                        {z.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-name">Store Name *</Label>
+              <Input
+                id="store-name"
+                placeholder="e.g., Indiranagar Express"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+              />
+            </div>
+
+            {/* Store Code */}
+            <div className="space-y-2">
+              <Label htmlFor="store-code">Store Code *</Label>
+              <Input
+                id="store-code"
+                placeholder="e.g., BLR-IND-001"
+                value={formData.code}
+                onChange={(e) => handleChange('code', e.target.value.toUpperCase())}
+                disabled={!!editStore}
+                className="font-mono"
+              />
+              {editStore && (
+                <p className="text-xs text-gray-500">Store code cannot be changed</p>
+              )}
+            </div>
+
+            {/* Manager */}
+            <div className="space-y-2">
+              <Label>Store Manager</Label>
+              <Select
+                value={formData.managerId || '_none'}
+                onValueChange={(v) => handleChange('managerId', v === '_none' ? '' : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">None</SelectItem>
+                  {managers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Capacity & Radius */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="capacity">Max Capacity (orders/hour)</Label>
+                <Input
+                  id="capacity"
+                  type="number"
+                  placeholder="100"
+                  value={formData.maxCapacity}
+                  onChange={(e) => handleChange('maxCapacity', e.target.value)}
+                  min="10"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="current-load">Current Load</Label>
+                <Input
+                  id="current-load"
+                  type="number"
+                  placeholder="0"
+                  value={formData.currentLoad}
+                  onChange={(e) => handleChange('currentLoad', e.target.value)}
+                  min="0"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="radius">Delivery Radius (km)</Label>
+                <Input
+                  id="radius"
+                  type="number"
+                  placeholder="5"
+                  value={formData.deliveryRadius}
+                  onChange={(e) => handleChange('deliveryRadius', e.target.value)}
+                  min="1"
+                  max="100"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Service Status</Label>
+                <Select
+                  value={formData.serviceStatus}
+                  onValueChange={(v: 'Full' | 'Partial' | 'None') => handleChange('serviceStatus', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Full">Full</SelectItem>
+                    <SelectItem value="Partial">Partial</SelectItem>
+                    <SelectItem value="None">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Status */}
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={formData.status} onValueChange={(val: any) => handleChange('status', val)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="offline">Offline</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="location" className="space-y-4 mt-4 pb-6">
+            {/* Address */}
+            <div className="space-y-2">
+              <Label htmlFor="address">Street Address *</Label>
+              <Textarea
+                id="address"
+                placeholder="100 Feet Road, Indiranagar"
+                value={formData.address}
+                onChange={(e) => handleChange('address', e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            {/* City, State, Pincode */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="city">City *</Label>
+                <Input
+                  id="city"
+                  placeholder="Auto-filled from selected zone"
+                  value={formData.city}
+                  readOnly
+                  disabled
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="state">State</Label>
+                <Input
+                  id="state"
+                  placeholder="Karnataka"
+                  value={formData.state}
+                  onChange={(e) => handleChange('state', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="pincode">Pincode</Label>
+                <Input
+                  id="pincode"
+                  placeholder="560038"
+                  value={formData.pincode}
+                  onChange={(e) => handleChange('pincode', e.target.value)}
+                />
+              </div>
+              <div />
+            </div>
+
+            {/* Coordinates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="latitude">Latitude</Label>
+                <Input
+                  id="latitude"
+                  type="number"
+                  step="0.0001"
+                  placeholder="12.9716"
+                  value={formData.latitude}
+                  onChange={(e) => handleChange('latitude', e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="longitude">Longitude</Label>
+                <Input
+                  id="longitude"
+                  type="number"
+                  step="0.0001"
+                  placeholder="77.5946"
+                  value={formData.longitude}
+                  onChange={(e) => handleChange('longitude', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs text-blue-800">
+                Tip: Use Google Maps to find accurate coordinates. Right-click on location &rarr; "What's here?"
+              </p>
+            </div>
+
+            {/* Contact */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  placeholder="+91-80-4567-8901"
+                  value={formData.phone}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="store@quickcommerce.com"
+                  value={formData.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="hours" className="space-y-4 mt-4 pb-6">
+            <div className="space-y-3">
+              {DAYS.map(day => (
+                <div key={day} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 w-32">
+                    <Switch
+                      checked={operationalHours[day].isOpen}
+                      onCheckedChange={(checked) => handleHourChange(day, 'isOpen', checked)}
+                    />
+                    <Label className="capitalize cursor-pointer">
+                      {day}
+                    </Label>
+                  </div>
+
+                  {operationalHours[day].isOpen ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <Input
+                        type="time"
+                        value={operationalHours[day].open}
+                        onChange={(e) => handleHourChange(day, 'open', e.target.value)}
+                        className="w-32"
+                      />
+                      <span className="text-gray-500">to</span>
+                      <Input
+                        type="time"
+                        value={operationalHours[day].close}
+                        onChange={(e) => handleHourChange(day, 'close', e.target.value)}
+                        className="w-32"
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 text-sm">Closed</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const allOpen = { open: '06:00', close: '23:00', isOpen: true };
+                  setOperationalHours(DAYS.reduce((acc, day) => ({ ...acc, [day]: allOpen }), {}));
+                }}
+              >
+                Set All 6AM - 11PM
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const allDay = { open: '00:00', close: '23:59', isOpen: true };
+                  setOperationalHours(DAYS.reduce((acc, day) => ({ ...acc, [day]: allDay }), {}));
+                }}
+              >
+                Set 24/7
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="advanced" className="space-y-4 mt-4 pb-6">
+            <p className="text-xs text-gray-500">Legacy map coordinates and tag list; optional JSON metadata stored on the store document.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="legacy-x">Legacy X</Label>
+                <Input
+                  id="legacy-x"
+                  type="number"
+                  step="any"
+                  value={formData.legacyX}
+                  onChange={(e) => handleChange('legacyX', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="legacy-y">Legacy Y</Label>
+                <Input
+                  id="legacy-y"
+                  type="number"
+                  step="any"
+                  value={formData.legacyY}
+                  onChange={(e) => handleChange('legacyY', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="zones-csv">Legacy zone tags (comma-separated)</Label>
+              <Input
+                id="zones-csv"
+                value={formData.zonesCsv}
+                onChange={(e) => handleChange('zonesCsv', e.target.value)}
+                placeholder="tag1, tag2"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-metadata">Metadata (JSON object)</Label>
+              <Textarea
+                id="store-metadata"
+                className="font-mono text-xs"
+                rows={6}
+                value={formData.metadataJson}
+                onChange={(e) => handleChange('metadataJson', e.target.value)}
+                placeholder="{}"
+              />
+            </div>
+          </TabsContent>
+        </div>
+      </Tabs>
+    </AdminModal>
   );
 }

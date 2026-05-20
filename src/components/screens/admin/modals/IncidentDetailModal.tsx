@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +10,8 @@ import {
   Mail,
   RefreshCw,
   CheckCircle,
-  Clock
+  Clock,
+  Loader2,
 } from 'lucide-react';
 import { Incident, fetchIncidentDetails, resolveIncident } from '../citywideControlApi';
 import { toast } from 'sonner';
@@ -73,9 +68,9 @@ export function IncidentDetailModal({
     }
   };
 
-  if (!incident) {
-    return null;
-  }
+  const handleOpenChange = (next: boolean) => {
+    if (!next) onClose();
+  };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -96,29 +91,30 @@ export function IncidentDetailModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl">{incident.title}</DialogTitle>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge className={`${getSeverityColor(incident.severity)} text-white`}>
-                  {incident.severity.toUpperCase()}
-                </Badge>
-                <Badge variant={incident.status === 'resolved' ? 'default' : 'outline'}>
-                  {incident.status.toUpperCase()}
-                </Badge>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-[#71717a]">Incident ID</div>
-              <div className="font-bold">{incident.id}</div>
-            </div>
-          </div>
-        </DialogHeader>
+    <AdminModal
+      open={open}
+      onOpenChange={handleOpenChange}
+      scrollBody={false}
+      title={incident?.title ?? 'Incident details'}
+      subtitle={incident ? `Incident ID: ${incident.id}` : 'Loading incident data…'}
+      maxWidth="max-w-3xl"
+    >
+      {loading || !incident ? (
+        <div className="flex min-h-[16rem] items-center justify-center px-6 py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-rose-600" />
+        </div>
+      ) : (
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Badge className={`${getSeverityColor(incident.severity)} text-white`}>
+            {incident.severity.toUpperCase()}
+          </Badge>
+          <Badge variant={incident.status === 'resolved' ? 'default' : 'outline'}>
+            {incident.status.toUpperCase()}
+          </Badge>
+        </div>
 
-        <Tabs defaultValue="details" className="mt-4">
+        <Tabs defaultValue="details">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="impact">Impact</TabsTrigger>
@@ -132,24 +128,24 @@ export function IncidentDetailModal({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm text-[#71717a]">Type</div>
+                    <div className="text-sm text-gray-500">Type</div>
                     <div className="font-medium capitalize">{incident.type.replace('_', ' ')}</div>
                   </div>
                   <div>
-                    <div className="text-sm text-[#71717a]">Severity</div>
+                    <div className="text-sm text-gray-500">Severity</div>
                     <div className="font-medium capitalize">{incident.severity}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm text-[#71717a]">Start Time</div>
+                    <div className="text-sm text-gray-500">Start Time</div>
                     <div className="font-medium">
                       {new Date(incident.startTime).toLocaleString()}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-[#71717a]">Duration</div>
+                    <div className="text-sm text-gray-500">Duration</div>
                     <div className="font-medium flex items-center gap-1">
                       <Clock size={14} />
                       {formatDuration(incident.startTime)}
@@ -158,7 +154,7 @@ export function IncidentDetailModal({
                 </div>
 
                 <div>
-                  <div className="text-sm text-[#71717a]">Description</div>
+                  <div className="text-sm text-gray-500">Description</div>
                   <div className="font-medium">{incident.description}</div>
                 </div>
 
@@ -182,24 +178,24 @@ export function IncidentDetailModal({
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-sm text-[#71717a]">Store</div>
+                      <div className="text-sm text-gray-500">Store</div>
                       <div className="font-medium">Store #102</div>
                     </div>
                     <div>
-                      <div className="text-sm text-[#71717a]">Location</div>
+                      <div className="text-sm text-gray-500">Location</div>
                       <div className="font-medium">Indiranagar</div>
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-[#71717a]">Issue</div>
+                    <div className="text-sm text-gray-500">Issue</div>
                     <div className="font-medium">Power Failure</div>
                   </div>
                   <div>
-                    <div className="text-sm text-[#71717a]">Root Cause</div>
+                    <div className="text-sm text-gray-500">Root Cause</div>
                     <div className="font-medium">Main transformer failure</div>
                   </div>
                   <div>
-                    <div className="text-sm text-[#71717a]">Estimated Resolution</div>
+                    <div className="text-sm text-gray-500">Estimated Resolution</div>
                     <div className="font-medium">30 mins</div>
                   </div>
                 </div>
@@ -227,23 +223,23 @@ export function IncidentDetailModal({
                 </div>
 
                 <div>
-                  <div className="text-sm text-[#71717a] mb-2">Impact Details</div>
-                  <div className="bg-[#f4f4f5] p-3 rounded-lg">
+                  <div className="text-sm text-gray-500 mb-2">Impact Details</div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
                     <div className="font-medium">{incident.impact}</div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#71717a]">Customer Notifications Sent</span>
+                    <span className="text-gray-500">Customer Notifications Sent</span>
                     <Badge variant="default" className="bg-emerald-500">✓ Completed</Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#71717a]">Rider Reassignments</span>
+                    <span className="text-gray-500">Rider Reassignments</span>
                     <Badge variant="outline">0 (Manual)</Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#71717a]">Revenue Impact (Est.)</span>
+                    <span className="text-gray-500">Revenue Impact (Est.)</span>
                     <span className="font-bold">₹{((incident.affectedOrders || 0) * 1270).toLocaleString()}</span>
                   </div>
                 </div>
@@ -260,7 +256,7 @@ export function IncidentDetailModal({
                     <div key={index} className="flex gap-3">
                       <div className="flex-shrink-0 w-1 bg-emerald-500 rounded"></div>
                       <div className="flex-1 pb-3">
-                        <div className="text-xs text-[#71717a]">
+                        <div className="text-xs text-gray-500">
                           {new Date(event.timestamp).toLocaleString()}
                         </div>
                         <div className="font-medium mt-1">{event.event}</div>
@@ -268,7 +264,7 @@ export function IncidentDetailModal({
                     </div>
                   ))
                 ) : (
-                  <div className="text-[#71717a] text-sm">No timeline events recorded</div>
+                  <div className="text-gray-500 text-sm">No timeline events recorded</div>
                 )}
                 
                 {incident.status === 'ongoing' && (
@@ -327,7 +323,8 @@ export function IncidentDetailModal({
             </div>
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </div>
+      )}
+    </AdminModal>
   );
 }

@@ -107,9 +107,17 @@ export const fetchPickerApprovalsList = async (
 
 export const fetchPickerDetails = async (id: string): Promise<PickerApprovalDetails> => {
   const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
-    `${ADMIN_PICKER_BASE}/pickers/${id}`
+    `${ADMIN_PICKER_BASE}/pickers/${encodeURIComponent(id)}`
   );
-  return res.data;
+  if (!res?.data) {
+    throw new Error('Picker details not found');
+  }
+  return {
+    ...res.data,
+    trainingProgress: res.data.trainingProgress ?? 0,
+    bankDetails: res.data.bankDetails ?? [],
+    selectedShifts: res.data.selectedShifts ?? [],
+  };
 };
 
 export const fetchPickerActionLogs = async (

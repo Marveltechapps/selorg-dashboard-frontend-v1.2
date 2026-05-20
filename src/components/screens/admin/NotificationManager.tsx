@@ -2,14 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from './modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from './modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -124,12 +118,16 @@ export function NotificationManager() {
   const [channelPerformance, setChannelPerformance] = useState<ChannelPerformance[]>([]);
   const [timeSeriesMetrics, setTimeSeriesMetrics] = useState<TimeSeriesMetrics[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('campaigns');
 
   // Modal states
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [showAutomationModal, setShowAutomationModal] = useState(false);
+  const [editingAutomationRule, setEditingAutomationRule] = useState<AutomationRule | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null);
   const [selectedCampaign, setCampaign] = useState<Campaign | null>(null);
@@ -157,38 +155,42 @@ export function NotificationManager() {
     loadData();
   }, []);
 
+  const fetchAllNotificationData = async () => {
+    const [
+      templatesData,
+      campaignsData,
+      scheduledData,
+      automationData,
+      analyticsData,
+      historyData,
+      channelData,
+      timeSeriesData,
+    ] = await Promise.all([
+      fetchTemplates(),
+      fetchCampaigns(),
+      fetchScheduled(),
+      fetchAutomation(),
+      fetchAnalytics(),
+      fetchHistory(),
+      fetchChannelPerformance(),
+      fetchTimeSeriesMetrics(),
+    ]);
+
+    setTemplates(templatesData);
+    setCampaigns(campaignsData);
+    setScheduled(scheduledData);
+    setAutomation(automationData);
+    setAnalytics(analyticsData);
+    setHistory(historyData);
+    setChannelPerformance(channelData);
+    setTimeSeriesMetrics(timeSeriesData);
+  };
+
   const loadData = async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [
-        templatesData,
-        campaignsData,
-        scheduledData,
-        automationData,
-        analyticsData,
-        historyData,
-        channelData,
-        timeSeriesData,
-      ] = await Promise.all([
-        fetchTemplates(),
-        fetchCampaigns(),
-        fetchScheduled(),
-        fetchAutomation(),
-        fetchAnalytics(),
-        fetchHistory(),
-        fetchChannelPerformance(),
-        fetchTimeSeriesMetrics(),
-      ]);
-
-      setTemplates(templatesData);
-      setCampaigns(campaignsData);
-      setScheduled(scheduledData);
-      setAutomation(automationData);
-      setAnalytics(analyticsData);
-      setHistory(historyData);
-      setChannelPerformance(channelData);
-      setTimeSeriesMetrics(timeSeriesData);
+      await fetchAllNotificationData();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to load notification data';
       setLoadError(msg);
@@ -198,15 +200,32 @@ export function NotificationManager() {
     }
   };
 
+  /** Silent refresh — keeps UI visible, updates every tab + stats. */
+  const refreshData = async () => {
+    setRefreshing(true);
+    try {
+      await fetchAllNotificationData();
+      setLoadError(null);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to refresh notification data';
+      toast.error(msg);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    void refreshData();
+  };
+
   const handleCreateTemplate = async () => {
     if (!templateForm.name.trim() || !templateForm.title.trim() || !templateForm.body.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
     try {
-      const newTemplate = await createTemplate(templateForm);
-      // Add to local state immediately for instant UI update
-      setTemplates([...templates, newTemplate]);
+      await createTemplate(templateForm);
       toast.success('Template created successfully');
       setShowTemplateModal(false);
       setTemplateForm({
@@ -217,8 +236,7 @@ export function NotificationManager() {
         channels: ['push'],
         priority: 'medium',
       });
-      // Reload to ensure sync with backend
-      await loadData();
+      await refreshData();
     } catch (error) {
       console.error('Create template error:', error);
       toast.error('Failed to create template');
@@ -231,9 +249,7 @@ export function NotificationManager() {
       return;
     }
     try {
-      const updatedTemplate = await updateTemplate(selectedTemplate.id, templateForm);
-      // Update local state immediately
-      setTemplates(templates.map(t => t.id === selectedTemplate.id ? updatedTemplate : t));
+      await updateTemplate(selectedTemplate.id, templateForm);
       toast.success('Template updated successfully');
       setShowTemplateModal(false);
       setSelectedTemplate(null);
@@ -245,24 +261,10 @@ export function NotificationManager() {
         channels: ['push'],
         priority: 'medium',
       });
-      await loadData();
-    } catch (error: any) {
+      await refreshData();
+    } catch (error: unknown) {
       console.error('Update template error:', error);
-      // Still update local state
-      const updatedTemplate = { ...selectedTemplate, ...templateForm };
-      setTemplates(templates.map(t => t.id === selectedTemplate.id ? updatedTemplate : t));
-      toast.success('Template updated successfully');
-      setShowTemplateModal(false);
-      setSelectedTemplate(null);
-      setTemplateForm({
-        name: '',
-        title: '',
-        body: '',
-        category: 'promotional',
-        channels: ['push'],
-        priority: 'medium',
-      });
-      await loadData();
+      toast.error(error instanceof Error ? error.message : 'Failed to update template');
     }
   };
 
@@ -271,15 +273,36 @@ export function NotificationManager() {
       toast.error('Please fill in all required fields');
       return;
     }
+    if (campaignForm.templateId === '__no_templates__') {
+      toast.error('Create an active template before launching a campaign');
+      return;
+    }
+    if (campaignForm.scheduleType === 'scheduled' && !campaignForm.scheduledAt) {
+      toast.error('Please select a schedule date and time');
+      return;
+    }
+    const template = templates.find((t) => t.id === campaignForm.templateId);
+    if (!template) {
+      toast.error('Selected template not found. Refresh and try again.');
+      return;
+    }
+
+    setCreatingCampaign(true);
     try {
-      const template = templates.find(t => t.id === campaignForm.templateId);
       const newCampaign = await createCampaign({
-        ...campaignForm,
-        templateName: template?.name || '',
+        name: campaignForm.name.trim(),
+        templateId: campaignForm.templateId,
+        templateName: template.name,
+        segment: campaignForm.segment,
+        channels: template.channels?.length ? template.channels : campaignForm.channels,
+        scheduleType: campaignForm.scheduleType,
+        scheduledAt: campaignForm.scheduleType === 'scheduled' ? campaignForm.scheduledAt : undefined,
       });
-      // Add to local state immediately
-      setCampaigns([...campaigns, newCampaign]);
-      toast.success('Campaign created successfully');
+      const sentLabel =
+        campaignForm.scheduleType === 'immediate'
+          ? `Campaign sent to ${newCampaign.targetUsers?.toLocaleString() ?? 0} users`
+          : 'Campaign scheduled successfully';
+      toast.success(sentLabel);
       setShowCampaignModal(false);
       setCampaignForm({
         name: '',
@@ -289,11 +312,13 @@ export function NotificationManager() {
         scheduleType: 'immediate',
         scheduledAt: '',
       });
-      // Reload to ensure sync
-      await loadData();
+      await refreshData();
     } catch (error) {
       console.error('Create campaign error:', error);
-      toast.error('Failed to create campaign');
+      const msg = error instanceof Error ? error.message : 'Failed to create campaign';
+      toast.error(msg);
+    } finally {
+      setCreatingCampaign(false);
     }
   };
 
@@ -301,7 +326,7 @@ export function NotificationManager() {
     try {
       await updateCampaignStatus(campaignId, 'paused');
       toast.success('Campaign paused');
-      loadData();
+      await refreshData();
     } catch (error) {
       toast.error('Failed to pause campaign');
     }
@@ -311,7 +336,7 @@ export function NotificationManager() {
     try {
       await updateCampaignStatus(campaignId, 'active');
       toast.success('Campaign resumed');
-      loadData();
+      await refreshData();
     } catch (error) {
       toast.error('Failed to resume campaign');
     }
@@ -320,16 +345,11 @@ export function NotificationManager() {
   const handleDeleteTemplate = async (templateId: string) => {
     try {
       await deleteTemplate(templateId);
-      // Remove from local state immediately
-      setTemplates(templates.filter(t => t.id !== templateId));
       toast.success('Template deleted');
-      loadData();
-    } catch (error: any) {
+      await refreshData();
+    } catch (error: unknown) {
       console.error('Delete template error:', error);
-      // Still remove from local state
-      setTemplates(templates.filter(t => t.id !== templateId));
-      toast.success('Template deleted');
-      loadData();
+      toast.error(error instanceof Error ? error.message : 'Failed to delete template');
     }
   };
 
@@ -372,7 +392,7 @@ export function NotificationManager() {
     try {
       await toggleAutomation(ruleId, newStatus);
       toast.success(`Automation ${newStatus === 'active' ? 'enabled' : 'disabled'}`);
-      loadData();
+      await refreshData();
     } catch (error) {
       toast.error('Failed to update automation');
     }
@@ -463,15 +483,17 @@ export function NotificationManager() {
           <p className="text-[#71717a] text-sm">Create, schedule, and manage customer notifications</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             onClick={async () => {
-              await loadData();
+              await refreshData();
               toast.success('Notification data refreshed');
-            }} 
+            }}
             variant="outline"
+            disabled={refreshing}
           >
-            <RefreshCw size={14} className="mr-1.5" /> Refresh
+            <RefreshCw size={14} className={`mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button size="sm" variant="outline" onClick={handleExportNotifications}>
             <Download size={14} className="mr-1.5" /> Export
@@ -536,7 +558,7 @@ export function NotificationManager() {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="campaigns" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList>
           <TabsTrigger value="campaigns">
             <Send size={14} className="mr-1.5" /> Campaigns
@@ -869,9 +891,12 @@ export function NotificationManager() {
                 <h3 className="font-bold text-[#18181b]">Automation Rules</h3>
                 <p className="text-xs text-[#71717a] mt-1">Trigger-based automatic notifications</p>
               </div>
-              <Button 
+              <Button
                 size="sm"
-                onClick={() => setShowAutomationModal(true)}
+                onClick={() => {
+                  setEditingAutomationRule(null);
+                  setShowAutomationModal(true);
+                }}
               >
                 <Plus size={14} className="mr-1.5" /> New Rule
               </Button>
@@ -938,7 +963,15 @@ export function NotificationManager() {
                           >
                             {rule.status === 'active' ? <Pause size={14} /> : <Play size={14} />}
                           </Button>
-                          <Button size="sm" variant="ghost">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingAutomationRule(rule);
+                              setShowAutomationModal(true);
+                            }}
+                            title="Edit rule"
+                          >
                             <Edit size={14} />
                           </Button>
                         </div>
@@ -1143,63 +1176,61 @@ export function NotificationManager() {
       </Tabs>
 
       {/* Create/Edit Template Modal */}
-      <Dialog open={showTemplateModal} onOpenChange={(open) => {
-        setShowTemplateModal(open);
-        if (!open) {
-          setSelectedTemplate(null);
-          setTemplateForm({
-            name: '',
-            title: '',
-            body: '',
-            category: 'promotional',
-            channels: ['push'],
-            priority: 'medium',
-          });
+      <AdminModal
+        open={showTemplateModal}
+        onOpenChange={(open) => {
+          setShowTemplateModal(open);
+          if (!open) {
+            setSelectedTemplate(null);
+            setTemplateForm({
+              name: '',
+              title: '',
+              body: '',
+              category: 'promotional',
+              channels: ['push'],
+              priority: 'medium',
+            });
+          }
+        }}
+        title={selectedTemplate ? 'Edit Notification Template' : 'Create Notification Template'}
+        subtitle={selectedTemplate ? 'Update template details' : 'Design a reusable notification template with dynamic variables'}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowTemplateModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={selectedTemplate ? handleUpdateTemplate : handleCreateTemplate}>
+              {selectedTemplate ? 'Update Template' : 'Create Template'}
+            </Button>
+          </>
         }
-      }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{selectedTemplate ? 'Edit Notification Template' : 'Create Notification Template'}</DialogTitle>
-            <DialogDescription>
-              {selectedTemplate ? 'Update template details' : 'Design a reusable notification template with dynamic variables'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Template Name</label>
+      >
+        <AdminFormBody>
+          <AdminField label="Template Name">
               <Input
                 placeholder="e.g., Order Confirmation"
                 value={templateForm.name}
                 onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Title</label>
+          </AdminField>
+          <AdminField label="Title">
               <Input
                 placeholder="Your order is confirmed!"
                 value={templateForm.title}
                 onChange={(e) => setTemplateForm({ ...templateForm, title: e.target.value })}
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Message Body</label>
-              <Textarea
+          </AdminField>
+          <AdminField label="Message Body" hint={'Use {{variable_name}} for dynamic content'}>
+            <Textarea
                 placeholder="Hi {{user_name}}, your order {{order_id}} has been confirmed..."
                 rows={4}
                 value={templateForm.body}
                 onChange={(e) => setTemplateForm({ ...templateForm, body: e.target.value })}
               />
-              <p className="text-xs text-[#71717a] mt-1">
-                Use {"{{variable_name}}"} for dynamic content
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Category</label>
+          </AdminField>
+          <AdminFormGrid cols={2}>
+            <AdminField label="Category">
                 <Select
                   value={templateForm.category}
                   onValueChange={(value: any) => setTemplateForm({ ...templateForm, category: value })}
@@ -1215,10 +1246,8 @@ export function NotificationManager() {
                     <SelectItem value="welcome">Welcome</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Priority</label>
+            </AdminField>
+            <AdminField label="Priority">
                 <Select
                   value={templateForm.priority}
                   onValueChange={(value: any) => setTemplateForm({ ...templateForm, priority: value })}
@@ -1233,46 +1262,56 @@ export function NotificationManager() {
                     <SelectItem value="critical">Critical</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTemplateModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={selectedTemplate ? handleUpdateTemplate : handleCreateTemplate}>
-              {selectedTemplate ? 'Update Template' : 'Create Template'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              </AdminField>
+            </AdminFormGrid>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Create Campaign Modal */}
-      <Dialog open={showCampaignModal} onOpenChange={setShowCampaignModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create Campaign</DialogTitle>
-            <DialogDescription>
-              Launch a new notification campaign to your users
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Campaign Name</label>
+      <AdminModal
+        open={showCampaignModal}
+        onOpenChange={setShowCampaignModal}
+        title="Create Campaign"
+        subtitle="Launch a new notification campaign to your users"
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setShowCampaignModal(false)}
+              disabled={creatingCampaign}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCampaign} disabled={creatingCampaign}>
+              {creatingCampaign
+                ? 'Processing...'
+                : campaignForm.scheduleType === 'immediate'
+                  ? 'Send Now'
+                  : 'Schedule Campaign'}
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Campaign Name">
               <Input
                 placeholder="e.g., Weekend Flash Sale"
                 value={campaignForm.name}
                 onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Select Template</label>
+          </AdminField>
+          <AdminField label="Select Template">
               <Select
                 value={campaignForm.templateId || ''}
-                onValueChange={(value) => setCampaignForm({ ...campaignForm, templateId: value })}
+                onValueChange={(value) => {
+                  const selected = templates.find((t) => t.id === value);
+                  setCampaignForm({
+                    ...campaignForm,
+                    templateId: value,
+                    channels: selected?.channels?.length ? selected.channels : ['push'],
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={templates.length === 0 ? "No templates available" : "Choose a template"} />
@@ -1291,10 +1330,13 @@ export function NotificationManager() {
                   )}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Target Segment</label>
+              {campaignForm.templateId && campaignForm.templateId !== '__no_templates__' && (
+                <p className="mt-1 text-xs text-[#71717a]">
+                  Channels: {(campaignForm.channels.length ? campaignForm.channels : ['push']).join(', ')}
+                </p>
+              )}
+          </AdminField>
+          <AdminField label="Target Segment">
               <Select
                 value={campaignForm.segment}
                 onValueChange={(value: any) => setCampaignForm({ ...campaignForm, segment: value })}
@@ -1310,10 +1352,8 @@ export function NotificationManager() {
                   <SelectItem value="custom">Custom Segment</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Schedule</label>
+          </AdminField>
+          <AdminField label="Schedule">
               <Select
                 value={campaignForm.scheduleType}
                 onValueChange={(value: any) => setCampaignForm({ ...campaignForm, scheduleType: value })}
@@ -1326,33 +1366,21 @@ export function NotificationManager() {
                   <SelectItem value="scheduled">Schedule for Later</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            {campaignForm.scheduleType === 'scheduled' && (
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Schedule Date & Time</label>
+          </AdminField>
+          {campaignForm.scheduleType === 'scheduled' && (
+            <AdminField label="Schedule Date & Time">
                 <Input
                   type="datetime-local"
                   value={campaignForm.scheduledAt}
                   onChange={(e) => setCampaignForm({ ...campaignForm, scheduledAt: e.target.value })}
                 />
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCampaignModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateCampaign}>
-              {campaignForm.scheduleType === 'immediate' ? 'Send Now' : 'Schedule Campaign'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AdminField>
+          )}
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Preview Modal */}
-      <Dialog
+      <AdminModal
         open={showPreviewModal}
         onOpenChange={(open) => {
           setShowPreviewModal(open);
@@ -1361,13 +1389,12 @@ export function NotificationManager() {
             setCampaign(null);
           }
         }}
+        title="Notification Preview"
+        subtitle="Mobile push notification appearance"
+        maxWidth="max-w-md"
+        footer={<Button onClick={() => setShowPreviewModal(false)}>Close</Button>}
       >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Notification Preview</DialogTitle>
-            <DialogDescription>Mobile push notification appearance</DialogDescription>
-          </DialogHeader>
-
+        <AdminFormBody>
           {selectedTemplate && (
             <div className="space-y-4">
               {/* Mobile Device Frame */}
@@ -1427,20 +1454,18 @@ export function NotificationManager() {
               </div>
             </div>
           )}
-
-          <DialogFooter>
-            <Button onClick={() => setShowPreviewModal(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Automation Rule Modal */}
       <AddAutomationRuleModal
         open={showAutomationModal}
-        onOpenChange={setShowAutomationModal}
-        onSuccess={() => {
-          loadData();
+        onOpenChange={(open) => {
+          setShowAutomationModal(open);
+          if (!open) setEditingAutomationRule(null);
         }}
+        editRule={editingAutomationRule}
+        onSuccess={refreshData}
       />
     </div>
   );

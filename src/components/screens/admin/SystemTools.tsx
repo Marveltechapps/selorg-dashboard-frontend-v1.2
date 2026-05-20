@@ -1,14 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -806,36 +800,14 @@ export function SystemTools() {
       </Tabs>
 
       {/* Environment Variable Edit Modal */}
-      <Dialog open={showEnvModal} onOpenChange={setShowEnvModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Environment Variable</DialogTitle>
-            <DialogDescription>Update the value for this environment variable</DialogDescription>
-          </DialogHeader>
-
-          {selectedEnvVar && (
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-[#18181b] mb-1 block">Variable Name</label>
-                <Input value={selectedEnvVar.key} disabled className="font-mono" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[#18181b] mb-1 block">Value</label>
-                <Input
-                  defaultValue={selectedEnvVar.value}
-                  type={selectedEnvVar.isSensitive ? 'password' : 'text'}
-                  className="font-mono"
-                  id="env-value-input"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[#18181b] mb-1 block">Category</label>
-                <Input value={selectedEnvVar.category} disabled />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
+      <AdminModal
+        open={showEnvModal}
+        onOpenChange={setShowEnvModal}
+        title="Edit Environment Variable"
+        subtitle="Update the value for this environment variable"
+        maxWidth="max-w-md"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowEnvModal(false)}>
               Cancel
             </Button>
@@ -849,31 +821,37 @@ export function SystemTools() {
             >
               <Save size={14} className="mr-1.5" /> Save Changes
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Maintenance Mode Modal */}
-      <Dialog open={showMaintenanceModal} onOpenChange={setShowMaintenanceModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Maintenance Mode</DialogTitle>
-            <DialogDescription>Enable maintenance mode to prevent user access during updates</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-medium text-[#18181b] mb-1 block">Maintenance Message</label>
-              <Textarea
-                value={maintenanceMessage}
-                onChange={(e) => setMaintenanceMessage(e.target.value)}
-                placeholder="Enter message to display to users..."
-                rows={4}
+          </>
+        }
+      >
+        {selectedEnvVar && (
+          <AdminFormBody>
+            <AdminField label="Variable Name">
+              <Input value={selectedEnvVar.key} disabled className="font-mono" />
+            </AdminField>
+            <AdminField label="Value">
+              <Input
+                defaultValue={selectedEnvVar.value}
+                type={selectedEnvVar.isSensitive ? 'password' : 'text'}
+                className="font-mono"
+                id="env-value-input"
               />
-            </div>
-          </div>
+            </AdminField>
+            <AdminField label="Category">
+              <Input value={selectedEnvVar.category} disabled />
+            </AdminField>
+          </AdminFormBody>
+        )}
+      </AdminModal>
 
-          <DialogFooter>
+      <AdminModal
+        open={showMaintenanceModal}
+        onOpenChange={setShowMaintenanceModal}
+        title="Maintenance Mode"
+        subtitle="Enable maintenance mode to prevent user access during updates"
+        maxWidth="max-w-md"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowMaintenanceModal(false)}>
               Cancel
             </Button>
@@ -883,9 +861,20 @@ export function SystemTools() {
             >
               <Power size={14} className="mr-1.5" /> Enable Maintenance Mode
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Maintenance Message">
+            <Textarea
+              value={maintenanceMessage}
+              onChange={(e) => setMaintenanceMessage(e.target.value)}
+              placeholder="Enter message to display to users..."
+              rows={4}
+            />
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

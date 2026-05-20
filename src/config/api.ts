@@ -174,6 +174,7 @@ export const API_ENDPOINTS = {
   logisticsPlatform: {
     adminProviders: '/logistics/admin/providers',
     adminProviderPatch: (id: string) => `/logistics/admin/providers/${id}`,
+    adminProviderReorder: (id: string) => `/logistics/admin/providers/${id}/reorder`,
     adminKpis: '/logistics/admin/analytics/kpis',
     adminCostPerRoute: '/logistics/admin/analytics/cost-per-route',
     adminSlaBreaches: '/logistics/admin/analytics/sla-breaches',
@@ -194,6 +195,7 @@ export const API_ENDPOINTS = {
       update: (id: string) => `/admin/users/${id}`,
       delete: (id: string) => `/admin/users/${id}`,
       assignRole: (id: string) => `/admin/users/${id}/role`,
+      resetPassword: (id: string) => `/admin/users/${id}/reset-password`,
       bulk: '/admin/users/bulk',
     },
     roles: '/admin/roles',

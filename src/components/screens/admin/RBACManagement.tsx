@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+  AdminFormBody,
+  AdminFormGrid,
+  AdminField,
+  adminSectionTitleClass,
+} from '@/components/screens/admin/modals/AdminForm';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -714,235 +713,239 @@ export function RBACManagement() {
     </div>
   );
 
+  const resetRoleForm = () => {
+    setEditingRole(null);
+    setRoleForm({ name: '', description: '', accessScope: 'global', permissions: [] });
+  };
+
+  const resetPermForm = () => {
+    setEditingPermission(null);
+    setPermForm({
+      name: '',
+      displayName: '',
+      module: '',
+      action: 'view',
+      category: 'read',
+      description: '',
+      riskLevel: 'low',
+    });
+  };
+
   // ============ ROLE DIALOG ============
   const RoleDialog = () => (
-    <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{editingRole ? 'Edit Role' : 'Create New Role'}</DialogTitle>
-          <DialogDescription>
-            {editingRole ? 'Update role details and permissions' : 'Define a new role with specific permissions and access scope'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6 py-4">
-          {/* Basic Info */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-sm">Basic Information</h3>
-            
-            <div>
-              <Label htmlFor="role-name">Role Name *</Label>
-              <Input
-                id="role-name"
-                value={roleForm.name}
-                onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
-                placeholder="e.g., Manager, Viewer, Moderator"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="role-desc">Description</Label>
-              <Textarea
-                id="role-desc"
-                value={roleForm.description}
-                onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
-                placeholder="What does this role do?"
-                rows={3}
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="role-scope">Access Scope</Label>
-              <Select value={roleForm.accessScope} onValueChange={(val) => setRoleForm({ ...roleForm, accessScope: val })}>
-                <SelectTrigger id="role-scope" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global">Global (all data)</SelectItem>
-                  <SelectItem value="zone">Zone Level (zone-specific)</SelectItem>
-                  <SelectItem value="store">Store Level (single store)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Permissions */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Permissions</h3>
-            <ScrollArea className="h-64 border rounded-lg p-4">
-              <div className="space-y-3">
-                {permissions.map(perm => (
-                  <div key={perm.id} className="flex items-start gap-3">
-                    <Checkbox
-                      id={`perm-${perm.id}`}
-                      checked={roleForm.permissions.includes(perm.name)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setRoleForm({
-                            ...roleForm,
-                            permissions: [...roleForm.permissions, perm.name],
-                          });
-                        } else {
-                          setRoleForm({
-                            ...roleForm,
-                            permissions: roleForm.permissions.filter(p => p !== perm.name),
-                          });
-                        }
-                      }}
-                    />
-                    <label htmlFor={`perm-${perm.id}`} className="flex-1 cursor-pointer">
-                      <p className="font-medium text-sm">{perm.displayName}</p>
-                      <p className="text-xs text-gray-500">{perm.description || perm.name}</p>
-                    </label>
-                    <Badge className={getRiskLevelColor(perm.riskLevel)} className="flex-shrink-0">
-                      {perm.riskLevel}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4 border-t">
+    <AdminModal
+      open={roleDialogOpen}
+      onOpenChange={(open) => {
+        setRoleDialogOpen(open);
+        if (!open) resetRoleForm();
+      }}
+      title={editingRole ? 'Edit Role' : 'Create New Role'}
+      subtitle={
+        editingRole
+          ? 'Update role details and permissions'
+          : 'Define a new role with specific permissions and access scope'
+      }
+      icon={<Users className="h-5 w-5" />}
+      maxWidth="max-w-2xl"
+      footer={
+        <>
           <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={() => {
-            toast.success(editingRole ? 'Role updated' : 'Role created');
-            setRoleDialogOpen(false);
-          }}>
+          <Button
+            onClick={() => {
+              toast.success(editingRole ? 'Role updated' : 'Role created');
+              setRoleDialogOpen(false);
+            }}
+          >
             {editingRole ? 'Update' : 'Create'} Role
           </Button>
+        </>
+      }
+    >
+      <AdminFormBody className="space-y-6">
+        <div className="space-y-4">
+          <h3 className={adminSectionTitleClass}>Basic Information</h3>
+          <AdminField label="Role Name *" htmlFor="role-name">
+            <Input
+              id="role-name"
+              value={roleForm.name}
+              onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
+              placeholder="e.g., Manager, Viewer, Moderator"
+            />
+          </AdminField>
+          <AdminField label="Description" htmlFor="role-desc">
+            <Textarea
+              id="role-desc"
+              value={roleForm.description}
+              onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+              placeholder="What does this role do?"
+              rows={3}
+            />
+          </AdminField>
+          <AdminField label="Access Scope" htmlFor="role-scope">
+            <Select
+              value={roleForm.accessScope}
+              onValueChange={(val) => setRoleForm({ ...roleForm, accessScope: val })}
+            >
+              <SelectTrigger id="role-scope">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Global (all data)</SelectItem>
+                <SelectItem value="zone">Zone Level (zone-specific)</SelectItem>
+                <SelectItem value="store">Store Level (single store)</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
         </div>
-      </DialogContent>
-    </Dialog>
+        <div className="space-y-3">
+          <h3 className={adminSectionTitleClass}>Permissions</h3>
+          <ScrollArea className="h-64 border rounded-lg p-4">
+            <div className="space-y-3">
+              {permissions.map((perm) => (
+                <div key={perm.id} className="flex items-start gap-3">
+                  <Checkbox
+                    id={`perm-${perm.id}`}
+                    checked={roleForm.permissions.includes(perm.name)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setRoleForm({
+                          ...roleForm,
+                          permissions: [...roleForm.permissions, perm.name],
+                        });
+                      } else {
+                        setRoleForm({
+                          ...roleForm,
+                          permissions: roleForm.permissions.filter((p) => p !== perm.name),
+                        });
+                      }
+                    }}
+                  />
+                  <label htmlFor={`perm-${perm.id}`} className="flex-1 cursor-pointer">
+                    <p className="font-medium text-sm">{perm.displayName}</p>
+                    <p className="text-xs text-gray-500">{perm.description || perm.name}</p>
+                  </label>
+                  <Badge className={`${getRiskLevelColor(perm.riskLevel)} flex-shrink-0`}>
+                    {perm.riskLevel}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      </AdminFormBody>
+    </AdminModal>
   );
 
   // ============ PERMISSION DIALOG ============
   const PermissionDialog = () => (
-    <Dialog open={permDialogOpen} onOpenChange={setPermDialogOpen}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{editingPermission ? 'Edit Permission' : 'Create New Permission'}</DialogTitle>
-          <DialogDescription>
-            Define a granular permission that can be assigned to roles
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div>
-            <Label htmlFor="perm-name">Permission Name *</Label>
-            <Input
-              id="perm-name"
-              value={permForm.name}
-              onChange={(e) => setPermForm({ ...permForm, name: e.target.value })}
-              placeholder="e.g., orders:create"
-              className="mt-1"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="perm-display">Display Name *</Label>
-            <Input
-              id="perm-display"
-              value={permForm.displayName}
-              onChange={(e) => setPermForm({ ...permForm, displayName: e.target.value })}
-              placeholder="e.g., Create Orders"
-              className="mt-1"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="perm-module">Module *</Label>
-              <Input
-                id="perm-module"
-                value={permForm.module}
-                onChange={(e) => setPermForm({ ...permForm, module: e.target.value })}
-                placeholder="e.g., Orders"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="perm-action">Action *</Label>
-              <Select value={permForm.action} onValueChange={(val) => setPermForm({ ...permForm, action: val })}>
-                <SelectTrigger id="perm-action" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="view">View</SelectItem>
-                  <SelectItem value="create">Create</SelectItem>
-                  <SelectItem value="update">Update</SelectItem>
-                  <SelectItem value="delete">Delete</SelectItem>
-                  <SelectItem value="manage">Manage</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="perm-category">Category *</Label>
-              <Select value={permForm.category} onValueChange={(val) => setPermForm({ ...permForm, category: val })}>
-                <SelectTrigger id="perm-category" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="read">Read</SelectItem>
-                  <SelectItem value="write">Write</SelectItem>
-                  <SelectItem value="delete">Delete</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="perm-risk">Risk Level *</Label>
-              <Select value={permForm.riskLevel} onValueChange={(val) => setPermForm({ ...permForm, riskLevel: val })}>
-                <SelectTrigger id="perm-risk" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="perm-desc">Description</Label>
-            <Textarea
-              id="perm-desc"
-              value={permForm.description}
-              onChange={(e) => setPermForm({ ...permForm, description: e.target.value })}
-              placeholder="What does this permission allow?"
-              rows={2}
-              className="mt-1"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4 border-t">
+    <AdminModal
+      open={permDialogOpen}
+      onOpenChange={(open) => {
+        setPermDialogOpen(open);
+        if (!open) resetPermForm();
+      }}
+      title={editingPermission ? 'Edit Permission' : 'Create New Permission'}
+      subtitle="Define a granular permission that can be assigned to roles"
+      icon={<Lock className="h-5 w-5" />}
+      maxWidth="max-w-lg"
+      footer={
+        <>
           <Button variant="outline" onClick={() => setPermDialogOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={() => {
-            toast.success(editingPermission ? 'Permission updated' : 'Permission created');
-            setPermDialogOpen(false);
-          }}>
+          <Button
+            onClick={() => {
+              toast.success(editingPermission ? 'Permission updated' : 'Permission created');
+              setPermDialogOpen(false);
+            }}
+          >
             {editingPermission ? 'Update' : 'Create'} Permission
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <AdminFormBody>
+        <AdminField label="Permission Name *" htmlFor="perm-name">
+          <Input
+            id="perm-name"
+            value={permForm.name}
+            onChange={(e) => setPermForm({ ...permForm, name: e.target.value })}
+            placeholder="e.g., orders:create"
+          />
+        </AdminField>
+        <AdminField label="Display Name *" htmlFor="perm-display">
+          <Input
+            id="perm-display"
+            value={permForm.displayName}
+            onChange={(e) => setPermForm({ ...permForm, displayName: e.target.value })}
+            placeholder="e.g., Create Orders"
+          />
+        </AdminField>
+        <AdminFormGrid cols={2}>
+          <AdminField label="Module *" htmlFor="perm-module">
+            <Input
+              id="perm-module"
+              value={permForm.module}
+              onChange={(e) => setPermForm({ ...permForm, module: e.target.value })}
+              placeholder="e.g., Orders"
+            />
+          </AdminField>
+          <AdminField label="Action *" htmlFor="perm-action">
+            <Select value={permForm.action} onValueChange={(val) => setPermForm({ ...permForm, action: val })}>
+              <SelectTrigger id="perm-action">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="view">View</SelectItem>
+                <SelectItem value="create">Create</SelectItem>
+                <SelectItem value="update">Update</SelectItem>
+                <SelectItem value="delete">Delete</SelectItem>
+                <SelectItem value="manage">Manage</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
+        </AdminFormGrid>
+        <AdminFormGrid cols={2}>
+          <AdminField label="Category *" htmlFor="perm-category">
+            <Select value={permForm.category} onValueChange={(val) => setPermForm({ ...permForm, category: val })}>
+              <SelectTrigger id="perm-category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="read">Read</SelectItem>
+                <SelectItem value="write">Write</SelectItem>
+                <SelectItem value="delete">Delete</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
+          <AdminField label="Risk Level *" htmlFor="perm-risk">
+            <Select value={permForm.riskLevel} onValueChange={(val) => setPermForm({ ...permForm, riskLevel: val })}>
+              <SelectTrigger id="perm-risk">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
+        </AdminFormGrid>
+        <AdminField label="Description" htmlFor="perm-desc">
+          <Textarea
+            id="perm-desc"
+            value={permForm.description}
+            onChange={(e) => setPermForm({ ...permForm, description: e.target.value })}
+            placeholder="What does this permission allow?"
+            rows={2}
+          />
+        </AdminField>
+      </AdminFormBody>
+    </AdminModal>
   );
-
   // ============ DELETE CONFIRMATION ============
   const DeleteConfirmDialog = () => (
     <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>

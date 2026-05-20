@@ -102,7 +102,11 @@ export async function createAgency(payload: { name: string; contactPerson?: stri
 }
 
 export async function deactivateAgency(agencyId: string): Promise<void> {
-  await apiRequest(`${ADMIN_PICKER_BASE}/agencies/${agencyId}/deactivate`, { method: 'POST' });
+  await apiRequest(`${ADMIN_PICKER_BASE}/agencies/${encodeURIComponent(agencyId)}/deactivate`, { method: 'POST' });
+}
+
+export async function activateAgency(agencyId: string): Promise<void> {
+  await apiRequest(`${ADMIN_PICKER_BASE}/agencies/${encodeURIComponent(agencyId)}/activate`, { method: 'POST' });
 }
 
 export async function fetchStoreShiftSlots(storeId: string): Promise<ShiftSlotItem[]> {

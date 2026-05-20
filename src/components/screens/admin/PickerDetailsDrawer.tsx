@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,7 +42,20 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   REJECTED: 'bg-red-50 text-red-700 border-red-200',
   BLOCKED: 'bg-red-50 text-red-700 border-red-200',
   SUSPENDED: 'bg-gray-50 text-gray-700 border-gray-200',
+  APPROVED: 'bg-green-50 text-green-700 border-green-200',
+  DEACTIVATED: 'bg-gray-50 text-gray-700 border-gray-200',
 };
+
+/** Normalize ops list status (lowercase) and DB status (uppercase) for drawer UI */
+function normalizePickerStatus(status?: string): PickerStatus {
+  const s = (status || 'PENDING').toUpperCase();
+  if (s === 'APPROVED') return 'ACTIVE';
+  if (s === 'DEACTIVATED') return 'BLOCKED';
+  if (['PENDING', 'ACTIVE', 'REJECTED', 'BLOCKED', 'SUSPENDED'].includes(s)) {
+    return s as PickerStatus;
+  }
+  return 'PENDING';
+}
 
 interface Props {
   picker: PickerApprovalDetails | null;
@@ -140,9 +153,9 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
     }
   };
 
-  if (!picker && !open) return null;
+  const displayStatus = picker ? normalizePickerStatus(picker.status) : 'PENDING';
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     fetchAgencies().then(setAgencies).catch(() => setAgencies([]));
     fetchStores({ limit: 200, type: 'store' })
@@ -150,14 +163,14 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
       .catch(() => setStores([]));
   }, [open]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open || !picker?.pickerId) return;
-    setAgencyId((picker as any).agencyId || (picker as any).agency?._id || 'none');
-    setStoreId((picker as any).storeId || (picker as any).store?._id || 'none');
-    setShiftSlotId((picker as any).shiftSlotId || (picker as any).shiftSlot?._id || 'none');
-  }, [open, picker?.pickerId]);
+    setAgencyId((picker as { agencyId?: string; agency?: { _id?: string } }).agencyId || picker.agency?._id || 'none');
+    setStoreId((picker as { storeId?: string; store?: { _id?: string } }).storeId || picker.store?._id || 'none');
+    setShiftSlotId((picker as { shiftSlotId?: string; shiftSlot?: { _id?: string } }).shiftSlotId || picker.shiftSlot?._id || 'none');
+  }, [open, picker?.pickerId, picker]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     if (!storeId || storeId === 'none') {
       setShiftSlots([]);
@@ -168,6 +181,8 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
       .then(setShiftSlots)
       .catch(() => setShiftSlots([]));
   }, [open, storeId]);
+
+  if (!open) return null;
 
   const docThumb = (
     label: string,
@@ -241,9 +256,9 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
             </span>
             <Badge
               variant="outline"
-              className={`ml-auto capitalize ${STATUS_BADGE_CLASSES[picker.status] || ''}`}
+              className={`ml-auto capitalize ${STATUS_BADGE_CLASSES[displayStatus] || ''}`}
             >
-              {picker.status}
+              {displayStatus}
             </Badge>
           </div>
           <SheetTitle className="text-xl font-bold text-gray-900">
@@ -336,7 +351,9 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
               <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Site / Location</span>
-                  <span className="font-medium">{picker.site || picker.locationType || '—'}</span>
+                  <span className="font-medium">
+                    {picker.site || (picker as { locationName?: string }).locationName || picker.locationType || '—'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Onboarding Stage</span>
@@ -348,7 +365,7 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Training</span>
-                  <span className="font-medium">{picker.trainingProgress}%</span>
+                  <span className="font-medium">{picker.trainingProgress ?? 0}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Applied</span>
@@ -507,7 +524,7 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
             )}
 
             {/* Rejection Info */}
-            {picker.status === 'REJECTED' && picker.rejectedReason && (
+            {displayStatus === 'REJECTED' && picker.rejectedReason && (
               <div className="space-y-2">
                 <h4 className="font-semibold text-red-700">Rejection</h4>
                 <p className="text-sm text-gray-700">{picker.rejectedReason}</p>
@@ -678,7 +695,7 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {picker.status === 'PENDING' && (
+              {displayStatus === 'PENDING' && (
                 <>
                   <Button
                     className="bg-[#14B8A6] hover:bg-[#0D9488]"
@@ -712,13 +729,22 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
                   </Button>
                 </>
               )}
-              {picker.status === 'BLOCKED' && (
+              {(displayStatus === 'BLOCKED' || displayStatus === 'SUSPENDED') && (
                 <Button
                   className="bg-[#14B8A6] hover:bg-[#0D9488]"
                   onClick={() => handleStatusUpdate('ACTIVE')}
                   disabled={actionLoading}
                 >
-                  <CheckCircle2 size={16} className="mr-2" /> Unblock
+                  <CheckCircle2 size={16} className="mr-2" /> Activate
+                </Button>
+              )}
+              {displayStatus === 'REJECTED' && (
+                <Button
+                  className="bg-[#14B8A6] hover:bg-[#0D9488]"
+                  onClick={() => handleStatusUpdate('ACTIVE')}
+                  disabled={actionLoading}
+                >
+                  <CheckCircle2 size={16} className="mr-2" /> Approve
                 </Button>
               )}
             </div>

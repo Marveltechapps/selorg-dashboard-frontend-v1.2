@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +10,8 @@ import {
   Store, 
   Clock,
   AlertTriangle,
-  Activity
+  Activity,
+  Loader2,
 } from 'lucide-react';
 import { Zone, Incident, LiveMetrics, fetchIncidents, fetchLiveMetrics, fetchZoneDetails, fetchZoneOrderTrend } from '../citywideControlApi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -69,9 +64,9 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
     }
   };
 
-  if (!zone) {
-    return null;
-  }
+  const handleOpenChange = (next: boolean) => {
+    if (!next) onClose();
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -101,7 +96,8 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
     }
   };
 
-  const zoneIncidents = incidents.filter((incident) => {
+  const zoneIncidents = zone
+    ? incidents.filter((incident) => {
     const normalizedZoneName = zone.zoneName.toLowerCase();
     const storeNames = zone.stores.map((store) => store.storeName.toLowerCase());
     const storeIds = zone.stores.map((store) => store.storeId.toLowerCase());
@@ -111,39 +107,39 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
       storeNames.some((name) => name && text.includes(name)) ||
       storeIds.some((id) => id && text.includes(id))
     );
-  });
+  })
+    : [];
 
   const targetTime = liveMetrics?.targetDeliveryFormatted || '15m 00s';
-  const fulfillmentRate = zone.activeOrders > 0
+  const fulfillmentRate = zone && zone.activeOrders > 0
     ? Math.max(80, 100 - Math.round((zoneIncidents.length * 100) / Math.max(zone.activeOrders, 1)))
     : 100;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl h-[80vh] max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-2xl">
-                Zone {zone.zoneNumber} - {zone.zoneName}
-              </DialogTitle>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge className={`${getStatusColor(zone.status)} text-white`}>
-                  {getStatusLabel(zone.status)}
-                </Badge>
-                <Badge className={getSLAColor(zone.slaStatus)}>
-                  SLA: {zone.slaStatus === 'breach' ? 'Breach' : zone.slaStatus === 'warning' ? 'Warning' : 'On Track'}
-                </Badge>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-[#71717a]">Capacity</div>
-              <div className="text-2xl font-bold">{zone.capacityPercent}%</div>
-            </div>
-          </div>
-        </DialogHeader>
+    <AdminModal
+      open={open}
+      onOpenChange={handleOpenChange}
+      scrollBody={false}
+      title={zone ? `Zone ${zone.zoneNumber} - ${zone.zoneName}` : 'Zone details'}
+      subtitle={zone ? `Capacity: ${zone.capacityPercent}%` : 'Loading zone data…'}
+      maxWidth="max-w-3xl"
+    >
+      {loading || !zone ? (
+        <div className="flex min-h-[16rem] items-center justify-center px-6 py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        </div>
+      ) : (
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Badge className={`${getStatusColor(zone.status)} text-white`}>
+            {getStatusLabel(zone.status)}
+          </Badge>
+          <Badge className={getSLAColor(zone.slaStatus)}>
+            SLA: {zone.slaStatus === 'breach' ? 'Breach' : zone.slaStatus === 'warning' ? 'Warning' : 'On Track'}
+          </Badge>
+        </div>
 
-        <Tabs defaultValue="overview" className="mt-4 flex flex-1 min-h-0 flex-col">
+        <Tabs defaultValue="overview" className="flex flex-1 min-h-0 flex-col">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="stores">Stores</TabsTrigger>
@@ -154,8 +150,8 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
 
           <TabsContent value="overview" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#f4f4f5] p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-[#71717a] mb-1">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
                   <Activity size={16} />
                   Capacity Usage
                 </div>
@@ -163,17 +159,17 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                 <Progress value={zone.capacityPercent} className="mt-2" />
               </div>
 
-              <div className="bg-[#f4f4f5] p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-[#71717a] mb-1">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
                   <TrendingUp size={16} />
                   Active Orders
                 </div>
                 <div className="text-2xl font-bold">{zone.activeOrders}</div>
-                <div className="text-xs text-[#71717a] mt-1">Live count</div>
+                <div className="text-xs text-gray-500 mt-1">Live count</div>
               </div>
 
-              <div className="bg-[#f4f4f5] p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-[#71717a] mb-1">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
                   <Users size={16} />
                   Active Riders
                 </div>
@@ -183,13 +179,13 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                 )}
               </div>
 
-              <div className="bg-[#f4f4f5] p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-[#71717a] mb-1">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
                   <Clock size={16} />
                   Avg Delivery Time
                 </div>
                 <div className="text-2xl font-bold">{zone.avgDeliveryTime}</div>
-                <div className="text-xs text-[#71717a] mt-1">Target: 15m 00s</div>
+                <div className="text-xs text-gray-500 mt-1">Target: 15m 00s</div>
               </div>
             </div>
 
@@ -214,14 +210,14 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
           </TabsContent>
 
           <TabsContent value="stores" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
-            <div className="text-sm text-[#71717a] mb-2">
+            <div className="text-sm text-gray-500 mb-2">
               {zone.stores.length} stores in this zone
             </div>
             {zone.stores.map((store) => (
               <div key={store.storeId} className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <Store size={16} className="text-[#71717a]" />
+                    <Store size={16} className="text-gray-500" />
                     <span className="font-bold">{store.storeName}</span>
                   </div>
                   <Badge variant={store.status === 'active' ? 'default' : 'destructive'}>
@@ -230,15 +226,15 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
-                    <div className="text-[#71717a]">Store ID</div>
+                    <div className="text-gray-500">Store ID</div>
                     <div className="font-medium">{store.storeId}</div>
                   </div>
                   <div>
-                    <div className="text-[#71717a]">Capacity</div>
+                    <div className="text-gray-500">Capacity</div>
                     <div className="font-medium">{store.capacityPercent}%</div>
                   </div>
                   <div>
-                    <div className="text-[#71717a]">Active Orders</div>
+                    <div className="text-gray-500">Active Orders</div>
                     <div className="font-medium">{store.activeOrders}</div>
                   </div>
                 </div>
@@ -256,15 +252,15 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
             <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
-                  <div className="text-sm text-[#71717a]">Total Riders</div>
+                  <div className="text-sm text-gray-500">Total Riders</div>
                   <div className="text-2xl font-bold">{zone.activeRiders}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-[#71717a]">Utilization</div>
+                  <div className="text-sm text-gray-500">Utilization</div>
                   <div className="text-2xl font-bold">{zone.capacityPercent}%</div>
                 </div>
                 <div>
-                  <div className="text-sm text-[#71717a]">Status</div>
+                  <div className="text-sm text-gray-500">Status</div>
                   <Badge variant={zone.riderStatus === 'overload' ? 'destructive' : 'default'}>
                     {zone.riderStatus.toUpperCase()}
                   </Badge>
@@ -290,7 +286,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
           <TabsContent value="performance" className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
-                <div className="text-sm text-[#71717a]">Delivery SLA</div>
+                <div className="text-sm text-gray-500">Delivery SLA</div>
                 <div className={`text-2xl font-bold ${
                   zone.slaStatus === 'breach' ? 'text-rose-600' : 
                   zone.slaStatus === 'warning' ? 'text-amber-600' : 
@@ -298,29 +294,29 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                 }`}>
                   {zone.avgDeliveryTime}
                 </div>
-                <div className="text-xs text-[#71717a] mt-1">
+                <div className="text-xs text-gray-500 mt-1">
                   Target: {targetTime}
                 </div>
               </div>
 
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
-                <div className="text-sm text-[#71717a]">Order Fulfillment</div>
+                <div className="text-sm text-gray-500">Order Fulfillment</div>
                 <div className="text-2xl font-bold text-emerald-600">{fulfillmentRate}%</div>
-                <div className="text-xs text-[#71717a] mt-1">Derived from live orders vs incidents</div>
+                <div className="text-xs text-gray-500 mt-1">Derived from live orders vs incidents</div>
               </div>
 
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
-                <div className="text-sm text-[#71717a]">Rider Utilization</div>
+                <div className="text-sm text-gray-500">Rider Utilization</div>
                 <div className="text-2xl font-bold">{zone.capacityPercent}%</div>
                 <Progress value={zone.capacityPercent} className="mt-2" />
               </div>
 
               <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
-                <div className="text-sm text-[#71717a]">Surge Factor</div>
+                <div className="text-sm text-gray-500">Surge Factor</div>
                 <div className="text-2xl font-bold">
                   {zone.surgeMultiplier ? `${zone.surgeMultiplier}x` : 'None'}
                 </div>
-                <div className="text-xs text-[#71717a] mt-1">Current multiplier</div>
+                <div className="text-xs text-gray-500 mt-1">Current multiplier</div>
               </div>
             </div>
           </TabsContent>
@@ -335,23 +331,24 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                 {zoneIncidents.map((incident) => (
                   <div key={incident.id} className="bg-white p-3 rounded border border-rose-200 mb-2 last:mb-0">
                     <div className="font-bold">{incident.title}</div>
-                    <div className="text-sm text-[#71717a] mt-1">
+                    <div className="text-sm text-gray-500 mt-1">
                       {incident.storeName || incident.storeId || zone.zoneName}
                     </div>
-                    <div className="text-xs text-[#71717a] mt-1">{incident.description}</div>
+                    <div className="text-xs text-gray-500 mt-1">{incident.description}</div>
                     <div className="text-xs text-rose-700 mt-1 uppercase font-semibold">{incident.severity}</div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-[#71717a]">
+              <div className="text-center py-8 text-gray-500">
                 <Activity size={48} className="mx-auto mb-2 opacity-20" />
                 <div>No active incidents in this zone</div>
               </div>
             )}
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </div>
+      )}
+    </AdminModal>
   );
 }

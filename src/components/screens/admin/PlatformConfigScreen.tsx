@@ -17,13 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { toast } from 'sonner';
 import { Loader2, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
@@ -235,65 +230,64 @@ export function PlatformConfigScreen() {
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingKey ? 'Edit config' : 'New config key'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Key</label>
-              <Input
-                value={formKey}
-                onChange={(e) => setFormKey(e.target.value)}
-                disabled={!!editingKey}
-                placeholder="delivery.radius_km"
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Type</label>
-              <Select value={formType} onValueChange={(v) => setFormType(v as PlatformConfigRow['valueType'])}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="string">string</SelectItem>
-                  <SelectItem value="number">number</SelectItem>
-                  <SelectItem value="boolean">boolean</SelectItem>
-                  <SelectItem value="json">json</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Value</label>
-              <Textarea
-                value={formValue}
-                onChange={(e) => setFormValue(e.target.value)}
-                rows={formType === 'json' ? 8 : 3}
-                className="font-mono text-sm"
-                placeholder={formType === 'json' ? '{ "mode": "surge" }' : ''}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Description (optional)</label>
-              <Input
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                placeholder="What this controls"
-              />
-            </div>
-          </div>
-          <DialogFooter>
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingKey ? 'Edit config' : 'New config key'}
+        icon={<SlidersHorizontal className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Key">
+            <Input
+              value={formKey}
+              onChange={(e) => setFormKey(e.target.value)}
+              disabled={!!editingKey}
+              placeholder="delivery.radius_km"
+              className="font-mono"
+            />
+          </AdminField>
+          <AdminField label="Type">
+            <Select value={formType} onValueChange={(v) => setFormType(v as PlatformConfigRow['valueType'])}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="string">string</SelectItem>
+                <SelectItem value="number">number</SelectItem>
+                <SelectItem value="boolean">boolean</SelectItem>
+                <SelectItem value="json">json</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
+          <AdminField label="Value">
+            <Textarea
+              value={formValue}
+              onChange={(e) => setFormValue(e.target.value)}
+              rows={formType === 'json' ? 8 : 3}
+              className="font-mono text-sm"
+              placeholder={formType === 'json' ? '{ "mode": "surge" }' : ''}
+            />
+          </AdminField>
+          <AdminField label="Description (optional)">
+            <Input
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              placeholder="What this controls"
+            />
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

@@ -19,12 +19,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -50,15 +46,30 @@ import {
   revokeSession,
   updateRoleMatrix,
   exportRoleConfig,
-  importRoleConfig,
+  deletePermission,
+  roleIncludesPermission,
   PermissionMatrixModule
 } from './userManagementApi';
 import { AddUserModal } from './modals/AddUserModal';
 import { EditUserModal } from './modals/EditUserModal';
 import { CreateRoleModal } from './modals/CreateRoleModal';
+import { PermissionFormModal } from './modals/PermissionFormModal';
 import { BulkOperationsModal } from './modals/BulkOperationsModal';
+import { ResetPasswordModal } from './modals/ResetPasswordModal';
+import { UserPermissionsModal } from './modals/UserPermissionsModal';
+import { UserActivityLogModal } from './modals/UserActivityLogModal';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   UserPlus,
   Filter,
@@ -74,7 +85,10 @@ import {
   AlertTriangle,
   Laptop,
   Smartphone,
-  Monitor
+  Monitor,
+  Plus,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 
 export function UserManagement() {
@@ -112,6 +126,15 @@ export function UserManagement() {
   const [showBulkOps, setShowBulkOps] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [permissionsUser, setPermissionsUser] = useState<User | null>(null);
+  const [activityUser, setActivityUser] = useState<User | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [showPermissionForm, setShowPermissionForm] = useState(false);
+  const [editingPermissionId, setEditingPermissionId] = useState<string | null>(null);
+  const [permissionDefaultModule, setPermissionDefaultModule] = useState<string | undefined>();
+  const [deletePermissionConfirm, setDeletePermissionConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [matrixSearchTerm, setMatrixSearchTerm] = useState('');
+  const [matrixSaving, setMatrixSaving] = useState(false);
   const selectedRole = roles.find(r => r.id === selectedRoleId);
 
   useEffect(() => {
@@ -192,12 +215,26 @@ export function UserManagement() {
     }
   };
 
-  const handleSuspendUser = async (userId: string) => {
+  const handleSuspendUser = async (user: User) => {
+    if (user.status === 'suspended') {
+      if (!confirm(`Reactivate ${user.name}? They will regain access.`)) return;
+      try {
+        await updateUser(user.id, { status: 'active' });
+        toast.success('User reactivated');
+        loadAllData();
+      } catch {
+        toast.error('Failed to reactivate user');
+      }
+      return;
+    }
+
+    if (!confirm(`Suspend ${user.name}? They will lose access immediately.`)) return;
+
     try {
-      await updateUser(userId, { status: 'suspended' });
+      await updateUser(user.id, { status: 'suspended' });
       toast.success('User suspended');
       loadAllData();
-    } catch (error) {
+    } catch {
       toast.error('Failed to suspend user');
     }
   };
@@ -364,9 +401,66 @@ export function UserManagement() {
     input.click();
   };
 
+  const reloadMatrixData = async () => {
+    try {
+      const [permsData, matrixData, rolesData] = await Promise.all([
+        fetchPermissions(),
+        fetchPermissionsMatrix(),
+        fetchRoles(),
+      ]);
+      setPermissions(permsData ?? []);
+      setMatrixModules(matrixData ?? []);
+      setRoles(rolesData ?? []);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to refresh permissions');
+    }
+  };
+
+  const findMatrixPermission = (permissionName: string) => {
+    for (const mod of matrixModules) {
+      const perm = mod.permissions.find((p) => p.name === permissionName);
+      if (perm) return { module: mod.module, permission: perm };
+    }
+    return null;
+  };
+
+  const applyDependenciesToDraft = (
+    draft: Record<string, boolean>,
+    permissionName: string,
+    enabled: boolean
+  ): Record<string, boolean> => {
+    const next = { ...draft };
+    const found = findMatrixPermission(permissionName);
+    if (!found) return next;
+    const key = `${found.module}:${found.permission.name}`;
+    next[key] = enabled;
+    if (enabled && found.permission.dependsOn?.length) {
+      found.permission.dependsOn.forEach((dep) => {
+        const depFound = findMatrixPermission(dep);
+        if (depFound) {
+          next[`${depFound.module}:${depFound.permission.name}`] = true;
+        }
+      });
+    }
+    return next;
+  };
+
   const toggleMatrixPermission = (moduleName: string, permissionName: string) => {
     const key = `${moduleName}:${permissionName}`;
-    setMatrixDraft((prev) => ({ ...prev, [key]: !prev[key] }));
+    const enabling = !matrixDraft[key];
+    setMatrixDraft((prev) => applyDependenciesToDraft(prev, permissionName, enabling));
+  };
+
+  const setModulePermissions = (moduleName: string, enabled: boolean) => {
+    const mod = matrixModules.find((m) => m.module === moduleName);
+    if (!mod) return;
+    setMatrixDraft((prev) => {
+      let next = { ...prev };
+      mod.permissions.forEach((p) => {
+        next = applyDependenciesToDraft(next, p.name, enabled);
+      });
+      return next;
+    });
   };
 
   const handleSaveMatrix = async () => {
@@ -374,16 +468,37 @@ export function UserManagement() {
     const selectedPermissionNames = Object.entries(matrixDraft)
       .filter(([, enabled]) => enabled)
       .map(([key]) => key.split(':')[1]);
+    if (selectedPermissionNames.length === 0) {
+      toast.error('Select at least one permission for this role');
+      return;
+    }
+    setMatrixSaving(true);
     try {
-      await updateRoleMatrix(selectedRole.id, {
+      const updatedRole = await updateRoleMatrix(selectedRole.id, {
         permissions: selectedPermissionNames,
         accessScope: selectedRole.accessScope,
       });
       toast.success('Permission matrix saved');
       setMatrixBaseline(matrixDraft);
-      loadAllData();
+      setRoles((prev) =>
+        prev.map((r) => (r.id === updatedRole.id ? { ...r, permissions: updatedRole.permissions } : r))
+      );
     } catch (error: any) {
       toast.error(error?.message || 'Failed to save permission matrix');
+    } finally {
+      setMatrixSaving(false);
+    }
+  };
+
+  const handleDeletePermission = async () => {
+    if (!deletePermissionConfirm) return;
+    try {
+      await deletePermission(deletePermissionConfirm.id);
+      toast.success('Permission deleted');
+      setDeletePermissionConfirm(null);
+      await reloadMatrixData();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete permission');
     }
   };
 
@@ -404,30 +519,6 @@ export function UserManagement() {
     } catch (error: any) {
       toast.error(error?.message || 'Failed to export role configuration');
     }
-  };
-
-  const handleImportRoleJson = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        if (!parsed?.role?.name || !Array.isArray(parsed?.role?.permissions)) {
-          toast.error('Invalid role JSON format');
-          return;
-        }
-        await importRoleConfig({ role: parsed.role, overwrite: false });
-        toast.success('Role configuration imported');
-        loadAllData();
-      } catch (error: any) {
-        toast.error(error?.message || 'Failed to import role configuration');
-      }
-    };
-    input.click();
   };
 
   const getStatusColor = (status: string) => {
@@ -464,7 +555,25 @@ export function UserManagement() {
     return `${diffDays}d ago`;
   };
 
-  const rolePermissions = selectedRole ? permissions.filter(p => selectedRole.permissions.includes(p.id)) : [];
+  const rolePermissions = selectedRole
+    ? permissions.filter((p) => roleIncludesPermission(selectedRole, p))
+    : [];
+
+  const filteredMatrixModules = useMemo(() => {
+    const term = matrixSearchTerm.trim().toLowerCase();
+    if (!term) return matrixModules;
+    return matrixModules
+      .map((mod) => ({
+        ...mod,
+        permissions: mod.permissions.filter(
+          (p) =>
+            p.displayName.toLowerCase().includes(term) ||
+            p.name.toLowerCase().includes(term) ||
+            mod.module.toLowerCase().includes(term)
+        ),
+      }))
+      .filter((mod) => mod.permissions.length > 0);
+  }, [matrixModules, matrixSearchTerm]);
 
   // Group permissions by module for display
   const permissionsByModule = rolePermissions.reduce((acc, perm) => {
@@ -579,7 +688,7 @@ export function UserManagement() {
           <TabsTrigger value="logs">Access Logs</TabsTrigger>
           <TabsTrigger value="sessions">
             Login Sessions
-            <Badge variant="secondary" className="ml-2">{sessions.filter(s => s.status === 'active').length}</Badge>
+            <Badge variant="secondary" className="ml-2">{sessions.length}</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -736,17 +845,28 @@ export function UserManagement() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => { setEditingUser(user); setShowEditUser(true); }}>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setEditingUser(user);
+                              setShowEditUser(true);
+                            }}
+                          >
                             Edit User
                           </DropdownMenuItem>
-                          <DropdownMenuItem>View Permissions</DropdownMenuItem>
-                          <DropdownMenuItem>View Activity Log</DropdownMenuItem>
-                          <DropdownMenuItem>Reset Password</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleSuspendUser(user.id)}>
-                            Suspend User
+                          <DropdownMenuItem onSelect={() => setPermissionsUser(user)}>
+                            View Permissions
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDeleteUser(user.id)}
+                          <DropdownMenuItem onSelect={() => setActivityUser(user)}>
+                            View Activity Log
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setResetPasswordUser(user)}>
+                            Reset Password
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => void handleSuspendUser(user)}>
+                            {user.status === 'suspended' ? 'Reactivate User' : 'Suspend User'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => void handleDeleteUser(user.id)}
                             className="text-rose-600"
                           >
                             Delete User
@@ -785,10 +905,6 @@ export function UserManagement() {
             <Button onClick={() => setShowCreateRole(true)}>
               <Shield size={16} className="mr-2" />
               Create New Role
-            </Button>
-            <Button variant="outline" onClick={handleImportRoleJson}>
-              <Upload size={16} className="mr-2" />
-              Import Role JSON
             </Button>
             <Button variant="outline" onClick={handleExportRoleJson} disabled={!selectedRole}>
               <Download size={16} className="mr-2" />
@@ -869,54 +985,161 @@ export function UserManagement() {
 
         {/* TAB 3: Permissions Matrix */}
         <TabsContent value="matrix" className="space-y-4">
-          {matrixDirty && (
-            <div className="sticky top-0 z-10 rounded-lg border border-amber-300 bg-amber-50 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm text-amber-900">Unsaved matrix changes detected.</div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setMatrixDraft(matrixBaseline)}>Reset</Button>
-                  <Button size="sm" onClick={handleSaveMatrix}>Save matrix</Button>
-                </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[200px]">
+                <Label className="text-xs text-[#6B7280] mb-1 block">Role</Label>
+                <Select value={selectedRoleId ?? ''} onValueChange={setSelectedRoleId}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <pre className="mt-2 max-h-20 overflow-auto rounded bg-white p-2 text-xs">
-                {JSON.stringify({
-                  changedKeys: Object.keys(matrixDraft).filter((key) => matrixDraft[key] !== matrixBaseline[key]),
-                }, null, 2)}
-              </pre>
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
+                <Input
+                  placeholder="Search permissions…"
+                  value={matrixSearchTerm}
+                  onChange={(e) => setMatrixSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditingPermissionId(null);
+                  setPermissionDefaultModule(undefined);
+                  setShowPermissionForm(true);
+                }}
+              >
+                <Plus size={16} className="mr-1" />
+                Add permission
+              </Button>
+              {matrixDirty && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setMatrixDraft(matrixBaseline)}>
+                    Reset
+                  </Button>
+                  <Button size="sm" onClick={handleSaveMatrix} disabled={matrixSaving || !selectedRole}>
+                    {matrixSaving ? 'Saving…' : 'Save matrix'}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+          {matrixDirty && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Unsaved changes for <strong>{selectedRole?.name}</strong> — save or reset before switching roles.
             </div>
           )}
           <div className="border border-[#E5E7EB] rounded-lg overflow-x-auto p-4 space-y-4">
-            {matrixModules.length > 0 && selectedRole ? (
-              matrixModules.map((module) => (
+            {filteredMatrixModules.length > 0 && selectedRole ? (
+              filteredMatrixModules.map((module) => (
                 <div key={module.module} className="rounded border border-[#E5E7EB] p-3">
-                  <h4 className="font-semibold mb-2 capitalize">{module.module}</h4>
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <h4 className="font-semibold capitalize">{module.module}</h4>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setModulePermissions(module.module, true)}>
+                        All
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setModulePermissions(module.module, false)}>
+                        None
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setEditingPermissionId(null);
+                          setPermissionDefaultModule(module.module);
+                          setShowPermissionForm(true);
+                        }}
+                      >
+                        <Plus size={12} className="mr-0.5" />
+                        Add
+                      </Button>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     {module.permissions.map((permission) => {
                       const key = `${module.module}:${permission.name}`;
                       return (
-                        <div key={key} className="flex items-center justify-between rounded bg-[#F9FAFB] px-3 py-2">
-                          <div className="flex items-center gap-2">
+                        <div key={key} className="flex items-center justify-between rounded bg-[#F9FAFB] px-3 py-2 gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                             <Checkbox
                               checked={Boolean(matrixDraft[key])}
                               onCheckedChange={() => toggleMatrixPermission(module.module, permission.name)}
                             />
-                            <span className="text-sm font-medium">{permission.displayName}</span>
+                            <span className="text-sm font-medium truncate">{permission.displayName}</span>
+                            <code className="text-[10px] text-[#6B7280] hidden sm:inline shrink-0">{permission.name}</code>
                             <Badge
                               variant="secondary"
-                              className={permission.riskLevel === 'high' ? 'bg-red-100 text-red-700' : permission.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}
+                              className={
+                                permission.riskLevel === 'high'
+                                  ? 'bg-red-100 text-red-700'
+                                  : permission.riskLevel === 'medium'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-emerald-100 text-emerald-700'
+                              }
                             >
                               {permission.riskLevel.toUpperCase()}
                             </Badge>
+                            {permission.dependsOn && permission.dependsOn.length > 0 && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-[10px] text-[#6B7280] cursor-help shrink-0">deps</span>
+                                </TooltipTrigger>
+                                <TooltipContent sideOffset={6}>
+                                  Depends on: {permission.dependsOn.join(', ')}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button className="text-xs text-[#6B7280] underline">info</button>
+                                <button type="button" className="text-xs text-[#6B7280] underline shrink-0">
+                                  info
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent sideOffset={6}>
                                 {permission.description || 'No description'}
                               </TooltipContent>
                             </Tooltip>
                           </div>
-                          <span className="text-xs text-[#6B7280] uppercase">{permission.action}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-xs text-[#6B7280] uppercase">{permission.action}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                setEditingPermissionId(permission.id);
+                                setPermissionDefaultModule(module.module);
+                                setShowPermissionForm(true);
+                              }}
+                            >
+                              <Edit2 size={14} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700"
+                              onClick={() =>
+                                setDeletePermissionConfirm({ id: permission.id, name: permission.name })
+                              }
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -925,7 +1148,11 @@ export function UserManagement() {
               ))
             ) : (
               <div className="text-center py-8 text-[#6B7280]">
-                {permissions.length === 0 ? 'No permissions data available' : 'Select a role to edit matrix'}
+                {matrixModules.length === 0
+                  ? 'No permissions yet. Add a permission to build the matrix.'
+                  : !selectedRole
+                    ? 'Select a role to edit its permission matrix.'
+                    : 'No permissions match your search.'}
               </div>
             )}
           </div>
@@ -1092,74 +1319,127 @@ export function UserManagement() {
         }}
       />
 
+      <UserPermissionsModal
+        open={Boolean(permissionsUser)}
+        onClose={() => setPermissionsUser(null)}
+        user={permissionsUser}
+        roles={roles}
+        permissions={permissions}
+      />
+
+      <UserActivityLogModal
+        open={Boolean(activityUser)}
+        onClose={() => setActivityUser(null)}
+        user={activityUser}
+      />
+
+      <ResetPasswordModal
+        open={Boolean(resetPasswordUser)}
+        onClose={() => setResetPasswordUser(null)}
+        user={resetPasswordUser}
+      />
+
+      <PermissionFormModal
+        open={showPermissionForm}
+        onClose={() => {
+          setShowPermissionForm(false);
+          setEditingPermissionId(null);
+          setPermissionDefaultModule(undefined);
+        }}
+        onSaved={reloadMatrixData}
+        editingPermissionId={editingPermissionId}
+        defaultModule={permissionDefaultModule}
+      />
+
+      <AlertDialog
+        open={Boolean(deletePermissionConfirm)}
+        onOpenChange={(open) => !open && setDeletePermissionConfirm(null)}
+      >
+        <AlertDialogContent className="border border-[#e4e4e7] bg-white text-[#18181b] shadow-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete permission?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <strong>{deletePermissionConfirm?.name}</strong>. It cannot be
+              deleted if any role still assigns it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeletePermission();
+              }}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Filters Modal */}
-      <Dialog open={showFilters} onOpenChange={setShowFilters}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Filter size={20} />
-              Advanced Filters
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Search</Label>
-              <Input
-                placeholder="Search by name or email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Roles</SelectItem>
-                  {roles.map(role => (
-                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-3 pt-4">
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('all');
-                  setRoleFilter('all');
-                }}
-              >
-                Clear All
-              </Button>
-              <Button 
-                className="flex-1"
-                onClick={() => setShowFilters(false)}
-              >
-                Apply Filters
-              </Button>
-            </div>
+      <AdminModal
+        open={showFilters}
+        onOpenChange={setShowFilters}
+        title="Advanced Filters"
+        icon={<Filter size={20} />}
+        maxWidth="max-w-md"
+        footer={
+          <div className="flex w-full gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('all');
+                setRoleFilter('all');
+              }}
+            >
+              Clear All
+            </Button>
+            <Button className="flex-1" onClick={() => setShowFilters(false)}>
+              Apply Filters
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Search">
+            <Input
+              placeholder="Search by name or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Status">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+              </SelectContent>
+            </Select>
+          </AdminField>
+          <AdminField label="Role">
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                {roles.map(role => (
+                  <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

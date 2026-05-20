@@ -144,16 +144,25 @@ export const fetchPasswordInfo = async (id: string): Promise<PasswordInfo> => {
   return response.data;
 };
 
-export const resetCustomerPassword = async (id: string): Promise<{ newPassword: string; message: string }> => {
-  const response = await apiRequest<{ success: boolean; data: { newPassword: string; message: string } }>(
-    API_ENDPOINTS.admin.customers.resetPassword(id),
-    { method: 'PUT' }
-  );
+export const resetCustomerPassword = async (
+  id: string,
+  options?: { sendSms?: boolean }
+): Promise<{ newPassword: string; message: string; smsSent: boolean; passwordInfo: PasswordInfo }> => {
+  const response = await apiRequest<{
+    success: boolean;
+    data: { newPassword: string; message: string; smsSent: boolean; passwordInfo: PasswordInfo };
+  }>(API_ENDPOINTS.admin.customers.resetPassword(id), {
+    method: 'PUT',
+    body: JSON.stringify({ sendSms: options?.sendSms !== false }),
+  });
   return response.data;
 };
 
-export const setCustomerPassword = async (id: string, password: string): Promise<{ message: string }> => {
-  const response = await apiRequest<{ success: boolean; data: { message: string } }>(
+export const setCustomerPassword = async (
+  id: string,
+  password: string
+): Promise<{ message: string; passwordInfo: PasswordInfo }> => {
+  const response = await apiRequest<{ success: boolean; data: { message: string; passwordInfo: PasswordInfo } }>(
     API_ENDPOINTS.admin.customers.setPassword(id),
     {
       method: 'PUT',

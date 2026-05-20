@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,7 +16,8 @@ import {
   Role,
   fetchRoles,
   bulkAssignRole,
-  bulkUpdateUsers 
+  bulkUpdateUsers,
+  bulkUserAction,
 } from '../userManagementApi';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
@@ -105,9 +100,18 @@ export function BulkOperationsModal({
           toast.warning(`${selectedUserIds.length} users suspended`);
           break;
 
-        case 'reset_password':
-          toast.success(`Password reset initiated for ${selectedUserIds.length} users`);
+        case 'reset_password': {
+          const result = await bulkUserAction('reset_password', selectedUserIds, { sendEmail });
+          toast.success(
+            `Password reset for ${result.updated} user${result.updated !== 1 ? 's' : ''}${
+              result.failed > 0 ? ` (${result.failed} failed)` : ''
+            }`
+          );
+          if (result.passwords?.length) {
+            console.info('Bulk password reset results:', result.passwords);
+          }
           break;
+        }
       }
 
       onOperationComplete?.();
@@ -132,16 +136,27 @@ export function BulkOperationsModal({
   const isDangerous = operation === 'suspend' || (operation === 'change_status' && status === 'suspended');
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Bulk Operations</DialogTitle>
-          <DialogDescription>
-            Apply changes to {selectedUserIds.length} selected user{selectedUserIds.length > 1 ? 's' : ''}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6 mt-4">
+    <AdminModal
+      open={open}
+      onOpenChange={handleClose}
+      title="Bulk Operations"
+      subtitle={`Apply changes to ${selectedUserIds.length} selected user${selectedUserIds.length > 1 ? 's' : ''}`}
+      footer={
+        <>
+          <Button variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button
+            variant={isDangerous ? "destructive" : "default"}
+            onClick={handleExecute}
+            disabled={loading}
+          >
+            {loading ? 'Processing...' : 'Execute'}
+          </Button>
+        </>
+      }
+    >
+        <div className="space-y-6 px-6 py-4">
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
             <div className="text-sm font-medium text-blue-900">
               {selectedUserIds.length} user{selectedUserIds.length > 1 ? 's' : ''} selected
@@ -288,19 +303,6 @@ export function BulkOperationsModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-[#E5E7EB] pt-4 mt-6">
-          <Button variant="outline" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button 
-            variant={isDangerous ? "destructive" : "default"}
-            onClick={handleExecute}
-            disabled={loading}
-          >
-            {loading ? 'Processing...' : 'Execute'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }

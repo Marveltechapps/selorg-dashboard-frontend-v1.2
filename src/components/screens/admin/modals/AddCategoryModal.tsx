@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,12 +95,12 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
-      
+
       // Auto-generate slug from name
       if (field === 'name') {
         updated.slug = value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       }
-      
+
       return updated;
     });
   };
@@ -152,29 +146,32 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <FolderTree className="text-blue-600" size={20} />
-            </div>
-            <div>
-              <DialogTitle>
-                {isEditing ? 'Edit Category' : isSubcategoryFlow ? 'Add Subcategory' : 'Add New Category'}
-              </DialogTitle>
-              <DialogDescription>
-                {isEditing
-                  ? 'Update category details'
-                  : isSubcategoryFlow
-                    ? 'Create a new subcategory. Select a parent category and enter the subcategory name.'
-                    : 'Create a new category or subcategory'}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? 'Edit Category' : isSubcategoryFlow ? 'Add Subcategory' : 'Add New Category'}
+      subtitle={isEditing
+        ? 'Update category details'
+        : isSubcategoryFlow
+          ? 'Create a new subcategory. Select a parent category and enter the subcategory name.'
+          : 'Create a new category or subcategory'}
+      icon={<FolderTree size={20} />}
+      maxWidth="max-w-md"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+            {loading
+              ? (isEditing ? 'Updating...' : isSubcategoryFlow ? 'Creating subcategory...' : 'Creating...')
+              : (isEditing ? 'Update Category' : isSubcategoryFlow ? 'Create Subcategory' : 'Create Category')}
+          </Button>
+        </>
+      }
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="space-y-4 py-4">
           {/* Category / Subcategory Name */}
           <div className="space-y-2">
             <Label htmlFor="cat-name">{isSubcategoryFlow ? 'Subcategory Name *' : 'Category Name *'}</Label>
@@ -195,7 +192,7 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
               value={formData.slug}
               onChange={(e) => handleChange('slug', e.target.value)}
             />
-            <p className="text-xs text-[#71717a]">Auto-generated from name, can be customized</p>
+            <p className="text-xs text-gray-500">Auto-generated from name, can be customized</p>
           </div>
 
           {/* Parent Category */}
@@ -218,7 +215,7 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-[#71717a]">
+            <p className="text-xs text-gray-500">
               {isSubcategoryFlow ? 'This will be a subcategory under the selected parent' : formData.parentId ? 'This will be a subcategory' : 'This will be a top-level category'}
             </p>
           </div>
@@ -255,7 +252,7 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
               value={formData.link}
               onChange={(e) => handleChange('link', e.target.value)}
             />
-            <p className="text-xs text-[#71717a]">When user taps this category on the app home: product:ID → Product detail, category:ID → Category page, https://... → External URL. Leave empty to open category products.</p>
+            <p className="text-xs text-gray-500">When user taps this category on the app home: product:ID → Product detail, category:ID → Category page, https://... → External URL. Leave empty to open category products.</p>
           </div>
 
           {/* Status */}
@@ -272,19 +269,7 @@ export function AddCategoryModal({ open, onOpenChange, onSuccess, editCategory, 
             </Select>
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-3 mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
-            {loading
-              ? (isEditing ? 'Updating...' : isSubcategoryFlow ? 'Creating subcategory...' : 'Creating...')
-              : (isEditing ? 'Update Category' : isSubcategoryFlow ? 'Create Subcategory' : 'Create Category')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AdminModal>
   );
 }

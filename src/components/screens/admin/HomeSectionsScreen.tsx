@@ -10,13 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { fetchHomeSections, createHomeSection, updateHomeSection, deleteHomeSection, type HomeSection } from '@/api/cmsAdminApi';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2, Layout } from 'lucide-react';
@@ -193,32 +188,43 @@ export function HomeSectionsScreen() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Section' : 'Add Section'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="sectionKey">Section Key *</Label>
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingId ? 'Edit Section' : 'Add Section'}
+        icon={<Layout className="h-5 w-5" />}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
+            </Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid>
+            <AdminField label="Section Key *" htmlFor="sectionKey">
               <Input
                 id="sectionKey"
                 value={formData.sectionKey ?? ''}
                 onChange={(e) => setFormData({ ...formData, sectionKey: e.target.value })}
                 placeholder="e.g. hero_section, deals"
               />
-            </div>
-            <div>
-              <Label htmlFor="label">Label</Label>
+            </AdminField>
+            <AdminField label="Label" htmlFor="label">
               <Input
                 id="label"
                 value={formData.label ?? ''}
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })}
                 placeholder="Display label"
               />
-            </div>
-            <div>
-              <Label htmlFor="sectionType">Section Type</Label>
+            </AdminField>
+            <AdminField label="Section Type" htmlFor="sectionType">
               <select
                 id="sectionType"
                 className="w-full h-10 px-3 rounded-md border border-input bg-background"
@@ -231,47 +237,36 @@ export function HomeSectionsScreen() {
                 <option value="video">Video</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-            <div>
-              <Label htmlFor="videoUrl">Video URL</Label>
+            </AdminField>
+            <AdminField label="Video URL" htmlFor="videoUrl">
               <Input
                 id="videoUrl"
                 value={formData.videoUrl ?? ''}
                 onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
                 placeholder="https://..."
               />
-            </div>
-            <div>
-              <Label htmlFor="order">Order</Label>
+            </AdminField>
+            <AdminField label="Order" htmlFor="order">
               <Input
                 id="order"
                 type="number"
                 value={formData.order ?? 0}
                 onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })}
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isActive"
-                checked={formData.isActive ?? true}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                className="rounded border-[#e4e4e7]"
-              />
-              <Label htmlFor="isActive">Active</Label>
-            </div>
+            </AdminField>
+          </AdminFormGrid>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isActive"
+              checked={formData.isActive ?? true}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              className="rounded border-[#e4e4e7]"
+            />
+            <Label htmlFor="isActive">Active</Label>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

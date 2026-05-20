@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -139,7 +133,7 @@ export function AddCampaignModal({ open, onOpenChange, onSuccess, editCampaign }
         await createDiscount(payload);
         toast.success('Campaign created successfully');
       }
-      
+
       onSuccess();
       onOpenChange(false);
       setFormData({
@@ -164,22 +158,47 @@ export function AddCampaignModal({ open, onOpenChange, onSuccess, editCampaign }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle>{editCampaign ? 'Edit Discount Campaign' : 'Create Discount Campaign'}</DialogTitle>
-          <DialogDescription>{editCampaign ? 'Update the discount campaign details' : 'Create a new discount campaign for products or categories'}</DialogDescription>
-        </DialogHeader>
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editCampaign ? 'Edit Discount Campaign' : 'Create Discount Campaign'}
+      subtitle={editCampaign ? 'Update the discount campaign details' : 'Create a new discount campaign for products or categories'}
+      icon={<Tag size={20} />}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading} className="bg-[#e11d48] hover:bg-[#be123c]">
+            {loading ? (editCampaign ? 'Updating...' : 'Creating...') : (editCampaign ? 'Update Campaign' : 'Create Campaign')}
+          </Button>
+        </>
+      }
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="name">Campaign Name *</Label>
+              <Input
+                id="name"
+                placeholder="e.g., Summer Sale 2024"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+              />
+            </div>
 
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-          <div className="space-y-2">
-            <Label htmlFor="name">Campaign Name *</Label>
-            <Input
-              id="name"
-              placeholder="e.g., Summer Sale 2024"
-              value={formData.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="usageLimit">Usage Limit</Label>
+              <Input
+                id="usageLimit"
+                type="number"
+                placeholder="No limit"
+                value={formData.usageLimit}
+                onChange={(e) => handleChange('usageLimit', e.target.value)}
+                min="0"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -270,21 +289,9 @@ export function AddCampaignModal({ open, onOpenChange, onSuccess, editCampaign }
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="usageLimit">Usage Limit</Label>
-            <Input
-              id="usageLimit"
-              type="number"
-              placeholder="No limit"
-              value={formData.usageLimit}
-              onChange={(e) => handleChange('usageLimit', e.target.value)}
-              min="0"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label>Applicable Categories</Label>
             {refsLoading ? (
-              <p className="text-sm text-[#71717a]">Loading categories...</p>
+              <p className="text-sm text-gray-500">Loading categories...</p>
             ) : categories.length === 0 ? (
               <p className="text-sm text-amber-600">No categories available. Add categories in Catalog first.</p>
             ) : (
@@ -316,16 +323,7 @@ export function AddCampaignModal({ open, onOpenChange, onSuccess, editCampaign }
             </Label>
           </div>
         </div>
-
-        <div className="flex justify-end gap-3 pt-4 border-t flex-shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-[#e11d48] hover:bg-[#be123c]">
-            {loading ? (editCampaign ? 'Updating...' : 'Creating...') : (editCampaign ? 'Update Campaign' : 'Create Campaign')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AdminModal>
   );
 }

@@ -115,6 +115,15 @@ export interface DispatchEngineStatus {
   };
 }
 
+export interface DispatchLogEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  message: string;
+  status: "running" | "paused" | "error";
+  userId?: string | null;
+}
+
 export interface AnalyticsData {
   orderFlowHistory: { time: string; orders: number }[];
   slaPerformanceByZone: { zone: string; actual: number; target: number }[];
@@ -216,6 +225,25 @@ export const endSurge = async (cityId?: string): Promise<SurgeInfo> => {
   return res.data!;
 };
 
+export type SurgeQuickAction = 'increase_pricing' | 'notify_customers' | 'notify_riders';
+
+export interface SurgeActionResult {
+  sent?: number;
+  surgeInfo?: SurgeInfo;
+}
+
+export const executeSurgeAction = async (
+  action: SurgeQuickAction,
+  cityId?: string
+): Promise<SurgeActionResult> => {
+  const body = { action, ...(cityId && { cityId }) };
+  const res = await apiRequest<{ success: boolean; data: SurgeActionResult }>(`${CITYWIDE_PREFIX}/surge/actions`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.data ?? {};
+};
+
 export const fetchDispatchEngineStatus = async (cityId?: string): Promise<DispatchEngineStatus | null> => {
   const params = cityId ? `?cityId=${encodeURIComponent(cityId)}` : '';
   const res = await apiRequest<{ success: boolean; data: DispatchEngineStatus }>(`${CITYWIDE_PREFIX}/dispatch${params}`);
@@ -256,6 +284,28 @@ export const updateDispatchConfig = async (config: Partial<DispatchEngineStatus[
     body: JSON.stringify(body),
   });
   return res.data!;
+};
+
+export const manualOverrideDispatch = async (
+  status: 'running' | 'paused',
+  reason?: string,
+  cityId?: string
+): Promise<DispatchEngineStatus> => {
+  const body = { status, reason, ...(cityId && { cityId }) };
+  const res = await apiRequest<{ success: boolean; data: DispatchEngineStatus }>(`${CITYWIDE_PREFIX}/dispatch/manual-override`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.data!;
+};
+
+export const fetchDispatchLogs = async (cityId?: string, limit = 50): Promise<DispatchLogEntry[]> => {
+  const params = new URLSearchParams();
+  if (cityId) params.set('cityId', cityId);
+  params.set('limit', String(limit));
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiRequest<{ success: boolean; data: DispatchLogEntry[] }>(`${CITYWIDE_PREFIX}/dispatch/logs${query}`);
+  return res.data ?? [];
 };
 
 export const fetchAnalyticsData = async (): Promise<AnalyticsData | null> => {

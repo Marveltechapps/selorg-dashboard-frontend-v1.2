@@ -9,13 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import {
   Table,
   TableBody,
@@ -701,60 +696,15 @@ export function AnalyticsDashboard() {
       </Tabs>
 
       {/* Custom Report Builder Modal */}
-      <Dialog open={showCustomReport} onOpenChange={setShowCustomReport}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Custom Report Builder</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-[#71717a]">Select dimensions and metrics to build a custom report from order data.</p>
-          <div className="space-y-4 py-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b]">Dimensions</label>
-              <p className="text-xs text-[#71717a]">hour, day, month, year, city</p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {['hour', 'day', 'month', 'year', 'city'].map((d) => (
-                  <Badge
-                    key={d}
-                    variant={customDimensions.includes(d) ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => setCustomDimensions((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])}
-                  >
-                    {d}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-[#18181b]">Metrics</label>
-              <p className="text-xs text-[#71717a]">revenue, orders</p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {['revenue', 'orders'].map((m) => (
-                  <Badge
-                    key={m}
-                    variant={customMetrics.includes(m) ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => setCustomMetrics((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m])}
-                  >
-                    {m}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            {customReportResult.length > 0 && (
-              <div className="max-h-48 overflow-auto rounded border border-[#e4e4e7] p-3">
-                <p className="text-xs font-medium text-[#71717a] mb-2">Result ({customReportResult.length} rows)</p>
-                <pre className="text-xs text-[#18181b] whitespace-pre-wrap">
-                  {JSON.stringify(customReportResult.slice(0, 5), null, 2)}
-                  {customReportResult.length > 5 && '\n...'}
-                </pre>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowCustomReport(false)}
-            >
+      <AdminModal
+        open={showCustomReport}
+        onOpenChange={setShowCustomReport}
+        title="Custom Report Builder"
+        subtitle="Select dimensions and metrics to build a custom report from order data."
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowCustomReport(false)}>
               Close
             </Button>
             <Button
@@ -779,9 +729,49 @@ export function AnalyticsDashboard() {
             >
               {customReportLoading ? 'Generating...' : 'Generate Report'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Dimensions" hint="hour, day, month, year, city">
+            <div className="flex flex-wrap gap-2 mt-2">
+              {['hour', 'day', 'month', 'year', 'city'].map((d) => (
+                <Badge
+                  key={d}
+                  variant={customDimensions.includes(d) ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setCustomDimensions((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])}
+                >
+                  {d}
+                </Badge>
+              ))}
+            </div>
+          </AdminField>
+          <AdminField label="Metrics" hint="revenue, orders">
+            <div className="flex flex-wrap gap-2 mt-2">
+              {['revenue', 'orders'].map((m) => (
+                <Badge
+                  key={m}
+                  variant={customMetrics.includes(m) ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setCustomMetrics((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m])}
+                >
+                  {m}
+                </Badge>
+              ))}
+            </div>
+          </AdminField>
+          {customReportResult.length > 0 && (
+            <div className="max-h-48 overflow-auto rounded border border-[#e4e4e7] p-3">
+              <p className="text-xs font-medium text-[#71717a] mb-2">Result ({customReportResult.length} rows)</p>
+              <pre className="text-xs text-[#18181b] whitespace-pre-wrap">
+                {JSON.stringify(customReportResult.slice(0, 5), null, 2)}
+                {customReportResult.length > 5 && '\n...'}
+              </pre>
+            </div>
+          )}
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

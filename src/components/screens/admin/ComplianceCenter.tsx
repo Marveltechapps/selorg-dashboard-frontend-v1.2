@@ -2,16 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import {
+  AdminFormBody,
+  AdminFormGrid,
+  AdminField,
+} from '@/components/screens/admin/modals/AdminForm';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -1069,193 +1066,238 @@ export function ComplianceCenter() {
         </TabsContent>
       </Tabs>
 
-      {/* Upload Document Modal */}
-      <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upload Compliance Document</DialogTitle>
-            <DialogDescription>Add a new regulatory or policy document</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Document Name</label>
-              <Input
-                placeholder="e.g., ISO 27001 Certificate"
-                value={uploadForm.name}
-                onChange={(e) => setUploadForm({ ...uploadForm, name: e.target.value })}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Type</label>
-                <Select
-                  value={uploadForm.type}
-                  onValueChange={(value: any) => setUploadForm({ ...uploadForm, type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="certificate">Certificate</SelectItem>
-                    <SelectItem value="policy">Policy</SelectItem>
-                    <SelectItem value="license">License</SelectItem>
-                    <SelectItem value="audit">Audit Report</SelectItem>
-                    <SelectItem value="report">Compliance Report</SelectItem>
-                    <SelectItem value="agreement">Agreement</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Category</label>
-                <Select
-                  value={uploadForm.category}
-                  onValueChange={(value: any) => setUploadForm({ ...uploadForm, category: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="data-protection">Data Protection</SelectItem>
-                    <SelectItem value="financial">Financial</SelectItem>
-                    <SelectItem value="operational">Operational</SelectItem>
-                    <SelectItem value="legal">Legal</SelectItem>
-                    <SelectItem value="security">Security</SelectItem>
-                    <SelectItem value="tax">Tax</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Description</label>
-              <Textarea
-                placeholder="Brief description of the document"
-                value={uploadForm.description}
-                onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
-                rows={3}
-              />
-            </div>
-
-            <div className="bg-[#f4f4f5] rounded-lg p-4 border-2 border-dashed border-[#d4d4d8] text-center">
-              <input
-                type="file"
-                id="document-upload"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    if (file.size > 10 * 1024 * 1024) {
-                      toast.error('File size must be less than 10MB');
-                      return;
-                    }
-                    setUploadForm({ ...uploadForm, file });
-                    toast.success(`File selected: ${file.name}`);
-                  }
-                }}
-                className="hidden"
-              />
-              <label htmlFor="document-upload" className="cursor-pointer">
-                <Upload className="mx-auto mb-2 text-[#71717a]" size={32} />
-                <p className="text-sm text-[#71717a]">Drop file here or click to upload</p>
-                <p className="text-xs text-[#a1a1aa] mt-1">PDF, DOC, DOCX, JPG, PNG, GIF, WEBP (Max 10MB)</p>
-              </label>
-              {uploadForm.file && (
-                <div className="mt-3 p-2 bg-white rounded border border-[#e4e4e7]">
-                  <p className="text-sm font-medium text-[#18181b]">Selected: {uploadForm.file.name}</p>
-                  <p className="text-xs text-[#71717a]">Size: {(uploadForm.file.size / 1024).toFixed(2)} KB</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
+      <AdminModal
+        open={showUploadModal}
+        onOpenChange={(open) => {
+          setShowUploadModal(open);
+          if (!open) {
+            setUploadForm({ name: '', type: 'policy', category: 'legal', description: '', file: null });
+          }
+        }}
+        title="Upload Compliance Document"
+        subtitle="Add a new regulatory or policy document"
+        icon={<Upload className="h-5 w-5" />}
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowUploadModal(false)}>
               Cancel
             </Button>
             <Button onClick={handleUploadDocument}>Upload Document</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
 
-      {/* Schedule Audit Modal */}
-      <Dialog open={showAuditModal} onOpenChange={setShowAuditModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Schedule New Audit</DialogTitle>
-            <DialogDescription>Plan a compliance or security audit</DialogDescription>
-          </DialogHeader>
+        <AdminFormBody>
+          <AdminField label="Document Name" htmlFor="upload-doc-name">
+            <Input
+              id="upload-doc-name"
+              placeholder="e.g., ISO 27001 Certificate"
+              value={uploadForm.name}
+              onChange={(e) => setUploadForm({ ...uploadForm, name: e.target.value })}
+            />
+          </AdminField>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Audit Name</label>
-              <Input
-                placeholder="e.g., Q1 2025 Security Audit"
-                value={auditForm.name}
-                onChange={(e) => setAuditForm({ ...auditForm, name: e.target.value })}
-              />
-            </div>
+          <AdminFormGrid cols={2}>
+            <AdminField label="Type">
+              <Select
+                value={uploadForm.type}
+                onValueChange={(value: ComplianceDocument['type']) =>
+                  setUploadForm({ ...uploadForm, type: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="certificate">Certificate</SelectItem>
+                  <SelectItem value="policy">Policy</SelectItem>
+                  <SelectItem value="license">License</SelectItem>
+                  <SelectItem value="audit">Audit Report</SelectItem>
+                  <SelectItem value="report">Compliance Report</SelectItem>
+                  <SelectItem value="agreement">Agreement</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Type</label>
-                <Select
-                  value={auditForm.type}
-                  onValueChange={(value: any) => setAuditForm({ ...auditForm, type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="internal">Internal</SelectItem>
-                    <SelectItem value="external">External</SelectItem>
-                    <SelectItem value="regulatory">Regulatory</SelectItem>
-                    <SelectItem value="third-party">Third-Party</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <AdminField label="Category">
+              <Select
+                value={uploadForm.category}
+                onValueChange={(value: ComplianceDocument['category']) =>
+                  setUploadForm({ ...uploadForm, category: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="data-protection">Data Protection</SelectItem>
+                  <SelectItem value="financial">Financial</SelectItem>
+                  <SelectItem value="operational">Operational</SelectItem>
+                  <SelectItem value="legal">Legal</SelectItem>
+                  <SelectItem value="security">Security</SelectItem>
+                  <SelectItem value="tax">Tax</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
+          </AdminFormGrid>
 
-              <div>
-                <label className="text-sm font-medium text-[#18181b] mb-1 block">Scheduled Date</label>
-                <Input
-                  type="date"
-                  value={auditForm.scheduledDate}
-                  onChange={(e) => setAuditForm({ ...auditForm, scheduledDate: e.target.value })}
+          <AdminField label="Description" htmlFor="upload-doc-desc">
+            <Textarea
+              id="upload-doc-desc"
+              placeholder="Brief description of the document"
+              value={uploadForm.description}
+              onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
+              rows={3}
+            />
+          </AdminField>
+
+          <AdminField label="File">
+            <div className="bg-[#f4f4f5] rounded-lg p-4 border-2 border-dashed border-[#d4d4d8] text-center">
+              <input
+                  type="file"
+                  id="document-upload"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        toast.error('File size must be less than 10MB');
+                        return;
+                      }
+                      setUploadForm({ ...uploadForm, file });
+                      toast.success(`File selected: ${file.name}`);
+                    }
+                  }}
+                  className="hidden"
                 />
-              </div>
-            </div>
+                <label htmlFor="document-upload" className="cursor-pointer">
+                  <Upload className="mx-auto mb-2 text-[#71717a]" size={32} />
+                  <p className="text-sm text-[#71717a]">Drop file here or click to upload</p>
+                  <p className="text-xs text-[#a1a1aa] mt-1">PDF, DOC, DOCX, JPG, PNG, GIF, WEBP (Max 10MB)</p>
+                </label>
+                {uploadForm.file && (
+                  <div className="mt-3 p-2 bg-white rounded border border-[#e4e4e7]">
+                    <p className="text-sm font-medium text-[#18181b]">Selected: {uploadForm.file.name}</p>
+                    <p className="text-xs text-[#71717a]">Size: {(uploadForm.file.size / 1024).toFixed(2)} KB</p>
+                  </div>
+                )}
 
-            <div>
-              <label className="text-sm font-medium text-[#18181b] mb-1 block">Auditor Name</label>
-              <Input
-                placeholder="e.g., Sarah Chen"
-                value={auditForm.auditor}
-                onChange={(e) => setAuditForm({ ...auditForm, auditor: e.target.value })}
-              />
             </div>
-          </div>
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
 
-          <DialogFooter>
+      <AdminModal
+        open={showAuditModal}
+        onOpenChange={(open) => {
+          setShowAuditModal(open);
+          if (!open) {
+            setAuditForm({ name: '', type: 'internal', auditor: '', scheduledDate: '' });
+          }
+        }}
+        title="Schedule New Audit"
+        subtitle="Plan a compliance or security audit"
+        icon={<Calendar className="h-5 w-5" />}
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowAuditModal(false)}>
               Cancel
             </Button>
             <Button onClick={handleScheduleAudit}>Schedule Audit</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Audit Name" htmlFor="audit-name">
+            <Input
+              id="audit-name"
+              placeholder="e.g., Q1 2025 Security Audit"
+              value={auditForm.name}
+              onChange={(e) => setAuditForm({ ...auditForm, name: e.target.value })}
+            />
+          </AdminField>
 
-      {/* Document Details Modal */}
-      <Dialog open={showDocDetailsModal} onOpenChange={setShowDocDetailsModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{selectedDoc?.name}</DialogTitle>
-            <DialogDescription>{selectedDoc?.description}</DialogDescription>
-          </DialogHeader>
+          <AdminFormGrid cols={2}>
+            <AdminField label="Type">
+              <Select
+                value={auditForm.type}
+                onValueChange={(value: AuditRecord['type']) =>
+                  setAuditForm({ ...auditForm, type: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="internal">Internal</SelectItem>
+                  <SelectItem value="external">External</SelectItem>
+                  <SelectItem value="regulatory">Regulatory</SelectItem>
+                  <SelectItem value="third-party">Third-Party</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
 
-          {selectedDoc && (
-            <div className="space-y-4">
+            <AdminField label="Scheduled Date" htmlFor="audit-date">
+              <Input
+                id="audit-date"
+                type="date"
+                value={auditForm.scheduledDate}
+                onChange={(e) => setAuditForm({ ...auditForm, scheduledDate: e.target.value })}
+              />
+            </AdminField>
+          </AdminFormGrid>
+
+          <AdminField label="Auditor Name" htmlFor="audit-auditor">
+            <Input
+              id="audit-auditor"
+              placeholder="e.g., Sarah Chen"
+              value={auditForm.auditor}
+              onChange={(e) => setAuditForm({ ...auditForm, auditor: e.target.value })}
+            />
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
+
+      <AdminModal
+        open={showDocDetailsModal}
+        onOpenChange={(open) => {
+          setShowDocDetailsModal(open);
+          if (!open) setSelectedDoc(null);
+        }}
+        title={selectedDoc?.name ?? 'Document Details'}
+        subtitle={selectedDoc?.description}
+        icon={<FileText className="h-5 w-5" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowDocDetailsModal(false)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!selectedDoc) return;
+                const content = `Compliance Document: ${selectedDoc.name}\nVersion: ${selectedDoc.version}\nType: ${selectedDoc.type}\nCategory: ${selectedDoc.category}\nStatus: ${selectedDoc.status}\nLast Updated: ${new Date(selectedDoc.lastUpdated).toLocaleString()}\nUploaded: ${new Date(selectedDoc.uploadedAt).toLocaleDateString()}\nUploaded By: ${selectedDoc.uploadedBy}${selectedDoc.expiresAt ? `\nExpires: ${new Date(selectedDoc.expiresAt).toLocaleDateString()}` : ''}`;
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${selectedDoc.name}-v${selectedDoc.version}.txt`;
+                link.setAttribute('download', link.download);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                toast.success(`${selectedDoc.name} downloaded`);
+              }}
+            >
+              <Download size={14} className="mr-1.5" /> Download
+            </Button>
+          </>
+        }
+      >
+        {selectedDoc && (
+          <AdminFormBody>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-[#f4f4f5] rounded-lg p-3">
                   <p className="text-xs text-[#71717a] mb-1">Document ID</p>
@@ -1314,207 +1356,168 @@ export function ComplianceCenter() {
                   </>
                 )}
               </div>
-            </div>
-          )}
+          </AdminFormBody>
+        )}
+      </AdminModal>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDocDetailsModal(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (!selectedDoc) return;
-                const content = `Compliance Document: ${selectedDoc.name}\nVersion: ${selectedDoc.version}\nType: ${selectedDoc.type}\nCategory: ${selectedDoc.category}\nStatus: ${selectedDoc.status}\nLast Updated: ${new Date(selectedDoc.lastUpdated).toLocaleString()}\nUploaded: ${new Date(selectedDoc.uploadedAt).toLocaleDateString()}\nUploaded By: ${selectedDoc.uploadedBy}${selectedDoc.expiresAt ? `\nExpires: ${new Date(selectedDoc.expiresAt).toLocaleDateString()}` : ''}`;
-                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${selectedDoc.name}-v${selectedDoc.version}.txt`;
-                link.setAttribute('download', link.download);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
-                toast.success(`${selectedDoc.name} downloaded`);
-              }}
-            >
-              <Download size={14} className="mr-1.5" /> Download
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Certification Details Modal */}
-      <Dialog open={showCertDetailsModal} onOpenChange={setShowCertDetailsModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Award className="text-emerald-600" size={24} />
-              {selectedCert?.name}
-            </DialogTitle>
-            <DialogDescription>{selectedCert?.issuer}</DialogDescription>
-          </DialogHeader>
-
-          {selectedCert && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-[#f4f4f5] rounded-lg p-3">
-                  <p className="text-xs text-[#71717a] mb-1">Status</p>
-                  {getStatusBadge(selectedCert.status)}
-                </div>
-                <div className="bg-[#f4f4f5] rounded-lg p-3">
-                  <p className="text-xs text-[#71717a] mb-1">Score</p>
-                  <p className="text-lg font-bold text-emerald-600">{selectedCert.score}%</p>
-                </div>
-                <div className="bg-[#f4f4f5] rounded-lg p-3">
-                  <p className="text-xs text-[#71717a] mb-1">Attachments</p>
-                  <p className="text-lg font-bold text-[#18181b]">{selectedCert.attachments}</p>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-sm font-bold text-[#18181b] mb-2">Scope</h4>
-                <p className="text-sm text-[#52525b] bg-[#f4f4f5] rounded-lg p-3">{selectedCert.scope}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-[#71717a]">Cert Number:</span>{' '}
-                  <span className="font-mono font-medium text-[#18181b]">{selectedCert.certNumber}</span>
-                </div>
-                <div>
-                  <span className="text-[#71717a]">Audited By:</span>{' '}
-                  <span className="font-medium text-[#18181b]">{selectedCert.auditedBy}</span>
-                </div>
-                <div>
-                  <span className="text-[#71717a]">Issued:</span>{' '}
-                  <span className="font-medium text-[#18181b]">
-                    {new Date(selectedCert.issuedDate).toLocaleDateString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[#71717a]">Expires:</span>{' '}
-                  <span className="font-medium text-[#18181b]">
-                    {new Date(selectedCert.expiryDate).toLocaleDateString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[#71717a]">Next Audit:</span>{' '}
-                  <span className="font-medium text-[#18181b]">
-                    {new Date(selectedCert.nextAudit).toLocaleDateString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[#71717a]">Days Until Expiry:</span>{' '}
-                  <span className="font-medium text-[#18181b]">
-                    {getDaysUntilExpiry(selectedCert.expiryDate)} days
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
+      <AdminModal
+        open={showCertDetailsModal}
+        onOpenChange={(open) => {
+          setShowCertDetailsModal(open);
+          if (!open) setSelectedCert(null);
+        }}
+        title={selectedCert?.name ?? 'Certification Details'}
+        subtitle={selectedCert?.issuer}
+        icon={<Award className="h-5 w-5 text-emerald-600" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowCertDetailsModal(false)}>
               Close
             </Button>
-            <Button onClick={() => {
-              if (selectedCert) {
-                const link = document.createElement('a');
-                link.href = `#certificate-${selectedCert.id}`;
-                link.download = `${selectedCert.name}-${selectedCert.certNumber}.pdf`;
-                toast.info(`Downloading ${selectedCert.name}...`);
-                setTimeout(() => {
-                  toast.success(`${selectedCert.name} downloaded`);
-                }, 500);
-              }
-            }}>
+            <Button
+              onClick={() => {
+                if (selectedCert) {
+                  toast.info(`Downloading ${selectedCert.name}...`);
+                  setTimeout(() => {
+                    toast.success(`${selectedCert.name} downloaded`);
+                  }, 500);
+                }
+              }}
+            >
               <Download size={14} className="mr-1.5" /> Download Certificate
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        {selectedCert && (
+          <AdminFormBody>
+            <AdminFormGrid cols={3}>
+              <AdminField label="Status">{getStatusBadge(selectedCert.status)}</AdminField>
+              <AdminField label="Score">
+                <p className="text-lg font-bold text-emerald-600">{selectedCert.score}%</p>
+              </AdminField>
+              <AdminField label="Attachments">
+                <p className="text-lg font-bold text-[#18181b]">{selectedCert.attachments}</p>
+              </AdminField>
+            </AdminFormGrid>
+            <AdminField label="Scope">
+              <p className="text-sm text-[#52525b] bg-[#f4f4f5] rounded-lg p-3">{selectedCert.scope}</p>
+            </AdminField>
+            <AdminFormGrid cols={2}>
+              <AdminField label="Cert Number">
+                <p className="font-mono text-sm font-medium text-[#18181b]">{selectedCert.certNumber}</p>
+              </AdminField>
+              <AdminField label="Audited By">
+                <p className="text-sm font-medium text-[#18181b]">{selectedCert.auditedBy}</p>
+              </AdminField>
+              <AdminField label="Issued">
+                <p className="text-sm font-medium text-[#18181b]">
+                  {new Date(selectedCert.issuedDate).toLocaleDateString()}
+                </p>
+              </AdminField>
+              <AdminField label="Expires">
+                <p className="text-sm font-medium text-[#18181b]">
+                  {new Date(selectedCert.expiryDate).toLocaleDateString()}
+                </p>
+              </AdminField>
+              <AdminField label="Next Audit">
+                <p className="text-sm font-medium text-[#18181b]">
+                  {new Date(selectedCert.nextAudit).toLocaleDateString()}
+                </p>
+              </AdminField>
+              <AdminField label="Days Until Expiry">
+                <p className="text-sm font-medium text-[#18181b]">
+                  {getDaysUntilExpiry(selectedCert.expiryDate)} days
+                </p>
+              </AdminField>
+            </AdminFormGrid>
+          </AdminFormBody>
+        )}
+      </AdminModal>
 
-      {/* Policy View Modal */}
-      <Dialog open={showPolicyModal} onOpenChange={setShowPolicyModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle>{selectedPolicy?.name}</DialogTitle>
-            <DialogDescription>
-              Policy Version {selectedPolicy?.version} • Effective: {selectedPolicy?.effectiveDate ? new Date(selectedPolicy.effectiveDate).toLocaleDateString() : 'N/A'}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedPolicy && (
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-              <div>
-                <Label className="text-sm font-medium">Description</Label>
-                <p className="text-sm text-[#52525b] mt-1">{selectedPolicy.description || 'No description provided.'}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Category</Label>
-                  <p className="text-sm text-[#52525b] mt-1 capitalize">{selectedPolicy.category}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selectedPolicy.status)}</div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Owner</Label>
-                  <p className="text-sm text-[#52525b] mt-1">{selectedPolicy.owner}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Approved By</Label>
-                  <p className="text-sm text-[#52525b] mt-1">{selectedPolicy.approvedBy}</p>
-                </div>
-              </div>
-              {selectedPolicy.requiresAcknowledgment && (
-                <div>
-                  <Label className="text-sm font-medium">Acknowledgment Status</Label>
-                  <div className="mt-2">
-                    <div className="flex justify-between text-xs text-[#71717a] mb-1">
-                      <span>{selectedPolicy.acknowledgedEmployees} / {selectedPolicy.totalEmployees} employees</span>
-                      <span>{selectedPolicy.acknowledgmentRate}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-[#e4e4e7] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${
-                          selectedPolicy.acknowledgmentRate === 100
-                            ? 'bg-emerald-500'
-                            : selectedPolicy.acknowledgmentRate > 80
-                            ? 'bg-blue-500'
-                            : 'bg-amber-500'
-                        }`}
-                        style={{ width: `${selectedPolicy.acknowledgmentRate}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter className="flex-shrink-0">
+      <AdminModal
+        open={showPolicyModal}
+        onOpenChange={(open) => {
+          setShowPolicyModal(open);
+          if (!open) setSelectedPolicy(null);
+        }}
+        title={selectedPolicy?.name ?? 'Policy Details'}
+        subtitle={
+          selectedPolicy
+            ? `Version ${selectedPolicy.version} · Effective: ${selectedPolicy.effectiveDate ? new Date(selectedPolicy.effectiveDate).toLocaleDateString() : 'N/A'}`
+            : undefined
+        }
+        icon={<Shield className="h-5 w-5" />}
+        maxWidth="max-w-3xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowPolicyModal(false)}>
               Close
             </Button>
             {selectedPolicy?.requiresAcknowledgment && selectedPolicy.acknowledgmentRate < 100 && (
-              <Button onClick={async () => {
-                try {
-                  await handleAcknowledgePolicy(selectedPolicy.id);
-                  toast.success('Policy acknowledged successfully');
-                  setShowPolicyModal(false);
-                  loadData();
-                } catch (error) {
-                  toast.error('Failed to acknowledge policy');
-                }
-              }}>
+              <Button
+                onClick={async () => {
+                  try {
+                    await handleAcknowledgePolicy(selectedPolicy.id);
+                    toast.success('Policy acknowledged successfully');
+                    setShowPolicyModal(false);
+                    loadData();
+                  } catch {
+                    toast.error('Failed to acknowledge policy');
+                  }
+                }}
+              >
                 Acknowledge Policy
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        {selectedPolicy && (
+          <AdminFormBody>
+            <AdminField label="Description">
+              <p className="text-sm text-[#52525b]">
+                {selectedPolicy.description || 'No description provided.'}
+              </p>
+            </AdminField>
+            <AdminFormGrid cols={2}>
+              <AdminField label="Category">
+                <p className="text-sm text-[#52525b] capitalize">{selectedPolicy.category}</p>
+              </AdminField>
+              <AdminField label="Status">{getStatusBadge(selectedPolicy.status)}</AdminField>
+              <AdminField label="Owner">
+                <p className="text-sm text-[#52525b]">{selectedPolicy.owner}</p>
+              </AdminField>
+              <AdminField label="Approved By">
+                <p className="text-sm text-[#52525b]">{selectedPolicy.approvedBy}</p>
+              </AdminField>
+            </AdminFormGrid>
+            {selectedPolicy.requiresAcknowledgment && (
+              <AdminField label="Acknowledgment Status">
+                <div className="flex justify-between text-xs text-[#71717a] mb-1">
+                  <span>
+                    {selectedPolicy.acknowledgedEmployees} / {selectedPolicy.totalEmployees} employees
+                  </span>
+                  <span>{selectedPolicy.acknowledgmentRate}%</span>
+                </div>
+                <div className="w-full h-2 bg-[#e4e4e7] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${
+                      selectedPolicy.acknowledgmentRate === 100
+                        ? 'bg-emerald-500'
+                        : selectedPolicy.acknowledgmentRate > 80
+                        ? 'bg-blue-500'
+                        : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${selectedPolicy.acknowledgmentRate}%` }}
+                  />
+                </div>
+              </AdminField>
+            )}
+          </AdminFormBody>
+        )}
+      </AdminModal>
     </div>
   );
 }

@@ -14,15 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
 import {
   Table,
   TableBody,
@@ -128,10 +122,30 @@ export function LegalManagerPage() {
 
   const closeFormModal = (open: boolean) => {
     setShowForm(open);
-    if (!open) setEditDoc(null);
+    if (!open) {
+      setEditDoc(null);
+      setSaving(false);
+    }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!formTitle.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!formVersion.trim()) {
+      toast.error('Version is required');
+      return;
+    }
+    if (!formEffectiveDate.trim()) {
+      toast.error('Effective date is required');
+      return;
+    }
+    if (!formContent.trim()) {
+      toast.error('Content is required');
+      return;
+    }
     setSaving(true);
     try {
       if (editDoc) {
@@ -394,100 +408,95 @@ export function LegalManagerPage() {
         ))}
       </Tabs>
 
-      <Dialog open={showForm} onOpenChange={closeFormModal}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editDoc ? 'Edit Document' : 'New Version'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Title</Label>
-                <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Version</Label>
-                <Input
-                  value={formVersion}
-                  onChange={(e) => setFormVersion(e.target.value)}
-                  placeholder="e.g. 1.0.0"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Effective Date</Label>
-              <Input
-                type="date"
-                value={formEffectiveDate}
-                onChange={(e) => setFormEffectiveDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Content</Label>
-              <Textarea
-                rows={12}
-                value={formContent}
-                onChange={(e) => setFormContent(e.target.value)}
-                placeholder="Paste your document content here..."
-                className="font-mono text-sm min-h-[240px]"
-              />
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox
-                checked={formIsCurrent}
-                onCheckedChange={(v) => setFormIsCurrent(v === true)}
-              />
-              <span className="text-sm text-[#18181b]">Set as current (live) version</span>
-            </label>
-          </div>
-          <DialogFooter>
+      <AdminModal
+        open={showForm}
+        onOpenChange={closeFormModal}
+        title={editDoc ? 'Edit Document' : 'New Version'}
+        subtitle={`${activeAppLabel} · ${activeTypeLabel}`}
+        icon={<FileText className="h-5 w-5" />}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
             <Button type="button" variant="outline" onClick={() => closeFormModal(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                'Save'
-              )}
+            <Button type="submit" form="legal-manager-form" disabled={saving}>
+              {saving ? 'Saving...' : editDoc ? 'Update' : 'Create'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <form id="legal-manager-form" onSubmit={(e) => void handleSave(e)} className="space-y-4 px-6 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label>Title *</Label>
+              <Input
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                placeholder="e.g. Terms of Service"
+              />
+            </div>
+            <div>
+              <Label>Version *</Label>
+              <Input
+                value={formVersion}
+                onChange={(e) => setFormVersion(e.target.value)}
+                placeholder="e.g. 1.0.0"
+              />
+              <p className="text-xs text-gray-500 mt-1">Semantic version shown in apps</p>
+            </div>
+          </div>
+          <div>
+            <Label>Effective Date *</Label>
+            <Input
+              type="date"
+              value={formEffectiveDate}
+              onChange={(e) => setFormEffectiveDate(e.target.value)}
+            />
+            <p className="text-xs text-gray-500 mt-1">When this version takes effect</p>
+          </div>
+          <div>
+            <Label>Content *</Label>
+            <Textarea
+              rows={14}
+              value={formContent}
+              onChange={(e) => setFormContent(e.target.value)}
+              placeholder="Paste your document content here..."
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="legal-manager-current"
+              checked={formIsCurrent}
+              onCheckedChange={setFormIsCurrent}
+            />
+            <Label htmlFor="legal-manager-current">Set as current (live) version</Label>
+          </div>
+        </form>
+      </AdminModal>
 
-      <Dialog open={!!deleteId} onOpenChange={(open) => !open && !saving && setDeleteId(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete version?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-[#71717a]">
-            Are you sure you want to delete this version? This cannot be undone.
-          </p>
-          <DialogFooter>
+      <AdminModal
+        open={!!deleteId}
+        onOpenChange={(open) => !open && !saving && setDeleteId(null)}
+        title="Delete version?"
+        maxWidth="max-w-md"
+        footer={
+          <>
             <Button type="button" variant="outline" onClick={() => setDeleteId(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => void handleConfirmDelete()}
-              disabled={saving}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                'Delete'
-              )}
+            <Button type="button" variant="destructive" onClick={() => void handleConfirmDelete()} disabled={saving}>
+              {saving ? 'Deleting...' : 'Delete'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="space-y-4 px-6 py-4">
+          <p className="text-sm text-[#71717a]">
+            Are you sure you want to delete this version? This cannot be undone.
+          </p>
+        </div>
+      </AdminModal>
     </div>
   );
 }

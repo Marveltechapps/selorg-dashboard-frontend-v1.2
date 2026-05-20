@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -57,12 +57,19 @@ export function AddVehicleTypeModal({ open, onOpenChange, onSuccess, editItem }:
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editItem ? 'Edit Vehicle Type' : 'Add Vehicle Type'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <AdminModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={editItem ? 'Edit Vehicle Type' : 'Add Vehicle Type'}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="vehicle-type-form" disabled={submitting}>{submitting ? 'Saving...' : editItem ? 'Update' : 'Create'}</Button>
+        </>
+      }
+    >
+      <form id="vehicle-type-form" onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Code *</Label>
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. bike" disabled={!!editItem} />
@@ -71,16 +78,12 @@ export function AddVehicleTypeModal({ open, onOpenChange, onSuccess, editItem }:
             <Label>Name *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bike" />
           </div>
-          <div>
-            <Label>Description</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : editItem ? 'Update' : 'Create'}</Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </div>
+        <div>
+          <Label>Description</Label>
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" />
+        </div>
+      </form>
+    </AdminModal>
   );
 }

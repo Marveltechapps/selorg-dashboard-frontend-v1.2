@@ -10,13 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminFormGrid, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import { fetchBanners, createBanner, updateBanner, deleteBanner, type Banner } from '@/api/cmsAdminApi';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2, Image } from 'lucide-react';
@@ -197,78 +192,14 @@ export function BannersScreen() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Banner' : 'Add Banner'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                value={formData.name ?? ''}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Banner name"
-              />
-            </div>
-            <div>
-              <Label htmlFor="bannerId">Banner ID</Label>
-              <Input
-                id="bannerId"
-                value={formData.bannerId ?? ''}
-                onChange={(e) => setFormData({ ...formData, bannerId: e.target.value })}
-                placeholder="e.g. banner_001"
-              />
-            </div>
-            <div>
-              <Label htmlFor="imageUrl">Image URL</Label>
-              <Input
-                id="imageUrl"
-                value={formData.imageUrl ?? ''}
-                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                placeholder="https://..."
-              />
-            </div>
-            <div>
-              <Label htmlFor="bannerType">Banner Type</Label>
-              <Input
-                id="bannerType"
-                value={formData.bannerType ?? ''}
-                onChange={(e) => setFormData({ ...formData, bannerType: e.target.value })}
-                placeholder="e.g. hero, mid"
-              />
-            </div>
-            <div>
-              <Label htmlFor="sectionCode">Section Code</Label>
-              <Input
-                id="sectionCode"
-                value={formData.sectionCode ?? ''}
-                onChange={(e) => setFormData({ ...formData, sectionCode: e.target.value })}
-                placeholder="e.g. hero_section"
-              />
-            </div>
-            <div>
-              <Label htmlFor="order">Order</Label>
-              <Input
-                id="order"
-                type="number"
-                value={formData.order ?? 0}
-                onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isActive"
-                checked={formData.isActive ?? true}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                className="rounded border-[#e4e4e7]"
-              />
-              <Label htmlFor="isActive">Active</Label>
-            </div>
-          </div>
-          <DialogFooter>
+      <AdminModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editingId ? 'Edit Banner' : 'Add Banner'}
+        icon={<Image className="h-5 w-5" />}
+        maxWidth="max-w-md"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
@@ -276,9 +207,72 @@ export function BannersScreen() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Save
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminFormGrid>
+            <AdminField label="Name *" htmlFor="name">
+              <Input
+                id="name"
+                value={formData.name ?? ''}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Banner name"
+              />
+            </AdminField>
+            <AdminField label="Banner ID" htmlFor="bannerId">
+              <Input
+                id="bannerId"
+                value={formData.bannerId ?? ''}
+                onChange={(e) => setFormData({ ...formData, bannerId: e.target.value })}
+                placeholder="e.g. banner_001"
+              />
+            </AdminField>
+            <AdminField label="Image URL" htmlFor="imageUrl">
+              <Input
+                id="imageUrl"
+                value={formData.imageUrl ?? ''}
+                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                placeholder="https://..."
+              />
+            </AdminField>
+            <AdminField label="Banner Type" htmlFor="bannerType">
+              <Input
+                id="bannerType"
+                value={formData.bannerType ?? ''}
+                onChange={(e) => setFormData({ ...formData, bannerType: e.target.value })}
+                placeholder="e.g. hero, mid"
+              />
+            </AdminField>
+            <AdminField label="Section Code" htmlFor="sectionCode">
+              <Input
+                id="sectionCode"
+                value={formData.sectionCode ?? ''}
+                onChange={(e) => setFormData({ ...formData, sectionCode: e.target.value })}
+                placeholder="e.g. hero_section"
+              />
+            </AdminField>
+            <AdminField label="Order" htmlFor="order">
+              <Input
+                id="order"
+                type="number"
+                value={formData.order ?? 0}
+                onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value, 10) || 0 })}
+              />
+            </AdminField>
+          </AdminFormGrid>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isActive"
+              checked={formData.isActive ?? true}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              className="rounded border-[#e4e4e7]"
+            />
+            <Label htmlFor="isActive">Active</Label>
+          </div>
+        </AdminFormBody>
+      </AdminModal>
     </div>
   );
 }

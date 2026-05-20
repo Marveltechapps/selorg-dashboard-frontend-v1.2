@@ -20,6 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
+import { AdminFormBody, AdminField } from '@/components/screens/admin/modals/AdminForm';
 import {
   Dialog,
   DialogContent,
@@ -355,64 +357,19 @@ export function OnboardingManagement() {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Onboarding Page' : 'Add Onboarding Page'}</DialogTitle>
-            <DialogDescription>
-              {editingId
-                ? 'Update the onboarding page details below.'
-                : 'Fill in the details for the new onboarding page.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="ob-title">Title *</Label>
-              <Input
-                id="ob-title"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="Welcome to Selorg Organic"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ob-desc">Description *</Label>
-              <Textarea
-                id="ob-desc"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Get fresh organic groceries delivered to your door"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ob-img">Image URL</Label>
-              <Input
-                id="ob-img"
-                value={form.imageUrl}
-                onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                placeholder="https://..."
-              />
-              {form.imageUrl && (
-                <div className="w-full h-32 rounded-lg border border-border overflow-hidden bg-muted">
-                  <ImageWithFallback
-                    src={form.imageUrl}
-                    alt="Preview"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch
-                id="ob-active"
-                checked={form.isActive}
-                onCheckedChange={(checked) => setForm({ ...form, isActive: checked })}
-              />
-              <Label htmlFor="ob-active">Active (visible in app)</Label>
-            </div>
-          </div>
-          <DialogFooter>
+      <AdminModal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title={editingId ? 'Edit Onboarding Page' : 'Add Onboarding Page'}
+        subtitle={
+          editingId
+            ? 'Update the onboarding page details below.'
+            : 'Fill in the details for the new onboarding page.'
+        }
+        icon={<Smartphone className="h-5 w-5" />}
+        maxWidth="max-w-lg"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>
               Cancel
             </Button>
@@ -420,9 +377,54 @@ export function OnboardingManagement() {
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingId ? 'Save Changes' : 'Create Page'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Title *" htmlFor="ob-title">
+            <Input
+              id="ob-title"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="Welcome to Selorg Organic"
+            />
+          </AdminField>
+          <AdminField label="Description *" htmlFor="ob-desc">
+            <Textarea
+              id="ob-desc"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Get fresh organic groceries delivered to your door"
+              rows={3}
+            />
+          </AdminField>
+          <AdminField label="Image URL" htmlFor="ob-img">
+            <Input
+              id="ob-img"
+              value={form.imageUrl}
+              onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+              placeholder="https://..."
+            />
+            {form.imageUrl && (
+              <div className="w-full h-32 rounded-lg border border-border overflow-hidden bg-muted">
+                <ImageWithFallback
+                  src={form.imageUrl}
+                  alt="Preview"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+          </AdminField>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="ob-active"
+              checked={form.isActive}
+              onCheckedChange={(checked) => setForm({ ...form, isActive: checked })}
+            />
+            <Label htmlFor="ob-active">Active (visible in app)</Label>
+          </div>
+        </AdminFormBody>
+      </AdminModal>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>

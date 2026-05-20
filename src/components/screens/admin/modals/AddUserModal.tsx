@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -276,16 +270,27 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
   const selectedRole = roles.find(r => r.id === formData.roleId);
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Add New User</DialogTitle>
-          <DialogDescription>
-            Create a new user account and assign roles and permissions
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+    <AdminModal
+      open={open}
+      onOpenChange={handleClose}
+      title="Add New User"
+      subtitle="Create a new user account and assign roles and permissions"
+      maxWidth="max-w-3xl"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="outline" onClick={handleClear}>
+            Clear
+          </Button>
+          <Button type="submit" form="add-user-form" disabled={loading || !isEmailVerified}>
+            {loading ? 'Creating...' : 'Create User'}
+          </Button>
+        </>
+      }
+    >
+        <form id="add-user-form" onSubmit={handleSubmit} className="space-y-6 px-6 py-4">
           {/* Section 1: Personal Information */}
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-[#1F2937]">Personal Information</h3>
@@ -577,20 +582,7 @@ export function AddUserModal({ open, onClose, onUserAdded }: AddUserModalProps) 
             </>
           )}
 
-          {/* Modal Footer */}
-          <div className="flex items-center justify-end gap-3 border-t border-[#E5E7EB] pt-4">
-            <Button type="button" variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button type="button" variant="outline" onClick={handleClear}>
-              Clear
-            </Button>
-            <Button type="submit" disabled={loading || !isEmailVerified}>
-              {loading ? 'Creating...' : 'Create User'}
-            </Button>
-          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+    </AdminModal>
   );
 }
