@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AdminModal } from '@/components/screens/admin/modals/AdminModal';
@@ -119,6 +119,13 @@ export function SystemTools() {
   // Filter
   const [logFilter, setLogFilter] = useState('');
 
+  const displayedLogs = useMemo(() => {
+    if (logFilter && logFilter !== 'all') {
+      return logs.filter((log) => log.level === logFilter);
+    }
+    return logs;
+  }, [logs, logFilter]);
+
   // Data Retention settings (local state)
   const [retentionSettings, setRetentionSettings] = useState({
     archiveOrdersMonths: 12,
@@ -130,19 +137,60 @@ export function SystemTools() {
     loadInitialData();
   }, []);
 
-  // When Logs or Performance tab is opened, ensure data is loaded (e.g. if initial load failed)
+  // When Performance tab opens, bootstrap if initial load skipped it
   useEffect(() => {
-    if (activeTab === 'logs' && logs.length === 0) {
-      fetchLogs().then((data) => {
-        setLogs(data);
-        setFilteredLogs(data);
-      }).catch(() => {});
-    }
     if (activeTab === 'performance' && performanceMetrics.length === 0) {
       fetchPerformanceMetrics().then((data) => {
         if (data?.length) setPerformanceMetrics(data);
       }).catch(() => {});
     }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'logs') return;
+
+    let cancelled = false;
+    const refreshLogs = async () => {
+      try {
+        const data = await fetchLogs(logFilter || undefined);
+        if (!cancelled) {
+          const arr = Array.isArray(data) ? data : [];
+          setLogs(arr);
+        }
+      } catch {
+        // keep prior rows on transient errors
+      }
+    };
+
+    refreshLogs();
+    const intervalId = window.setInterval(refreshLogs, 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab, logFilter]);
+
+  useEffect(() => {
+    if (activeTab !== 'performance') return;
+
+    let cancelled = false;
+    const refreshPerformance = async () => {
+      try {
+        const data = await fetchPerformanceMetrics();
+        if (!cancelled) {
+          setPerformanceMetrics(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        // keep last good values on transient polling failures
+      }
+    };
+
+    refreshPerformance();
+    const intervalId = window.setInterval(refreshPerformance, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [activeTab]);
 
   const loadInitialData = async () => {
@@ -169,7 +217,6 @@ export function SystemTools() {
       if (db.status === 'fulfilled' && db.value) setDatabaseInfo(db.value);
       if (logsData.status === 'fulfilled' && Array.isArray(logsData.value)) {
         setLogs(logsData.value);
-        setFilteredLogs(logsData.value);
       }
       if (jobs.status === 'fulfilled' && jobs.value) setCronJobs(jobs.value);
       if (env.status === 'fulfilled' && env.value) setEnvVariables(env.value);
@@ -306,22 +353,6 @@ export function SystemTools() {
       toast.error('Failed to rollback migration');
     }
   };
-
-  const [filteredLogs, setFilteredLogs] = useState<LogEntry[]>([]);
-
-  useEffect(() => {
-    if (logFilter && logFilter !== 'all') {
-      setFilteredLogs(logs.filter(log => log.level === logFilter));
-    } else {
-      setFilteredLogs(logs);
-    }
-  }, [logs, logFilter]);
-
-  useEffect(() => {
-    if (logs.length > 0 && filteredLogs.length === 0 && !logFilter) {
-      setFilteredLogs(logs);
-    }
-  }, [logs]);
 
   const handleFilterLogs = (level: string) => {
     setLogFilter(level === 'all' ? '' : level);
@@ -655,14 +686,14 @@ export function SystemTools() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLogs.length === 0 ? (
+                {displayedLogs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center py-12 text-[#71717a]">
                       {logFilter && logFilter !== 'all' ? `No ${logFilter} logs found` : 'No logs available'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredLogs.map((log) => (
+                  displayedLogs.map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="font-mono text-xs text-[#71717a]">
                       {new Date(log.timestamp).toLocaleString()}

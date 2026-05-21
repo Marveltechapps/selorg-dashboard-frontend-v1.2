@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Store, City, Zone, Manager, createStore, updateStore, createWarehouse, Warehouse, fetchCities, fetchZones, fetchManagers } from '../storeWarehouseApi';
 import { toast } from 'sonner';
 import { Store as StoreIcon } from 'lucide-react';
+import { LocationMapPicker } from './LocationMapPicker';
 
 interface AddStoreModalProps {
   open: boolean;
@@ -409,15 +410,23 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
       maxWidth="max-w-3xl"
       footer={
         <>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          <Button type="submit" form="store-modal-form" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
             {loading ? 'Saving...' : editStore ? 'Update Store' : 'Create Store'}
           </Button>
         </>
       }
     >
+      <form
+        id="store-modal-form"
+        className="flex flex-col flex-1 min-h-0"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSubmit();
+        }}
+      >
       <Tabs defaultValue="basic" className="flex-1 flex flex-col min-h-0">
         <div className="px-6 pt-2 flex-shrink-0">
           <TabsList className="grid w-full grid-cols-4">
@@ -640,10 +649,9 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
               <div />
             </div>
 
-            {/* Coordinates */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="latitude">Latitude</Label>
+                <Label htmlFor="latitude">Latitude *</Label>
                 <Input
                   id="latitude"
                   type="number"
@@ -655,7 +663,7 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="longitude">Longitude</Label>
+                <Label htmlFor="longitude">Longitude *</Label>
                 <Input
                   id="longitude"
                   type="number"
@@ -667,9 +675,19 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
               </div>
             </div>
 
+            <LocationMapPicker
+              latitude={formData.latitude}
+              longitude={formData.longitude}
+              onPositionChange={(lat, lng) => {
+                handleChange('latitude', lat);
+                handleChange('longitude', lng);
+              }}
+              height="240px"
+            />
+
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs text-blue-800">
-                Tip: Use Google Maps to find accurate coordinates. Right-click on location &rarr; "What's here?"
+                Click the map or drag the pin to set coordinates; values stay in sync with the fields above.
               </p>
             </div>
 
@@ -806,6 +824,7 @@ export function AddStoreModal({ open, onOpenChange, onSuccess, editStore, storeT
           </TabsContent>
         </div>
       </Tabs>
+      </form>
     </AdminModal>
   );
 }

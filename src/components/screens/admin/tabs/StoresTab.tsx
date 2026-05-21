@@ -23,9 +23,10 @@ const PAGE_SIZE = 20;
 interface StoresTabProps {
   openAddModal?: boolean;
   onAddModalClose?: () => void;
+  listRefreshKey?: number;
 }
 
-export function StoresTab({ openAddModal, onAddModalClose }: StoresTabProps = {}) {
+export function StoresTab({ openAddModal, onAddModalClose, listRefreshKey = 0 }: StoresTabProps = {}) {
   const [addStoreOpen, setAddStoreOpen] = useState(false);
   const [detailsStoreId, setDetailsStoreId] = useState<string | null>(null);
   const [detailsStorePreview, setDetailsStorePreview] = useState<Store | null>(null);
@@ -85,7 +86,7 @@ export function StoresTab({ openAddModal, onAddModalClose }: StoresTabProps = {}
 
   useEffect(() => {
     loadStores();
-  }, [loadStores]);
+  }, [loadStores, listRefreshKey]);
 
   useEffect(() => {
     setPage(1);

@@ -54,6 +54,7 @@ export function EquipmentAssets() {
     type: 'forklift' as const,
     zone: '',
   });
+  const [addingEquipment, setAddingEquipment] = useState(false);
 
   const reportIssue = async () => {
     if (newIssue.equipmentId && newIssue.issue) {
@@ -73,24 +74,28 @@ export function EquipmentAssets() {
   };
 
   const addEquipment = async () => {
-    if (newEquipment.name) {
-      try {
-        const created = await addMachinery({
-          equipmentId: newEquipment.equipmentId || undefined,
-          name: newEquipment.name,
-          type: newEquipment.type,
-          zone: newEquipment.zone || undefined,
-          status: 'idle'
-        });
-        toast.success(`Equipment added: ${created?.equipmentId ?? created?.id ?? 'OK'}`);
-        setNewEquipment({ equipmentId: '', name: '', type: 'forklift', zone: '' });
-        setShowAddEquipmentModal(false);
-        loadData();
-      } catch (error) {
-        toast.error('Failed to add equipment');
-      }
-    } else {
+    if (!newEquipment.name.trim()) {
       toast.error('Name is required');
+      return;
+    }
+
+    setAddingEquipment(true);
+    try {
+      const created = await addMachinery({
+        equipmentId: newEquipment.equipmentId.trim() || undefined,
+        name: newEquipment.name.trim(),
+        type: newEquipment.type,
+        zone: newEquipment.zone.trim() || undefined,
+        status: 'idle',
+      });
+      toast.success(`Equipment added: ${created?.equipmentId ?? created?.id ?? 'OK'}`);
+      setNewEquipment({ equipmentId: '', name: '', type: 'forklift', zone: '' });
+      setShowAddEquipmentModal(false);
+      await loadData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to add equipment');
+    } finally {
+      setAddingEquipment(false);
     }
   };
 
@@ -454,7 +459,13 @@ export function EquipmentAssets() {
                 <X size={20} />
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <form
+              className="p-6 space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void addEquipment();
+              }}
+            >
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">Equipment ID</label>
                 <input 
@@ -473,6 +484,7 @@ export function EquipmentAssets() {
                   value={newEquipment.name}
                   onChange={(e) => setNewEquipment({...newEquipment, name: e.target.value})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
+                  required
                 />
               </div>
               <div>
@@ -497,19 +509,22 @@ export function EquipmentAssets() {
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 />
               </div>
-            </div>
+            </form>
             <div className="p-6 border-t border-[#E2E8F0] flex gap-3 justify-end">
               <button 
+                type="button"
                 onClick={() => setShowAddEquipmentModal(false)}
                 className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC]"
               >
                 Cancel
               </button>
               <button 
-                onClick={addEquipment}
-                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4]"
+                type="button"
+                onClick={() => void addEquipment()}
+                disabled={addingEquipment || !newEquipment.name.trim()}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add Equipment
+                {addingEquipment ? 'Adding...' : 'Add Equipment'}
               </button>
             </div>
           </div>

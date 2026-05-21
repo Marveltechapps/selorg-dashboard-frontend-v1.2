@@ -25,7 +25,7 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-export function PickersTab() {
+export function PickersTab({ listRefreshKey = 0 }: { listRefreshKey?: number } = {}) {
   const [data, setData] = useState<MasterPickerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -57,7 +57,7 @@ export function PickersTab() {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, listRefreshKey]);
 
   const toggleSuspend = async (row: MasterPickerRow) => {
     const next = row.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';

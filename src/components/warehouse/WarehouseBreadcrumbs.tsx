@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils';
 
 const WAREHOUSE_TAB_LABELS: Record<string, string> = {
   overview: 'Warehouse Overview',
+  navigation: 'Navigation',
   inbound: 'Inbound Ops',
   inventory: 'Inventory & Storage',
   outbound: 'Outbound Ops',

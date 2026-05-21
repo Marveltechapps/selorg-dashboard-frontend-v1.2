@@ -20,10 +20,12 @@ const TABS = [
 export function MasterData() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]['value']>('warehouses');
   const [addStoreOpen, setAddStoreOpen] = useState(false);
+  const [listRefreshKey, setListRefreshKey] = useState(0);
 
   const handleRefresh = () => {
     setAddStoreOpen(false);
-    toast.success('Master data view refreshed');
+    setListRefreshKey((k) => k + 1);
+    toast.success('Master data refreshed');
   };
 
   return (
@@ -54,17 +56,17 @@ export function MasterData() {
 
         <TabsContent value="warehouses">
           <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <WarehousesTab />
+            <WarehousesTab listRefreshKey={listRefreshKey} />
           </div>
         </TabsContent>
         <TabsContent value="cities">
           <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <CitiesTab />
+            <CitiesTab listRefreshKey={listRefreshKey} />
           </div>
         </TabsContent>
         <TabsContent value="zones">
           <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-            <ZonesTab />
+            <ZonesTab listRefreshKey={listRefreshKey} />
           </div>
         </TabsContent>
         <TabsContent value="stores">
@@ -72,12 +74,13 @@ export function MasterData() {
             <StoresTab
               openAddModal={addStoreOpen}
               onAddModalClose={() => setAddStoreOpen(false)}
+              listRefreshKey={listRefreshKey}
             />
           </div>
         </TabsContent>
         <TabsContent value="pickers">
           <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm min-h-[320px]">
-            <PickersTab />
+            <PickersTab listRefreshKey={listRefreshKey} />
           </div>
         </TabsContent>
       </Tabs>

@@ -3,6 +3,7 @@ import { ClipboardCheck, Thermometer, ShieldCheck, AlertTriangle, X, Download, P
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState, LoadingState } from '../../ui/ux-components';
 import { toast } from 'sonner';
+import { downloadReportPdf } from '../../../utils/pdfExport';
 import { 
   fetchQCInspections, 
   createQCInspection as apiCreateInspection, 
@@ -16,6 +17,7 @@ import {
   updateSampleTestResult,
   fetchComplianceChecks,
   toggleComplianceCheck as apiToggleComplianceCheck,
+  fetchWarehouseZones,
   QCInspection,
   TemperatureLog,
   ComplianceDoc,
@@ -55,6 +57,13 @@ export function QCCompliance() {
   const [temperatureLogs, setTemperatureLogs] = useState<TemperatureLog[]>([]);
   const [complianceDocs, setComplianceDocs] = useState<ComplianceDoc[]>([]);
   const [sampleTests, setSampleTests] = useState<SampleTest[]>([]);
+  const [zones, setZones] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchWarehouseZones()
+      .then(setZones)
+      .catch(() => setZones([]));
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -152,22 +161,31 @@ export function QCCompliance() {
   };
 
   const createTempLog = async () => {
-    if (newTempLog.zone && newTempLog.temperature) {
-      try {
-        const temp = parseFloat(newTempLog.temperature);
-        await apiCreateTempLog({
-          zone: newTempLog.zone,
-          temperature: temp,
-          humidity: parseInt(newTempLog.humidity) || 0,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        });
-        toast.success('Temperature log created');
-        setNewTempLog({ zone: '', temperature: '', humidity: '' });
-        setShowTempLogModal(false);
-        loadData();
-      } catch (error) {
-        toast.error('Failed to log temperature');
-      }
+    if (!newTempLog.zone) {
+      toast.error('Please select a zone');
+      return;
+    }
+    if (!newTempLog.temperature) {
+      toast.error('Please enter a temperature reading');
+      return;
+    }
+    const temp = parseFloat(newTempLog.temperature);
+    if (!Number.isFinite(temp)) {
+      toast.error('Please enter a valid temperature');
+      return;
+    }
+    try {
+      await apiCreateTempLog({
+        zone: newTempLog.zone,
+        temperature: temp,
+        humidity: parseInt(newTempLog.humidity, 10) || 0,
+      });
+      toast.success('Temperature log created');
+      setNewTempLog({ zone: '', temperature: '', humidity: '' });
+      setShowTempLogModal(false);
+      loadData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to log temperature');
     }
   };
 
@@ -229,6 +247,122 @@ export function QCCompliance() {
         } : c
       ));
       toast.success('Checklist updated');
+    }
+  };
+
+  const downloadInspectionReportPdf = async () => {
+    if (!selectedInspection) return;
+    try {
+      toast.info('Generating PDF report...');
+      await downloadReportPdf({
+        filename: `inspection-report-${selectedInspection.inspectionId}`,
+        title: `Inspection Report - ${selectedInspection.inspectionId}`,
+        subtitle: `Generated: ${new Date().toLocaleString()}`,
+        fields: [
+          { label: 'Inspection ID', value: selectedInspection.inspectionId },
+          { label: 'Batch ID', value: selectedInspection.batchId },
+          { label: 'Product Name', value: selectedInspection.productName },
+          { label: 'Inspector', value: selectedInspection.inspector },
+          { label: 'Date', value: selectedInspection.date },
+          { label: 'Status', value: selectedInspection.status.charAt(0).toUpperCase() + selectedInspection.status.slice(1) },
+          { label: 'Score', value: `${selectedInspection.score}%` },
+          { label: 'Items Inspected', value: String(selectedInspection.itemsInspected) },
+          { label: 'Defects Found', value: String(selectedInspection.defectsFound) },
+        ],
+        sections: [
+          {
+            title: 'Inspection Details',
+            content: [
+              `Quality score: ${selectedInspection.score}%`,
+              `Items inspected: ${selectedInspection.itemsInspected}`,
+              `Defects found: ${selectedInspection.defectsFound}`,
+              selectedInspection.status === 'failed'
+                ? 'Inspection failed — this batch requires review and corrective action.'
+                : selectedInspection.status === 'passed'
+                  ? 'Inspection passed — batch meets quality standards.'
+                  : 'Inspection is pending review.',
+            ],
+          },
+        ],
+      });
+      toast.success('PDF downloaded successfully');
+    } catch (error) {
+      console.error('Failed to download inspection report PDF:', error);
+      toast.error('Failed to download PDF');
+    }
+  };
+
+  const downloadSampleReportPdf = async () => {
+    if (!selectedSample) return;
+    try {
+      toast.info('Generating PDF report...');
+      await downloadReportPdf({
+        filename: `sample-report-${selectedSample.sampleId}`,
+        title: `Sample Test Report - ${selectedSample.sampleId}`,
+        subtitle: `Generated: ${new Date().toLocaleString()}`,
+        fields: [
+          { label: 'Sample ID', value: selectedSample.sampleId },
+          { label: 'Batch ID', value: selectedSample.batchId },
+          { label: 'Product Name', value: selectedSample.productName },
+          { label: 'Test Type', value: selectedSample.testType },
+          { label: 'Tested By', value: selectedSample.testedBy },
+          { label: 'Date', value: selectedSample.date },
+          { label: 'Result', value: selectedSample.result.charAt(0).toUpperCase() + selectedSample.result.slice(1) },
+        ],
+        sections: [
+          {
+            title: 'Test Summary',
+            content: [
+              `Test type: ${selectedSample.testType}`,
+              `Result: ${selectedSample.result}`,
+              selectedSample.result === 'fail'
+                ? 'Test failed — this sample requires review and corrective action.'
+                : selectedSample.result === 'pass'
+                  ? 'Test passed — sample meets quality standards.'
+                  : 'Test result is pending.',
+            ],
+          },
+        ],
+      });
+      toast.success('PDF downloaded successfully');
+    } catch (error) {
+      console.error('Failed to download sample report PDF:', error);
+      toast.error('Failed to download PDF');
+    }
+  };
+
+  const downloadComplianceDocPdf = async () => {
+    if (!selectedDoc) return;
+    try {
+      toast.info('Generating PDF document...');
+      await downloadReportPdf({
+        filename: `compliance-doc-${selectedDoc.docId}`,
+        title: `Compliance Document - ${selectedDoc.docName}`,
+        subtitle: `Generated: ${new Date().toLocaleString()}`,
+        fields: [
+          { label: 'Document ID', value: selectedDoc.docId },
+          { label: 'Document Name', value: selectedDoc.docName },
+          { label: 'Type', value: selectedDoc.type },
+          { label: 'Status', value: selectedDoc.status.replace('-', ' ') },
+          { label: 'Issued Date', value: selectedDoc.issuedDate },
+          { label: 'Expiry Date', value: selectedDoc.expiryDate },
+        ],
+        sections: [
+          {
+            title: 'Document Summary',
+            content: [
+              `${selectedDoc.docName} (${selectedDoc.docId})`,
+              `Type: ${selectedDoc.type}`,
+              `Status: ${selectedDoc.status}`,
+              `Valid from ${selectedDoc.issuedDate} to ${selectedDoc.expiryDate}`,
+            ],
+          },
+        ],
+      });
+      toast.success('PDF downloaded successfully');
+    } catch (error) {
+      console.error('Failed to download compliance document PDF:', error);
+      toast.error('Failed to download PDF');
     }
   };
 
@@ -394,7 +528,7 @@ export function QCCompliance() {
       />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-5 gap-3">
         <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><ClipboardCheck size={18} /></div>
@@ -604,9 +738,9 @@ export function QCCompliance() {
               <tbody className="divide-y divide-[#E2E8F0]">
                 {filteredInspections.map(inspection => (
                   <tr key={inspection.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-6 py-4 font-mono text-[#475569]">{inspection.inspectionId}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-[#64748B]">{inspection.batchId}</td>
-                    <td className="px-6 py-4 font-medium text-[#1E293B]">{inspection.productName}</td>
+                    <td className="px-6 py-4 font-mono text-[#475569]">{inspection.inspectionId || '—'}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-[#64748B]">{inspection.batchId || '—'}</td>
+                    <td className="px-6 py-4 font-medium text-[#1E293B]">{inspection.productName || '—'}</td>
                     <td className="px-6 py-4 text-[#64748B]">{inspection.inspector}</td>
                     <td className="px-6 py-4 text-[#64748B]">{inspection.date}</td>
                     <td className="px-6 py-4">
@@ -814,11 +948,11 @@ export function QCCompliance() {
               <tbody className="divide-y divide-[#E2E8F0]">
                 {filteredSamples.map(sample => (
                   <tr key={sample.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-6 py-4 font-mono text-[#475569]">{sample.sampleId}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-[#64748B]">{sample.batchId}</td>
-                    <td className="px-6 py-4 font-medium text-[#1E293B]">{sample.productName}</td>
-                    <td className="px-6 py-4 text-[#64748B]">{sample.testType}</td>
-                    <td className="px-6 py-4 text-[#64748B]">{sample.testedBy}</td>
+                    <td className="px-6 py-4 font-mono text-[#475569]">{sample.sampleId || '—'}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-[#64748B]">{sample.batchId || '—'}</td>
+                    <td className="px-6 py-4 font-medium text-[#1E293B]">{sample.productName || '—'}</td>
+                    <td className="px-6 py-4 text-[#64748B]">{sample.testType || '—'}</td>
+                    <td className="px-6 py-4 text-[#64748B]">{sample.testedBy || '—'}</td>
                     <td className="px-6 py-4 text-[#64748B]">{sample.date}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -1086,12 +1220,9 @@ export function QCCompliance() {
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 >
                   <option value="">Select zone</option>
-                  <option>Cold Storage A</option>
-                  <option>Cold Storage B</option>
-                  <option>Freezer Zone 1</option>
-                  <option>Freezer Zone 2</option>
-                  <option>Dry Storage</option>
-                  <option>Loading Dock</option>
+                  {zones.map((zone) => (
+                    <option key={zone} value={zone}>{zone}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1278,9 +1409,7 @@ export function QCCompliance() {
                 Close
               </button>
               <button 
-                onClick={() => {
-                  toast.success('Report downloaded');
-                }}
+                onClick={downloadInspectionReportPdf}
                 className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
               >
                 <Download size={16} />
@@ -1354,9 +1483,7 @@ export function QCCompliance() {
                 Close
               </button>
               <button 
-                onClick={() => {
-                  toast.success('Document downloaded');
-                }}
+                onClick={downloadComplianceDocPdf}
                 className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
               >
                 <Download size={16} />
@@ -1442,9 +1569,7 @@ export function QCCompliance() {
                 Close
               </button>
               <button 
-                onClick={() => {
-                  toast.success('Report downloaded');
-                }}
+                onClick={downloadSampleReportPdf}
                 className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] flex items-center gap-2"
               >
                 <Download size={16} />

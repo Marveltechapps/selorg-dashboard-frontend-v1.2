@@ -574,6 +574,7 @@ export const API_ENDPOINTS = {
   },
   // Inbound (warehouse dashboard - mounted at /api/v1/warehouse)
   inbound: {
+    summary: '/warehouse/inbound/summary',
     grns: '/warehouse/inbound/grns',
     createGrn: '/warehouse/inbound/grns',
     exportGrns: '/warehouse/inbound/grns/export',
@@ -615,6 +616,7 @@ export const API_ENDPOINTS = {
     createTransfer: '/warehouse/inventory/transfers',
     updateTransferStatus: (id: string) => `/warehouse/inventory/transfers/${id}/status`,
     alerts: '/warehouse/inventory/alerts',
+    meta: '/warehouse/inventory/meta',
     createReorder: '/warehouse/inventory/reorder',
     export: '/warehouse/inventory/export',
   },
@@ -651,6 +653,7 @@ export const API_ENDPOINTS = {
     update: (id: string) => `/picker/shifts/${id}`,
     roster: '/picker/shifts/roster',
     assign: (id: string) => `/picker/shifts/${id}/assign`,
+    reassign: (id: string) => `/picker/shifts/${id}/reassign`,
     pickers: '/picker/shifts/pickers',
   },
   // Workforce & Shifts (warehouse)

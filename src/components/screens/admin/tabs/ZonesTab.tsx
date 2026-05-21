@@ -9,7 +9,11 @@ import { AddZoneModal } from '../modals/AddZoneModal';
 
 const PAGE_SIZE = 20;
 
-export function ZonesTab() {
+interface ZonesTabProps {
+  listRefreshKey?: number;
+}
+
+export function ZonesTab({ listRefreshKey = 0 }: ZonesTabProps) {
   const [data, setData] = useState<Zone[]>([]);
   const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,7 +48,9 @@ export function ZonesTab() {
     }
   }, [search, cityFilter, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load, listRefreshKey]);
 
   const handleAdd = () => {
     setEditZone(null);

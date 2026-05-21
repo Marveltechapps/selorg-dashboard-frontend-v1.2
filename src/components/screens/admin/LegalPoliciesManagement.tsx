@@ -102,6 +102,10 @@ export function LegalPoliciesManagement() {
     []
   );
 
+  const refreshInBackground = useCallback(() => {
+    void loadDocs({ silent: true });
+  }, [loadDocs]);
+
   useEffect(() => {
     loadDocs();
   }, [loadDocs]);
@@ -192,9 +196,28 @@ export function LegalPoliciesManagement() {
       return;
     }
     const payload = buildDocPayload(editing);
+    const nowIso = new Date().toISOString();
     setSaving(true);
     try {
       if (editing._id) {
+        const optimisticUpdated: LegalDoc = normalizeLegalDoc({
+          ...editing,
+          ...payload,
+          _id: editing._id,
+          lastUpdated: nowIso,
+        } as Record<string, unknown>);
+
+        setDocs((prev) => {
+          const base = prev.map((d) => (d._id === editing._id ? optimisticUpdated : d));
+          return payload.isCurrent
+            ? applyCurrentToDocList(base, editing._id as string, optimisticUpdated.type, true)
+            : base;
+        });
+        setEditing(optimisticUpdated);
+        if (previewDoc?._id === editing._id) {
+          setPreviewDoc(optimisticUpdated);
+        }
+
         const res = await apiRequest<{ success: boolean; data: LegalDoc }>(
           API_ENDPOINTS.customerLegal.updateDocument(editing._id),
           {
@@ -215,7 +238,25 @@ export function LegalPoliciesManagement() {
           );
           toast.success('Document updated');
         }
+        setEditing(updated);
+        if (previewDoc?._id === editing._id) {
+          setPreviewDoc(updated);
+        }
+        refreshInBackground();
       } else {
+        const tempId = `temp-${Date.now()}`;
+        const optimisticCreated: LegalDoc = normalizeLegalDoc({
+          ...payload,
+          _id: tempId,
+          lastUpdated: nowIso,
+        } as Record<string, unknown>);
+        setDocs((prev) => {
+          const withInsert = [optimisticCreated, ...prev];
+          return payload.isCurrent
+            ? applyCurrentToDocList(withInsert, tempId, optimisticCreated.type, true)
+            : withInsert;
+        });
+
         const res = await apiRequest<{ success: boolean; data: Record<string, unknown> }>(
           API_ENDPOINTS.customerLegal.createDocument,
           {
@@ -228,28 +269,37 @@ export function LegalPoliciesManagement() {
           await apiRequest(API_ENDPOINTS.customerLegal.setCurrentDocument(created._id), {
             method: 'POST',
           });
-          setDocs((prev) => applyCurrentToDocList(prev, created._id, created.type, true));
+          setDocs((prev) => {
+            const replaced = prev.map((d) => (d._id === tempId ? created : d));
+            return applyCurrentToDocList(replaced, created._id, created.type, true);
+          });
+        } else {
+          setDocs((prev) => prev.map((d) => (d._id === tempId ? created : d)));
         }
         toast.success(
           payload.isCurrent ? 'Document created and set as current' : 'Document created'
         );
+        refreshInBackground();
       }
       setDialog(false);
       setEditing(null);
-      await loadDocs({ silent: true });
     } catch (err: any) {
       toast.error(err.message || 'Failed to save document');
+      refreshInBackground();
     } finally {
       setSaving(false);
     }
   };
 
   const deleteDoc = async (id: string) => {
+    const previousDocs = docs;
+    setDocs((prev) => prev.filter((d) => d._id !== id));
     try {
       await apiRequest(API_ENDPOINTS.customerLegal.deleteDocument(id), { method: 'DELETE' });
       toast.success('Document deleted');
-      loadDocs();
+      refreshInBackground();
     } catch (err: any) {
+      setDocs(previousDocs);
       toast.error(err.message || 'Failed to delete');
     }
   };
@@ -270,7 +320,7 @@ export function LegalPoliciesManagement() {
       if (editing?._id === id) setEditing(updated);
       if (previewDoc?._id === id) setPreviewDoc(updated);
       toast.success('Set as current version');
-      await loadDocs({ silent: true });
+      refreshInBackground();
     } catch (err: any) {
       setDocs(previousDocs);
       toast.error(err.message || 'Failed to set current');

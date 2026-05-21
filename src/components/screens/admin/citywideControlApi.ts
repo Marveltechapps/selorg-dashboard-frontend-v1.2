@@ -164,6 +164,25 @@ export const fetchZoneDetails = async (zoneId: string, cityId?: string): Promise
   return res.data ?? null;
 };
 
+export interface ZoneRiderRequestResult {
+  zoneId: string;
+  zoneName: string;
+  notified: number;
+  zoneRiders: number;
+  poolRiders: number;
+}
+
+export const requestZoneRiders = async (zoneId: string, cityId?: string): Promise<ZoneRiderRequestResult> => {
+  const res = await apiRequest<{ success: boolean; data: ZoneRiderRequestResult }>(
+    `${CITYWIDE_PREFIX}/zones/${zoneId}/request-riders`,
+    {
+      method: 'POST',
+      body: JSON.stringify(cityId ? { cityId } : {}),
+    },
+  );
+  return res.data!;
+};
+
 export const fetchIncidents = async (cityId?: string, status = 'ongoing'): Promise<Incident[]> => {
   const params = new URLSearchParams();
   if (cityId) params.set('cityId', cityId);

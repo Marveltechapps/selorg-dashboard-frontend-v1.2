@@ -7,7 +7,12 @@ import { AddWarehouseModal } from '../modals/AddWarehouseModal';
 
 const PAGE_SIZE = 20;
 
-export function WarehousesTab() {
+interface WarehousesTabProps {
+  /** Increment from parent (e.g. header Refresh) to reload the list */
+  listRefreshKey?: number;
+}
+
+export function WarehousesTab({ listRefreshKey = 0 }: WarehousesTabProps) {
   const [data, setData] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -31,7 +36,9 @@ export function WarehousesTab() {
     }
   }, [search, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load, listRefreshKey]);
 
   const handleAdd = () => {
     setEditWarehouse(null);

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { GoogleMap, Marker, Polygon, useJsApiLoader } from '@react-google-maps/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,6 +40,7 @@ import {
   OverlapWarning,
 } from './geofenceApi';
 import { toast } from 'sonner';
+import { GOOGLE_MAPS_LOADER_ID } from '@/utils/googleMapsLoader';
 import {
   Map,
   Plus,
@@ -66,6 +68,15 @@ import {
 } from 'lucide-react';
 
 export function GeofenceManager() {
+  const DEFAULT_ZONE_SETTINGS = {
+    deliveryFee: 39,
+    minOrderValue: 149,
+    maxDeliveryRadius: 4,
+    estimatedDeliveryTime: 30,
+    surgeMultiplier: 1.0,
+    maxCapacity: 100,
+  };
+  const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   const [zones, setZones] = useState<GeofenceZone[]>([]);
   const [coverageStats, setCoverageStats] = useState<CoverageStats | null>(null);
   const [zonePerformance, setZonePerformance] = useState<ZonePerformance[]>([]);
@@ -93,12 +104,16 @@ export function GeofenceManager() {
   const [editDrawingPoints, setEditDrawingPoints] = useState<{ lat: number; lng: number }[]>([]);
   const [isEditDrawing, setIsEditDrawing] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [mapZoom, setMapZoom] = useState(1);
+  const [mapZoom, setMapZoom] = useState(11);
   
   // Map view filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [showLayers, setShowLayers] = useState(true);
+  const { isLoaded: isMapLoaded } = useJsApiLoader({
+    id: GOOGLE_MAPS_LOADER_ID,
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
+  });
 
   const [settingsForm, setSettingsForm] = useState({
     deliveryFee: 39,
@@ -108,13 +123,28 @@ export function GeofenceManager() {
     surgeMultiplier: 1.0,
     maxCapacity: 100,
   });
+  const [createSettingsForm, setCreateSettingsForm] = useState({ ...DEFAULT_ZONE_SETTINGS });
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  const deriveCoverageStatsFromZones = (zonesData: GeofenceZone[]): CoverageStats => ({
+    totalZones: zonesData.length,
+    activeZones: zonesData.filter((z) => z.status === 'active').length,
+    totalCoverage: zonesData.reduce((sum, z) => sum + (z.analytics?.areaSize ?? 0), 0),
+    totalPopulation: zonesData.reduce((sum, z) => sum + (z.analytics?.population ?? 0), 0),
+    activeOrders: zonesData.reduce((sum, z) => sum + (z.analytics?.activeOrders ?? 0), 0),
+    totalRiders: zonesData.reduce((sum, z) => sum + (z.analytics?.riderCount ?? 0), 0),
+    avgCapacityUsage:
+      zonesData.length > 0
+        ? zonesData.reduce((sum, z) => sum + (z.analytics?.capacityUsage ?? 0), 0) / zonesData.length
+        : 0,
+  });
+
+  const loadData = async (options?: { showSpinner?: boolean }) => {
+    const showSpinner = options?.showSpinner ?? true;
+    if (showSpinner) setLoading(true);
     try {
       const [zonesData, statsData, performanceData, historyData, overlapsData] = await Promise.all([
         fetchZones(),
@@ -132,8 +162,12 @@ export function GeofenceManager() {
     } catch (error) {
       toast.error('Failed to load geofence data');
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
+  };
+
+  const refreshInBackground = () => {
+    void loadData({ showSpinner: false });
   };
 
   const handleCreateZone = async () => {
@@ -150,41 +184,89 @@ export function GeofenceManager() {
         lat: drawingPoints.reduce((sum, p) => sum + p.lat, 0) / drawingPoints.length,
         lng: drawingPoints.reduce((sum, p) => sum + p.lng, 0) / drawingPoints.length,
       };
-      await createZone({
-        ...zoneForm,
+      const tempId = `tmp-${Date.now()}`;
+      const optimisticZone: GeofenceZone = {
+        id: tempId,
+        name: zoneForm.name,
+        city: zoneForm.city,
+        region: zoneForm.region,
+        type: zoneForm.type,
+        status: 'testing',
+        color: '#3b82f6',
         polygon: drawingPoints,
         center,
+        settings: {
+          ...createSettingsForm,
+          priority: 1,
+          availableSlots: [],
+        },
+        analytics: {
+          areaSize: 0,
+          population: 0,
+          activeOrders: 0,
+          totalOrders: 0,
+          dailyOrders: 0,
+          revenue: 0,
+          avgDeliveryTime: 0,
+          riderCount: 0,
+          capacityUsage: 0,
+          customerSatisfaction: 0,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: 'system',
+      };
+
+      setZones((prev) => {
+        const updated = [optimisticZone, ...prev];
+        setCoverageStats(deriveCoverageStatsFromZones(updated));
+        return updated;
       });
-      toast.success('Zone created successfully');
+
       setShowCreateModal(false);
       setZoneForm({ name: '', city: 'Mumbai', region: 'West', type: 'standard' });
       setDrawingPoints([]);
       setIsDrawing(false);
-      loadData();
+      setCreateSettingsForm({ ...DEFAULT_ZONE_SETTINGS });
+
+      const createdZone = await createZone({
+        ...zoneForm,
+        polygon: drawingPoints,
+        center,
+        settings: {
+          ...createSettingsForm,
+          priority: 1,
+          availableSlots: ['08:00-22:00'],
+        },
+      });
+
+      setZones((prev) => {
+        const updated = prev.map((z) => (z.id === tempId ? createdZone : z));
+        setCoverageStats(deriveCoverageStatsFromZones(updated));
+        return updated;
+      });
+      toast.success('Zone created successfully');
     } catch (error) {
       console.error('Create zone error:', error);
+      setZones((prev) => {
+        const updated = prev.filter((z) => !z.id.startsWith('tmp-'));
+        setCoverageStats(deriveCoverageStatsFromZones(updated));
+        return updated;
+      });
       toast.error('Failed to create zone');
+    } finally {
+      refreshInBackground();
     }
   };
 
-  const handleEditMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleEditMapPointAdd = (lat: number, lng: number) => {
     if (!isEditDrawing || !showEditModal) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const lat = 19.0760 + (y / rect.height - 0.5) * 0.1;
-    const lng = 72.8777 + (x / rect.width - 0.5) * 0.1;
     setEditDrawingPoints([...editDrawingPoints, { lat, lng }]);
     toast.success(`Point ${editDrawingPoints.length + 1} added`);
   };
 
-  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMapPointAdd = (lat: number, lng: number) => {
     if (!isDrawing || !showCreateModal) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const lat = 19.0760 + (y / rect.height - 0.5) * 0.1;
-    const lng = 72.8777 + (x / rect.width - 0.5) * 0.1;
     setDrawingPoints([...drawingPoints, { lat, lng }]);
     toast.success(`Point ${drawingPoints.length + 1} added`);
   };
@@ -196,33 +278,156 @@ export function GeofenceManager() {
 
   const handleToggleStatus = async (zoneId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    const previous = [...zones];
+    setZones((prev) => {
+      const updated = prev.map((z) => (z.id === zoneId ? { ...z, status: newStatus as GeofenceZone['status'] } : z));
+      setCoverageStats(deriveCoverageStatsFromZones(updated));
+      return updated;
+    });
     try {
       await toggleZoneStatus(zoneId, newStatus);
       toast.success(`Zone ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
-      loadData();
     } catch (error) {
+      setZones(previous);
+      setCoverageStats(deriveCoverageStatsFromZones(previous));
       toast.error('Failed to update zone status');
+    } finally {
+      refreshInBackground();
     }
   };
 
   const handleDeleteZone = async (zoneId: string) => {
+    const previous = [...zones];
+    setZones((prev) => {
+      const updated = prev.filter((z) => z.id !== zoneId);
+      setCoverageStats(deriveCoverageStatsFromZones(updated));
+      return updated;
+    });
     try {
       await deleteZone(zoneId);
       toast.success('Zone deleted');
-      loadData();
     } catch (error) {
+      setZones(previous);
+      setCoverageStats(deriveCoverageStatsFromZones(previous));
       toast.error('Failed to delete zone');
+    } finally {
+      refreshInBackground();
     }
   };
 
   const handleCloneZone = async (zoneId: string, zoneName: string) => {
     try {
-      await cloneZone(zoneId, `${zoneName} (Copy)`);
+      const cloned = await cloneZone(zoneId, `${zoneName} (Copy)`);
+      setZones((prev) => {
+        const updated = [cloned, ...prev];
+        setCoverageStats(deriveCoverageStatsFromZones(updated));
+        return updated;
+      });
       toast.success('Zone cloned successfully');
-      loadData();
     } catch (error) {
       toast.error('Failed to clone zone');
+    } finally {
+      refreshInBackground();
     }
+  };
+
+  const handleSaveEditZone = async () => {
+    if (!selectedZone || !zoneForm.name.trim()) {
+      toast.error('Zone name is required');
+      return;
+    }
+    const polygonToSave = editDrawingPoints.length >= 3 ? editDrawingPoints : selectedZone.polygon;
+    if (!polygonToSave || polygonToSave.length < 3) {
+      toast.error('Zone must have at least 3 boundary points');
+      return;
+    }
+
+    const center = {
+      lat: polygonToSave.reduce((sum, p) => sum + p.lat, 0) / polygonToSave.length,
+      lng: polygonToSave.reduce((sum, p) => sum + p.lng, 0) / polygonToSave.length,
+    };
+
+    const previous = [...zones];
+    const optimisticZone = {
+      ...selectedZone,
+      name: zoneForm.name,
+      city: zoneForm.city,
+      region: zoneForm.region,
+      type: zoneForm.type,
+      polygon: polygonToSave,
+      center,
+    };
+
+    setZones((prev) => {
+      const updated = prev.map((z) => (z.id === selectedZone.id ? optimisticZone : z));
+      setCoverageStats(deriveCoverageStatsFromZones(updated));
+      return updated;
+    });
+    setShowEditModal(false);
+
+    try {
+      const updatedZone = await updateZone(selectedZone.id, {
+        name: zoneForm.name,
+        city: zoneForm.city,
+        region: zoneForm.region,
+        type: zoneForm.type,
+        polygon: polygonToSave,
+        center,
+      });
+      setZones((prev) => {
+        const updated = prev.map((z) => (z.id === selectedZone.id ? updatedZone : z));
+        setCoverageStats(deriveCoverageStatsFromZones(updated));
+        return updated;
+      });
+      toast.success('Zone updated successfully');
+    } catch {
+      setZones(previous);
+      setCoverageStats(deriveCoverageStatsFromZones(previous));
+      toast.error('Failed to update zone');
+    } finally {
+      refreshInBackground();
+    }
+  };
+
+  const handleSaveZoneSettings = async () => {
+    if (!selectedZone) return;
+
+    const previous = [...zones];
+    const optimisticSettings = {
+      ...selectedZone.settings,
+      deliveryFee: settingsForm.deliveryFee,
+      minOrderValue: settingsForm.minOrderValue,
+      maxDeliveryRadius: settingsForm.maxDeliveryRadius,
+      estimatedDeliveryTime: settingsForm.estimatedDeliveryTime,
+      surgeMultiplier: settingsForm.surgeMultiplier,
+      maxCapacity: settingsForm.maxCapacity,
+    };
+
+    setZones((prev) =>
+      prev.map((z) => (z.id === selectedZone.id ? { ...z, settings: optimisticSettings } : z))
+    );
+    setShowSettingsModal(false);
+
+    try {
+      const updatedZone = await updateZone(selectedZone.id, {
+        settings: optimisticSettings,
+      });
+      setZones((prev) => prev.map((z) => (z.id === selectedZone.id ? updatedZone : z)));
+      toast.success('Zone settings updated successfully');
+    } catch {
+      setZones(previous);
+      toast.error('Failed to update zone settings');
+    } finally {
+      refreshInBackground();
+    }
+  };
+
+  const handleOpenCreateModal = () => {
+    setZoneForm({ name: '', city: 'Mumbai', region: 'West', type: 'standard' });
+    setCreateSettingsForm({ ...DEFAULT_ZONE_SETTINGS });
+    setDrawingPoints([]);
+    setIsDrawing(false);
+    setShowCreateModal(true);
   };
 
   const handleExportZones = () => {
@@ -306,6 +511,34 @@ export function GeofenceManager() {
     );
   };
 
+  const filteredZones = useMemo(
+    () =>
+      zones.filter(
+        (z) =>
+          (statusFilter === 'all' || z.status === statusFilter) &&
+          (cityFilter === 'all' || z.city === cityFilter)
+      ),
+    [zones, statusFilter, cityFilter]
+  );
+
+  const mapCenter = useMemo(() => {
+    const zonesWithCenter = filteredZones.filter(
+      (zone) =>
+        zone.center &&
+        typeof zone.center.lat === 'number' &&
+        typeof zone.center.lng === 'number'
+    );
+
+    if (zonesWithCenter.length > 0) {
+      return {
+        lat: zonesWithCenter.reduce((sum, zone) => sum + zone.center.lat, 0) / zonesWithCenter.length,
+        lng: zonesWithCenter.reduce((sum, zone) => sum + zone.center.lng, 0) / zonesWithCenter.length,
+      };
+    }
+
+    return { lat: 19.076, lng: 72.8777 };
+  }, [filteredZones]);
+
   // Don't block rendering on loading - show data as it loads
 
   return (
@@ -320,7 +553,7 @@ export function GeofenceManager() {
           <Button 
             size="sm" 
             onClick={async () => {
-              await loadData();
+              loadData({ showSpinner: false });
               toast.success('Geofence data refreshed');
             }} 
             variant="outline"
@@ -341,7 +574,11 @@ export function GeofenceManager() {
           >
             <Download size={14} className="mr-1.5" /> Export
           </Button>
-          <Button size="sm" onClick={() => setShowCreateModal(true)}>
+          <Button
+            size="sm"
+            type="button"
+            onClick={handleOpenCreateModal}
+          >
             <Plus size={14} className="mr-1.5" /> New Zone
           </Button>
         </div>
@@ -454,7 +691,7 @@ export function GeofenceManager() {
               <Map size={48} className="mx-auto mb-4 text-[#a1a1aa]" />
               <h3 className="font-bold text-[#18181b] mb-2">No zones yet</h3>
               <p className="text-[#71717a] text-sm mb-4">Create your first delivery zone to get started</p>
-              <Button onClick={() => setShowCreateModal(true)}>
+              <Button onClick={handleOpenCreateModal}>
                 <Plus size={14} className="mr-1.5" /> New Zone
               </Button>
             </div>
@@ -556,6 +793,8 @@ export function GeofenceManager() {
                       size="sm"
                       variant="outline"
                       className="flex-1"
+                      type="button"
+                      title="View zone details"
                       onClick={() => {
                         setSelectedZone(zone);
                         setShowMapModal(true);
@@ -566,6 +805,8 @@ export function GeofenceManager() {
                     <Button
                       size="sm"
                       variant="outline"
+                      type="button"
+                      title="Edit zone"
                       onClick={() => {
                         setSelectedZone(zone);
                         setZoneForm({
@@ -584,6 +825,8 @@ export function GeofenceManager() {
                     <Button
                       size="sm"
                       variant="outline"
+                      type="button"
+                      title="Edit zone settings"
                       onClick={() => {
                         setSelectedZone(zone);
                         setSettingsForm({
@@ -602,17 +845,30 @@ export function GeofenceManager() {
                     <Button
                       size="sm"
                       variant="outline"
+                      type="button"
+                      title={zone.status === 'active' ? 'Deactivate zone' : 'Activate zone'}
                       onClick={() =>
-                        zone.status !== 'inactive' &&
                         handleToggleStatus(zone.id, zone.status)
                       }
                     >
                       <Power size={14} />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleCloneZone(zone.id, zone.name)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      title="Clone zone"
+                      onClick={() => handleCloneZone(zone.id, zone.name)}
+                    >
                       <Copy size={14} />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleDeleteZone(zone.id)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      title="Delete zone"
+                      onClick={() => handleDeleteZone(zone.id)}
+                    >
                       <Trash2 size={14} />
                     </Button>
                   </div>
@@ -636,7 +892,9 @@ export function GeofenceManager() {
                   value={statusFilter || 'all'} 
                   onValueChange={(val) => {
                     setStatusFilter(val);
-                    const filtered = zones.filter(z => val === 'all' || z.status === val);
+                    const filtered = zones.filter(
+                      (z) => (val === 'all' || z.status === val) && (cityFilter === 'all' || z.city === cityFilter)
+                    );
                     toast.info(`Showing ${filtered.length} zone(s)`);
                   }}
                 >
@@ -654,7 +912,9 @@ export function GeofenceManager() {
                   value={cityFilter || 'all'} 
                   onValueChange={(val) => {
                     setCityFilter(val);
-                    const filtered = zones.filter(z => val === 'all' || z.city === val);
+                    const filtered = zones.filter(
+                      (z) => (statusFilter === 'all' || z.status === statusFilter) && (val === 'all' || z.city === val)
+                    );
                     toast.info(`Showing ${filtered.length} zone(s)`);
                   }}
                 >
@@ -682,56 +942,67 @@ export function GeofenceManager() {
             </div>
 
             {/* Map Container */}
-            <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 h-[600px] overflow-hidden">
-              {/* Map Background Pattern */}
-              <div className="absolute inset-0 opacity-10">
-                <div
-                  className="w-full h-full"
-                  style={{
-                    backgroundImage: `repeating-linear-gradient(0deg, #e5e7eb 0px, #e5e7eb 1px, transparent 1px, transparent 20px),
-                                      repeating-linear-gradient(90deg, #e5e7eb 0px, #e5e7eb 1px, transparent 1px, transparent 20px)`,
+            <div className="relative h-[600px] overflow-hidden">
+              {!GOOGLE_MAPS_API_KEY ? (
+                <div className="h-full w-full flex items-center justify-center bg-[#f4f4f5] text-sm text-[#52525b]">
+                  Set <span className="mx-1 font-mono text-xs">VITE_GOOGLE_MAPS_API_KEY</span> to load the live map.
+                </div>
+              ) : !isMapLoaded ? (
+                <div className="h-full w-full flex items-center justify-center bg-[#f4f4f5] text-sm text-[#52525b]">
+                  Loading map...
+                </div>
+              ) : (
+                <GoogleMap
+                  mapContainerStyle={{ width: '100%', height: '100%' }}
+                  center={mapCenter}
+                  zoom={mapZoom}
+                  options={{
+                    disableDefaultUI: true,
+                    zoomControl: false,
+                    clickableIcons: false,
                   }}
-                />
-              </div>
-
-              {/* Zone Overlays - apply mapZoom via transform */}
-              <div 
-                className="absolute inset-0 flex items-center justify-center origin-center transition-transform duration-200"
-                style={{ transform: `scale(${mapZoom})` }}
-              >
-                {zones
-                  .filter((z) => (statusFilter === 'all' || z.status === statusFilter) && (cityFilter === 'all' || z.city === cityFilter))
-                  .map((zone, idx) => (
-                    <div
-                      key={zone.id}
-                      className="absolute rounded-2xl border-4 flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
-                      style={{
-                        borderColor: zone.color,
-                        backgroundColor: `${zone.color}20`,
-                        width: `${120 + idx * 30}px`,
-                        height: `${120 + idx * 30}px`,
-                        left: `${15 + idx * 12}%`,
-                        top: `${20 + (idx % 3) * 15}%`,
-                      }}
-                      onClick={() => {
-                        setSelectedZone(zone);
-                        setShowMapModal(true);
-                      }}
-                    >
-                      <div className="text-center p-2">
-                        <div className="font-bold text-xs mb-1" style={{ color: zone.color }}>
-                          {zone.name}
-                        </div>
-                        <Badge className={getZoneTypeColor(zone.type)} style={{ fontSize: '9px' }}>
-                          {zone.type}
-                        </Badge>
-                        <div className="text-xs mt-1 font-medium" style={{ color: zone.color }}>
-                          {zone.analytics?.activeOrders ?? 0} orders
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-              </div>
+                >
+                  {filteredZones.map((zone) => {
+                    const hasPolygon = Array.isArray(zone.polygon) && zone.polygon.length >= 3;
+                    return (
+                      <React.Fragment key={zone.id}>
+                        {showLayers && hasPolygon && (
+                          <Polygon
+                            path={zone.polygon}
+                            options={{
+                              strokeColor: zone.color,
+                              strokeOpacity: 0.9,
+                              strokeWeight: 2,
+                              fillColor: zone.color,
+                              fillOpacity: 0.2,
+                              clickable: true,
+                            }}
+                            onClick={() => {
+                              setSelectedZone(zone);
+                              setShowMapModal(true);
+                            }}
+                          />
+                        )}
+                        {zone.center && (
+                          <Marker
+                            position={{ lat: zone.center.lat, lng: zone.center.lng }}
+                            title={`${zone.name} (${zone.analytics?.activeOrders ?? 0} orders)`}
+                            label={{
+                              text: zone.name,
+                              fontSize: '11px',
+                              fontWeight: '700',
+                            }}
+                            onClick={() => {
+                              setSelectedZone(zone);
+                              setShowMapModal(true);
+                            }}
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </GoogleMap>
+              )}
 
               {/* Map Legend */}
               <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 border border-[#e4e4e7]">
@@ -765,8 +1036,11 @@ export function GeofenceManager() {
                 <button 
                   className="w-10 h-10 flex items-center justify-center hover:bg-[#f4f4f5] border-b border-[#e4e4e7]"
                   onClick={() => {
-                    setMapZoom(prev => Math.min(prev + 0.1, 2));
-                    toast.success(`Zoom: ${Math.round((mapZoom + 0.1) * 100)}%`);
+                    setMapZoom((prev) => {
+                      const next = Math.min(prev + 1, 20);
+                      toast.success(`Zoom: ${next}x`);
+                      return next;
+                    });
                   }}
                   title="Zoom In"
                 >
@@ -775,8 +1049,11 @@ export function GeofenceManager() {
                 <button 
                   className="w-10 h-10 flex items-center justify-center hover:bg-[#f4f4f5]"
                   onClick={() => {
-                    setMapZoom(prev => Math.max(prev - 0.1, 0.5));
-                    toast.success(`Zoom: ${Math.round((mapZoom - 0.1) * 100)}%`);
+                    setMapZoom((prev) => {
+                      const next = Math.max(prev - 1, 3);
+                      toast.success(`Zoom: ${next}x`);
+                      return next;
+                    });
                   }}
                   title="Zoom Out"
                 >
@@ -1065,6 +1342,60 @@ export function GeofenceManager() {
           </AdminField>
 
           <div className="bg-[#f4f4f5] rounded-lg p-4">
+            <p className="text-sm font-semibold text-[#18181b] mb-3">Zone Settings</p>
+            <AdminFormGrid cols={2}>
+              <AdminField label="Delivery Fee (₹)">
+                <Input
+                  type="number"
+                  value={createSettingsForm.deliveryFee}
+                  onChange={(e) =>
+                    setCreateSettingsForm({
+                      ...createSettingsForm,
+                      deliveryFee: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </AdminField>
+              <AdminField label="Min Order Value (₹)">
+                <Input
+                  type="number"
+                  value={createSettingsForm.minOrderValue}
+                  onChange={(e) =>
+                    setCreateSettingsForm({
+                      ...createSettingsForm,
+                      minOrderValue: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </AdminField>
+              <AdminField label="Est. Delivery Time (min)">
+                <Input
+                  type="number"
+                  value={createSettingsForm.estimatedDeliveryTime}
+                  onChange={(e) =>
+                    setCreateSettingsForm({
+                      ...createSettingsForm,
+                      estimatedDeliveryTime: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </AdminField>
+              <AdminField label="Max Capacity">
+                <Input
+                  type="number"
+                  value={createSettingsForm.maxCapacity}
+                  onChange={(e) =>
+                    setCreateSettingsForm({
+                      ...createSettingsForm,
+                      maxCapacity: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </AdminField>
+            </AdminFormGrid>
+          </div>
+
+          <div className="bg-[#f4f4f5] rounded-lg p-4">
             <AdminField
               label="Draw Zone Boundaries"
               hint="Click on the map to add points and create a polygon boundary (minimum 3 points)."
@@ -1095,45 +1426,72 @@ export function GeofenceManager() {
               </div>
               <div 
                 className="bg-gray-200 rounded h-64 flex flex-col items-center justify-center text-sm text-[#71717a] relative overflow-hidden border-2 border-dashed border-gray-400 cursor-crosshair"
-                onClick={handleMapClick}
               >
-                {drawingPoints.length === 0 ? (
-                  <>
-                    <Map size={48} className="mb-2 text-gray-500" />
-                    <p className="mb-2">Interactive Map Drawing Tool</p>
-                    <p className="text-xs mb-4">{isDrawing ? 'Click on the map to add boundary points' : 'Click "Start Drawing" to begin'}</p>
-                  </>
+                {!GOOGLE_MAPS_API_KEY ? (
+                  <div className="text-center">
+                    <Map size={32} className="mx-auto mb-2 text-gray-500" />
+                    <p>Google Maps API key is missing</p>
+                    <p className="text-xs mt-1">Set VITE_GOOGLE_MAPS_API_KEY to enable drawing</p>
+                  </div>
+                ) : !isMapLoaded ? (
+                  <div className="text-center">
+                    <Map size={32} className="mx-auto mb-2 text-gray-500" />
+                    <p>Loading map...</p>
+                  </div>
                 ) : (
-                  <>
-                    <p className="mb-2 font-bold">{drawingPoints.length} point{drawingPoints.length !== 1 ? 's' : ''} added</p>
-                    <p className="text-xs mb-4">{isDrawing ? 'Continue clicking to add more points' : 'Click "Start Drawing" to add more'}</p>
+                  <GoogleMap
+                    mapContainerStyle={{ width: '100%', height: '100%' }}
+                    center={drawingPoints[0] ?? { lat: 19.076, lng: 72.8777 }}
+                    zoom={12}
+                    options={{
+                      disableDefaultUI: true,
+                      clickableIcons: false,
+                      draggableCursor: isDrawing ? 'crosshair' : 'default',
+                    }}
+                    onClick={(e) => {
+                      const lat = e.latLng?.lat();
+                      const lng = e.latLng?.lng();
+                      if (typeof lat === 'number' && typeof lng === 'number') {
+                        handleMapPointAdd(lat, lng);
+                      }
+                    }}
+                  >
                     {drawingPoints.map((point, idx) => (
-                      <div
-                        key={idx}
-                        className="absolute w-3 h-3 bg-[#e11d48] rounded-full border-2 border-white"
-                        style={{
-                          left: `${50 + (point.lng - 72.8777) * 1000}%`,
-                          top: `${50 + (point.lat - 19.0760) * 1000}%`,
-                          transform: 'translate(-50%, -50%)',
+                      <Marker
+                        key={`create-point-${idx}`}
+                        position={point}
+                        label={{
+                          text: `${idx + 1}`,
+                          fontSize: '10px',
+                          fontWeight: '700',
                         }}
-                        title={`Point ${idx + 1}: ${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`}
                       />
                     ))}
                     {drawingPoints.length >= 3 && (
-                      <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                        <polygon
-                          points={drawingPoints.map((p) => {
-                            const x = 50 + (p.lng - 72.8777) * 1000;
-                            const y = 50 + (p.lat - 19.0760) * 1000;
-                            return `${x}%,${y}%`;
-                          }).join(' ')}
-                          fill="rgba(225, 29, 72, 0.2)"
-                          stroke="#e11d48"
-                          strokeWidth="2"
-                          strokeDasharray="4 4"
-                        />
-                      </svg>
+                      <Polygon
+                        path={drawingPoints}
+                        options={{
+                          strokeColor: '#e11d48',
+                          strokeWeight: 2,
+                          fillColor: '#e11d48',
+                          fillOpacity: 0.2,
+                        }}
+                      />
                     )}
+                  </GoogleMap>
+                )}
+                <div className="absolute top-2 left-2 bg-white/90 rounded px-2 py-1 text-xs shadow-sm border border-gray-200">
+                  {drawingPoints.length === 0 ? (
+                    isDrawing ? 'Click on map to add boundary points' : 'Click "Start Drawing" to begin'
+                  ) : (
+                    `${drawingPoints.length} point${drawingPoints.length !== 1 ? 's' : ''} added`
+                  )}
+                </div>
+                {drawingPoints.length === 0 ? null : (
+                  <>
+                    <div className="absolute bottom-2 left-2 bg-white/90 rounded px-2 py-1 text-xs shadow-sm border border-gray-200">
+                      {isDrawing ? 'Continue clicking to add more points' : 'Click "Start Drawing" to add more'}
+                    </div>
                   </>
                 )}
               </div>
@@ -1236,38 +1594,7 @@ export function GeofenceManager() {
             <Button variant="outline" onClick={() => setShowEditModal(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={async () => {
-                if (!selectedZone || !zoneForm.name.trim()) {
-                  toast.error('Zone name is required');
-                  return;
-                }
-                const polygonToSave = editDrawingPoints.length >= 3 ? editDrawingPoints : selectedZone.polygon;
-                if (!polygonToSave || polygonToSave.length < 3) {
-                  toast.error('Zone must have at least 3 boundary points');
-                  return;
-                }
-                try {
-                  const center = {
-                    lat: polygonToSave.reduce((sum, p) => sum + p.lat, 0) / polygonToSave.length,
-                    lng: polygonToSave.reduce((sum, p) => sum + p.lng, 0) / polygonToSave.length,
-                  };
-                  await updateZone(selectedZone.id, {
-                    name: zoneForm.name,
-                    city: zoneForm.city,
-                    region: zoneForm.region,
-                    type: zoneForm.type,
-                    polygon: polygonToSave,
-                    center,
-                  });
-                  toast.success('Zone updated successfully');
-                  setShowEditModal(false);
-                  loadData();
-                } catch {
-                  toast.error('Failed to update zone');
-                }
-              }}
-            >
+            <Button onClick={handleSaveEditZone}>
               Save Changes
             </Button>
           </>
@@ -1340,40 +1667,64 @@ export function GeofenceManager() {
                 </div>
                 <div
                   className="bg-gray-200 rounded h-48 flex flex-col items-center justify-center text-sm text-[#71717a] relative overflow-hidden border-2 border-dashed border-gray-400 cursor-crosshair"
-                  onClick={handleEditMapClick}
                 >
-                  {editDrawingPoints.length === 0 ? (
-                    <><Map size={32} className="mb-1 text-gray-500" /><p>{isEditDrawing ? 'Click to add boundary points' : 'Click "Draw Polygon" to edit boundary'}</p></>
+                  {!GOOGLE_MAPS_API_KEY ? (
+                    <div className="text-center">
+                      <Map size={32} className="mx-auto mb-2 text-gray-500" />
+                      <p>Google Maps API key is missing</p>
+                    </div>
+                  ) : !isMapLoaded ? (
+                    <div className="text-center">
+                      <Map size={32} className="mx-auto mb-2 text-gray-500" />
+                      <p>Loading map...</p>
+                    </div>
                   ) : (
-                    <>
-                      <p className="mb-1 font-bold">{editDrawingPoints.length} point{editDrawingPoints.length !== 1 ? 's' : ''}</p>
+                    <GoogleMap
+                      mapContainerStyle={{ width: '100%', height: '100%' }}
+                      center={editDrawingPoints[0] ?? selectedZone.center ?? { lat: 19.076, lng: 72.8777 }}
+                      zoom={12}
+                      options={{
+                        disableDefaultUI: true,
+                        clickableIcons: false,
+                        draggableCursor: isEditDrawing ? 'crosshair' : 'default',
+                      }}
+                      onClick={(e) => {
+                        const lat = e.latLng?.lat();
+                        const lng = e.latLng?.lng();
+                        if (typeof lat === 'number' && typeof lng === 'number') {
+                          handleEditMapPointAdd(lat, lng);
+                        }
+                      }}
+                    >
                       {editDrawingPoints.map((point, idx) => (
-                        <div
-                          key={idx}
-                          className="absolute w-3 h-3 bg-[#e11d48] rounded-full border-2 border-white"
-                          style={{
-                            left: `${50 + (point.lng - 72.8777) * 1000}%`,
-                            top: `${50 + (point.lat - 19.0760) * 1000}%`,
-                            transform: 'translate(-50%, -50%)',
+                        <Marker
+                          key={`edit-point-${idx}`}
+                          position={point}
+                          label={{
+                            text: `${idx + 1}`,
+                            fontSize: '10px',
+                            fontWeight: '700',
                           }}
                         />
                       ))}
                       {editDrawingPoints.length >= 3 && (
-                        <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                          <polygon
-                            points={editDrawingPoints.map((p) => {
-                              const x = 50 + (p.lng - 72.8777) * 1000;
-                              const y = 50 + (p.lat - 19.0760) * 1000;
-                              return `${x}%,${y}%`;
-                            }).join(' ')}
-                            fill="rgba(225, 29, 72, 0.2)"
-                            stroke="#e11d48"
-                            strokeWidth="2"
-                          />
-                        </svg>
+                        <Polygon
+                          path={editDrawingPoints}
+                          options={{
+                            strokeColor: '#e11d48',
+                            strokeWeight: 2,
+                            fillColor: '#e11d48',
+                            fillOpacity: 0.2,
+                          }}
+                        />
                       )}
-                    </>
+                    </GoogleMap>
                   )}
+                  <div className="absolute top-2 left-2 bg-white/90 rounded px-2 py-1 text-xs shadow-sm border border-gray-200">
+                    {editDrawingPoints.length === 0
+                      ? (isEditDrawing ? 'Click map to add boundary points' : 'Click "Draw Polygon" to edit boundary')
+                      : `${editDrawingPoints.length} point${editDrawingPoints.length !== 1 ? 's' : ''}`}
+                  </div>
                 </div>
               </AdminField>
             </div>
@@ -1393,29 +1744,7 @@ export function GeofenceManager() {
             <Button variant="outline" onClick={() => setShowSettingsModal(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={async () => {
-                if (!selectedZone) return;
-                try {
-                  await updateZone(selectedZone.id, {
-                    settings: {
-                      ...selectedZone.settings,
-                      deliveryFee: settingsForm.deliveryFee,
-                      minOrderValue: settingsForm.minOrderValue,
-                      maxDeliveryRadius: settingsForm.maxDeliveryRadius,
-                      estimatedDeliveryTime: settingsForm.estimatedDeliveryTime,
-                      surgeMultiplier: settingsForm.surgeMultiplier,
-                      maxCapacity: settingsForm.maxCapacity,
-                    },
-                  });
-                  toast.success('Zone settings updated successfully');
-                  setShowSettingsModal(false);
-                  loadData();
-                } catch {
-                  toast.error('Failed to update zone settings');
-                }
-              }}
-            >
+            <Button onClick={handleSaveZoneSettings}>
               Save Settings
             </Button>
           </>

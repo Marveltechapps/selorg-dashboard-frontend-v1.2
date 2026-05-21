@@ -18,6 +18,7 @@ export interface ComplianceDocument {
   acknowledged: boolean;
   acknowledgedBy?: string[];
   lastUpdated?: string;
+  fileUrl?: string | null;
 }
 
 export interface Certification {
@@ -164,6 +165,35 @@ export async function uploadDocument(doc: Partial<ComplianceDocument> & { file?:
     body: formData,
   });
   return response.data;
+}
+
+export async function updateDocument(
+  documentId: string,
+  doc: Partial<ComplianceDocument> & { file?: File }
+): Promise<ComplianceDocument> {
+  const formData = new FormData();
+  if (doc.file) {
+    formData.append('file', doc.file);
+  }
+  if (typeof doc.name === 'string') formData.append('name', doc.name);
+  if (typeof doc.type === 'string') formData.append('type', doc.type);
+  if (typeof doc.category === 'string') formData.append('category', doc.category);
+  if (typeof doc.description === 'string') formData.append('description', doc.description);
+
+  const response = await apiRequest<{ success: boolean; data: ComplianceDocument }>(
+    `/admin/compliance/documents/${documentId}`,
+    {
+      method: 'PATCH',
+      body: formData,
+    }
+  );
+  return response.data;
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  await apiRequest(`/admin/compliance/documents/${documentId}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function scheduleAudit(audit: Partial<AuditRecord>): Promise<AuditRecord> {

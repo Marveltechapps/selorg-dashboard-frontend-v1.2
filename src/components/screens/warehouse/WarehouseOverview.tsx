@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowUpFromLine, Package, AlertTriangle, Truck, Activity } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Package, AlertTriangle, Activity, Download } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
-import { fetchWarehouseMetrics, fetchOrderFlow, WarehouseMetrics, PicklistFlow } from './warehouseApi';
-
+import {
+  fetchWarehouseMetrics,
+  fetchOrderFlow,
+  fetchDailyReport,
+  downloadDailyReportCsv,
+  WarehouseMetrics,
+  PicklistFlow,
+} from './warehouseApi';
 interface MetricCardProps {
   label: string;
   value: string;
@@ -39,6 +45,20 @@ export function WarehouseOverview() {
   const [metrics, setMetrics] = useState<WarehouseMetrics | null>(null);
   const [orderFlow, setOrderFlow] = useState<PicklistFlow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+
+  const handleDailyReport = async () => {
+    setDownloadingReport(true);
+    try {
+      const report = await fetchDailyReport();
+      downloadDailyReportCsv(report);
+      toast.success('Daily report downloaded');
+    } catch {
+      toast.error('Failed to generate daily report');
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -90,82 +110,14 @@ export function WarehouseOverview() {
         subtitle="Real-time capacity, inbound/outbound flow, and critical alerts"
         actions={
           <div className="flex gap-3">
-          <button 
-            className="px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC]"
-            onClick={() => {
-              // Generate daily report data
-              const today = new Date().toISOString().split('T')[0];
-              const reportData = [
-                ['Warehouse Daily Report', `Date: ${today}`],
-                [''],
-                ['Metric', 'Value', 'Status'],
-                ['Inbound Queue', `${metrics?.inboundQueue || 0} Trucks Waiting`, 'Live'],
-                ['Outbound Queue', `${metrics?.outboundQueue || 0} Orders Pending`, 'Live'],
-                ['Inventory Health', `${metrics?.inventoryHealth || 0}% Accuracy`, 'Stable'],
-                ['Critical Alerts', `${metrics?.criticalAlerts || 0}`, 'Action Required'],
-                [''],
-                ['Capacity Utilization'],
-                ['Storage Bins', `${metrics?.capacityUtilization?.bins ?? 0}%`],
-                ['Cold Storage', `${metrics?.capacityUtilization?.coldStorage ?? 0}%`],
-                ['Ambient', `${metrics?.capacityUtilization?.ambient ?? 0}%`],
-              ];
-              
-              // Convert to CSV
-              const csv = reportData.map(row => row.join(',')).join('\n');
-              
-              // Create and download file
-              const blob = new Blob([csv], { type: 'text/csv' });
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `warehouse-daily-report-${today}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              window.URL.revokeObjectURL(url);
-            }}
+          <button
+            type="button"
+            disabled={downloadingReport}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[#E2E8F0] text-[#1E293B] font-medium rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50"
+            onClick={handleDailyReport}
           >
+            <Download size={16} className="text-[#64748B]" />
             Daily Report
-          </button>
-          <button className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4]"
-            onClick={() => {
-              // Generate operations view data
-              const today = new Date().toISOString().split('T')[0];
-              const time = new Date().toLocaleTimeString();
-              const reportData = [
-                ['Warehouse Operations View', `Date: ${today}`, `Time: ${time}`],
-                [''],
-                ['=== ACTIVE OPERATIONS ==='],
-                [''],
-                ['Inbound Queue', metrics?.inboundQueue || 0],
-                ['Outbound Queue', metrics?.outboundQueue || 0],
-                [''],
-                ['=== LIVE ORDER FLOW ==='],
-                ['Order ID', 'Destination', 'Status', 'Items'],
-                ...orderFlow.map(f => [f.orderId, f.customer, f.status, f.items]),
-                [''],
-                ['=== CAPACITY UTILIZATION ==='],
-                ['Storage Bins', `${metrics?.capacityUtilization?.bins ?? 0}%`],
-                ['Cold Storage', `${metrics?.capacityUtilization?.coldStorage ?? 0}%`],
-                ['Ambient', `${metrics?.capacityUtilization?.ambient ?? 0}%`],
-              ];
-              
-              // Convert to CSV
-              const csv = reportData.map(row => row.join(',')).join('\n');
-              
-              // Create and download file
-              const blob = new Blob([csv], { type: 'text/csv' });
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `warehouse-operations-view-${today}-${time.replace(/:/g, '-')}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              window.URL.revokeObjectURL(url);
-            }}
-          >
-            Operations View
           </button>
           </div>
         }
@@ -331,6 +283,7 @@ export function WarehouseOverview() {
             </div>
           </div>
       </div>
+
     </div>
   );
 }

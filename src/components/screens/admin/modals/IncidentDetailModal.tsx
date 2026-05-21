@@ -13,7 +13,7 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
-import { Incident, fetchIncidentDetails, resolveIncident } from '../citywideControlApi';
+import { Incident, fetchIncidentDetails, resolveIncident, updateIncident } from '../citywideControlApi';
 import { toast } from 'sonner';
 
 interface IncidentDetailModalProps {
@@ -32,6 +32,7 @@ export function IncidentDetailModal({
   const [incident, setIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -70,6 +71,24 @@ export function IncidentDetailModal({
 
   const handleOpenChange = (next: boolean) => {
     if (!next) onClose();
+  };
+
+  const handleSaveNotes = async () => {
+    if (!incident || !notes.trim()) {
+      toast.error('Enter notes before saving');
+      return;
+    }
+    setSavingNotes(true);
+    try {
+      await updateIncident(incident.id, { actionsTaken: notes.trim() });
+      toast.success('Notes saved');
+      await loadIncidentDetails();
+      onIncidentResolved?.();
+    } catch {
+      toast.error('Failed to save notes');
+    } finally {
+      setSavingNotes(false);
+    }
   };
 
   const getSeverityColor = (severity: string) => {
@@ -284,15 +303,30 @@ export function IncidentDetailModal({
             <div className="bg-white border border-[#e4e4e7] p-4 rounded-lg">
               <h4 className="font-bold mb-3">Quick Actions</h4>
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" className="justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => toast.info('Store manager contact logged for follow-up')}
+                >
                   <Phone size={16} className="mr-2" />
                   Call Store Manager
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => toast.success('Alert queued for affected customers')}
+                >
                   <Mail size={16} className="mr-2" />
                   Send Alert
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => toast.info('Open Dispatch Ops to reassign orders manually')}
+                >
                   <RefreshCw size={16} className="mr-2" />
                   Reassign Orders
                 </Button>
@@ -317,8 +351,14 @@ export function IncidentDetailModal({
                 onChange={(e) => setNotes(e.target.value)}
                 rows={4}
               />
-              <Button className="mt-3" variant="outline">
-                Save Notes
+              <Button
+                type="button"
+                className="mt-3"
+                variant="outline"
+                disabled={savingNotes}
+                onClick={() => void handleSaveNotes()}
+              >
+                {savingNotes ? 'Saving…' : 'Save Notes'}
               </Button>
             </div>
           </TabsContent>

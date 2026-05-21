@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Activity, 
   AlertTriangle, 
@@ -147,6 +147,56 @@ export function CitywideControl() {
   const [outageActionsTaken, setOutageActionsTaken] = useState('');
   const [outageSaving, setOutageSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSlaRules, setShowSlaRules] = useState(false);
+  const [slaZoneOverrides, setSlaZoneOverrides] = useState<Record<string, number>>({});
+
+  /** Matches tile colors: counts come from the same `/merch/citywide/zones` payload */
+  const zoneOperationalCounts = useMemo(() => {
+    const base = {
+      normal: 0,
+      surge: 0,
+      warning: 0,
+      critical: 0,
+      offline: 0,
+    };
+    for (const z of zones) {
+      const k = z.status;
+      if (k in base) base[k as keyof typeof base] += 1;
+    }
+    return base;
+  }, [zones]);
+
+  const footerPulseClass = useMemo(() => {
+    if (zones.some((z) => z.status === 'critical')) return 'bg-rose-500 animate-pulse';
+    if (zones.some((z) => z.status === 'warning')) return 'bg-amber-500 animate-pulse';
+    if (zones.some((z) => z.status === 'offline')) return 'bg-zinc-500';
+    if (surgeInfo?.active && (surgeInfo.globalMultiplier ?? 1) > 1) return 'bg-orange-400 animate-pulse';
+    if (zones.some((z) => z.status === 'surge')) return 'bg-orange-400 animate-pulse';
+    return 'bg-emerald-500';
+  }, [zones, surgeInfo]);
+
+  const footerLine = useMemo(() => {
+    const parts = [
+      `Normal ${zoneOperationalCounts.normal}`,
+      `Surge ${zoneOperationalCounts.surge}`,
+      `Warning ${zoneOperationalCounts.warning}`,
+      `Critical ${zoneOperationalCounts.critical}`,
+      ...(zoneOperationalCounts.offline ? [`Offline ${zoneOperationalCounts.offline}`] : []),
+    ];
+    const surgeLine =
+      surgeInfo != null
+        ? surgeInfo.active && (surgeInfo.globalMultiplier ?? 1) > 1
+          ? (() => {
+              const zn = (surgeInfo.zonesAffected || []).length;
+              const mult = surgeInfo.globalMultiplier;
+              return zn > 0
+                ? `Citywide surge ${mult}x · ${zn} zone multiplier override(s)`
+                : `Citywide surge ${mult}x · global`;
+            })()
+          : 'Citywide surge inactive'
+        : null;
+    return { summary: parts.join(' · '), surgeLine };
+  }, [zoneOperationalCounts, surgeInfo]);
 
   useEffect(() => {
     loadAllData();
@@ -180,7 +230,13 @@ export function CitywideControl() {
     setExceptions(exceptionsResult.status === 'fulfilled' ? exceptionsResult.value : []);
     setSurgeInfo(surgeResult.status === 'fulfilled' ? surgeResult.value : null);
     setDispatchStatus(dispatchResult.status === 'fulfilled' && dispatchResult.value ? dispatchResult.value.status : '');
-    setSlaTargetMins(slaResult.status === 'fulfilled' && slaResult.value ? slaResult.value.targetMinutes : 0);
+    if (slaResult.status === 'fulfilled' && slaResult.value) {
+      setSlaTargetMins(slaResult.value.targetMinutes);
+      setSlaZoneOverrides(slaResult.value.zoneOverrides || {});
+    } else {
+      setSlaTargetMins(0);
+      setSlaZoneOverrides({});
+    }
     setIntegrationHealth(healthResult.status === 'fulfilled' ? healthResult.value : null);
     setLoading(false);
     if (showLoading) {
@@ -360,7 +416,7 @@ export function CitywideControl() {
               <Map size={18} className="text-[#18181b]" />
               <h3 className="font-bold text-[#18181b]">Operational Heatmap</h3>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 justify-end">
               <span className="flex items-center gap-1.5 text-xs font-medium text-[#71717a] px-2 py-1 bg-[#f4f4f5] rounded border border-[#e4e4e7]">
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal
               </span>
@@ -368,11 +424,14 @@ export function CitywideControl() {
                 <span className="w-2 h-2 rounded-full bg-orange-500"></span> Surge
               </span>
               <span className="flex items-center gap-1.5 text-xs font-medium text-[#71717a] px-2 py-1 bg-[#f4f4f5] rounded border border-[#e4e4e7]">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span> Warning
+              </span>
+              <span className="flex items-center gap-1.5 text-xs font-medium text-[#71717a] px-2 py-1 bg-[#f4f4f5] rounded border border-[#e4e4e7]">
                 <span className="w-2 h-2 rounded-full bg-rose-500"></span> Critical
               </span>
             </div>
           </div>
-          <div className="flex-1 bg-[#f4f4f5] p-3 overflow-auto">
+          <div className="flex-1 min-h-0 bg-[#f4f4f5] overflow-y-auto overflow-x-hidden p-3 scroll-smooth">
             {/* Interactive Zone Grid */}
             {zones.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[#71717a] gap-4">
@@ -398,17 +457,18 @@ export function CitywideControl() {
                 </Button>
               </div>
             ) : (
-            <div className="grid grid-cols-4 gap-3 h-full">
+            <div className="grid w-full grid-cols-2 gap-3 auto-rows-auto content-start sm:grid-cols-4">
               {zones.map((zone) => (
+                <div key={zone.id} className="w-full">
                 <div
-                  key={zone.id}
                   onClick={() => setSelectedZoneId(zone.id)}
-                  className={`bg-gradient-to-br ${getZoneStatusGradient(zone.status)} rounded-lg border-2 ${
+                  className={`flex min-h-[9.75rem] max-h-[17rem] w-full flex-col justify-center bg-gradient-to-br shrink-0 ${getZoneStatusGradient(zone.status)} rounded-lg border-2 ${
                     zone.status === 'critical' ? 'border-rose-400' :
                     zone.status === 'warning' ? 'border-amber-400' :
                     zone.status === 'surge' ? 'border-orange-400' :
+                    zone.status === 'offline' ? 'border-zinc-400' :
                     'border-emerald-400'
-                  } p-3 cursor-pointer hover:scale-105 transition-all hover:shadow-lg relative overflow-hidden group`}
+                  } p-3 cursor-pointer hover:shadow-md transition-shadow relative overflow-hidden group`}
                 >
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-2">
@@ -425,9 +485,18 @@ export function CitywideControl() {
                     </div>
                     <div className="text-[10px] text-[#52525b] space-y-0.5">
                       <div>{zone.activeOrders} Orders</div>
-                      <div>{zone.activeRiders} Riders {zone.riderStatus === 'overload' && <span className="text-rose-600 font-bold">OVERLOAD</span>}</div>
+                      <div>
+                        {zone.activeRiders} Riders{' '}
+                        {zone.riderStatus === 'overload' && (
+                          <span className="text-rose-600 font-bold">OVERLOAD</span>
+                        )}
+                        {zone.riderStatus === 'shortage' && (
+                          <span className="text-amber-600 font-bold">SHORTAGE</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                </div>
                 </div>
               ))}
             </div>
@@ -572,6 +641,7 @@ export function CitywideControl() {
                      <Button 
                        variant="outline" 
                        className="w-full justify-start"
+                       onClick={() => setShowSlaRules(true)}
                      >
                        <Clock size={16} className="mr-2 text-blue-600" />
                        <div className="flex-1 text-left">
@@ -586,28 +656,47 @@ export function CitywideControl() {
         </div>
       </div>
 
-      {/* Bottom Info Bar */}
+      {/* Bottom Info Bar — metrics from live APIs + zone rollups aligned with heatmap */}
       <div className="bg-[#18181b] border border-[#27272a] rounded-xl p-4">
-        <div className="flex items-center justify-between text-white">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${(metrics?.activeIncidentsCount ?? 0) > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 text-white">
+          <div className="flex flex-col gap-2 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${footerPulseClass}`}></div>
               <span className="text-sm">
-                {(metrics?.activeIncidentsCount ?? 0) > 0 ? 'Active incidents' : 'All systems operational'}
+                {(metrics?.activeIncidentsCount ?? 0) > 0 ||
+                zones.some((z) => z.status === 'critical' || z.status === 'warning')
+                  ? `${metrics?.activeIncidentsCount ?? 0} open incidents · needs attention`
+                  : zones.some((z) => z.status === 'surge') || (surgeInfo?.active && (surgeInfo.globalMultiplier ?? 1) > 1)
+                    ? 'Surge / peak pricing in effect · ops healthy'
+                    : 'All systems operational'}
+              </span>
+              </div>
+              <div className="text-sm text-[#a1a1aa]">
+                Last snapshot:{' '}
+                {metrics?.lastUpdated
+                  ? formatTimeAgo(metrics.lastUpdated)
+                  : zones.length
+                    ? 'see refresh'
+                    : '—'}
+              </div>
+            </div>
+            <div className="text-xs sm:text-sm text-[#a1a1aa] truncate" title={`${footerLine.summary}${footerLine.surgeLine ? ` | ${footerLine.surgeLine}` : ''}`}>
+              <span className="text-[#fafafa] font-medium">Totals</span>{' '}
+              24h orders {metrics?.totalOrdersLast24h != null ? metrics.totalOrdersLast24h.toLocaleString() : '—'} · orders/h{' '}
+              {metrics?.orderFlowPerHour != null ? metrics.orderFlowPerHour.toLocaleString() : '—'} · fleet{' '}
+              {metrics?.totalRiders != null ? metrics.totalRiders.toLocaleString() : '—'} riders ·{' '}
+              {(metrics?.activeRiders ?? 0).toLocaleString()} active · dispatch{' '}
+              <span className="text-[#fafafa]">
+                {dispatchStatus === 'running' ? 'running' : dispatchStatus === 'paused' ? 'paused' : dispatchStatus === 'error' ? 'error' : '—'}
               </span>
             </div>
-            <div className="text-sm text-[#a1a1aa]">
-              Last updated: {metrics ? formatTimeAgo(metrics.lastUpdated) : '—'}
-            </div>
-            <div className="text-sm text-[#a1a1aa]">
-              Total orders: {metrics != null && (metrics.totalOrdersLast24h ?? metrics.orderFlowPerHour) != null
-                ? (metrics.totalOrdersLast24h ?? metrics.orderFlowPerHour)!.toLocaleString()
-                : '—'} | Total riders: {metrics != null && (metrics.totalRiders ?? metrics.activeRiders) != null
-                ? (metrics.totalRiders ?? metrics.activeRiders)!.toLocaleString()
-                : '—'}
-            </div>
+            <div className="text-xs text-[#a1a1aa] leading-snug">{footerLine.summary}</div>
+            {footerLine.surgeLine && (
+              <div className="text-xs text-orange-300/90">{footerLine.surgeLine}</div>
+            )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <Button 
               variant="ghost" 
               size="sm" 
@@ -635,6 +724,32 @@ export function CitywideControl() {
         open={selectedZoneId !== null}
         onClose={() => setSelectedZoneId(null)}
         zoneId={selectedZoneId}
+        onDataRefresh={() => loadAllData()}
+        onViewIncident={(incidentId) => {
+          setSelectedZoneId(null);
+          setSelectedIncidentId(incidentId);
+        }}
+        onManageStoreOutage={(store) => {
+          const outage = integrationHealth?.storeOutages?.find(
+            (o) => o.storeId === store.storeId || o.storeName === store.storeName,
+          );
+          if (!outage?.id) {
+            toast.error('No active outage record found for this store');
+            return;
+          }
+          setSelectedZoneId(null);
+          setSelectedOutage({
+            id: outage.id,
+            storeId: outage.storeId,
+            storeName: outage.storeName || store.storeName,
+            outageReason: outage.outageReason,
+          });
+          setOutageStatus('Investigating');
+          setOutageEstimatedResolution('');
+          setOutageActionsTaken('');
+          setOutageSaving(false);
+          setShowOutageManage(true);
+        }}
       />
       <IncidentDetailModal
         open={selectedIncidentId !== null}
@@ -685,7 +800,15 @@ export function CitywideControl() {
           <div className="space-y-2">
             <h4 className="font-bold text-[#18181b]">Recent Incidents</h4>
             {incidents.slice(0, 5).map((incident) => (
-              <div key={incident.id} className="border border-[#e4e4e7] rounded-lg p-3 hover:bg-[#f4f4f5]">
+              <button
+                key={incident.id}
+                type="button"
+                className="w-full text-left border border-[#e4e4e7] rounded-lg p-3 hover:bg-[#f4f4f5] transition-colors"
+                onClick={() => {
+                  setShowAlerts(false);
+                  setSelectedIncidentId(incident.id);
+                }}
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <span
                     className={`text-xs font-bold px-2 py-0.5 rounded ${
@@ -702,7 +825,7 @@ export function CitywideControl() {
                 </div>
                 <p className="text-xs text-[#71717a] mt-1">{incident.description}</p>
                 <p className="text-[10px] text-[#a1a1aa] mt-1">Started: {formatTimeAgo(incident.startTime)}</p>
-              </div>
+              </button>
             ))}
             {incidents.length === 0 && (
               <p className="text-sm text-[#71717a] text-center py-4">No active incidents</p>
@@ -725,6 +848,46 @@ export function CitywideControl() {
               <p className="text-sm text-[#71717a] text-center py-4">No exceptions</p>
             )}
           </div>
+        </AdminFormBody>
+      </AdminModal>
+      <AdminModal
+        open={showSlaRules}
+        onOpenChange={setShowSlaRules}
+        title="Delivery SLA Rules"
+        icon={<Clock className="h-5 w-5 text-blue-600" />}
+        maxWidth="max-w-lg"
+        footer={
+          <Button variant="outline" onClick={() => setShowSlaRules(false)}>
+            Close
+          </Button>
+        }
+      >
+        <AdminFormBody>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-900 font-medium">Citywide delivery target</p>
+            <p className="text-2xl font-bold text-blue-950 mt-1">
+              {slaTargetMins != null && slaTargetMins > 0 ? `${slaTargetMins} minutes` : 'Not configured'}
+            </p>
+            <p className="text-xs text-blue-700 mt-2">
+              Average delivery time on the dashboard is compared against this target per zone.
+            </p>
+          </div>
+          {Object.keys(slaZoneOverrides).length > 0 ? (
+            <div className="space-y-2">
+              <h4 className="font-bold text-[#18181b] text-sm">Zone overrides</h4>
+              {Object.entries(slaZoneOverrides).map(([zoneKey, minutes]) => (
+                <div
+                  key={zoneKey}
+                  className="flex items-center justify-between border border-[#e4e4e7] rounded-lg px-3 py-2 text-sm"
+                >
+                  <span className="font-medium text-[#18181b]">{zoneKey}</span>
+                  <span className="text-[#71717a]">{minutes} min target</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#71717a]">No per-zone SLA overrides configured.</p>
+          )}
         </AdminFormBody>
       </AdminModal>
       <AdminModal

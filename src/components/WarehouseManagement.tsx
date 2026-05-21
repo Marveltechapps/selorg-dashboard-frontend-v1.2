@@ -4,6 +4,7 @@ import { WarehouseSidebar } from './warehouse/WarehouseSidebar';
 import { WarehouseTopBar } from './warehouse/WarehouseTopBar';
 import { WarehouseBreadcrumbs } from './warehouse/WarehouseBreadcrumbs';
 import { WarehouseOverview } from './screens/warehouse/WarehouseOverview';
+import { WarehouseNavigation } from './screens/warehouse/WarehouseNavigation';
 import { InboundOps } from './screens/warehouse/InboundOps';
 import { InventoryStorage } from './screens/warehouse/InventoryStorage';
 import { OutboundOps } from './screens/warehouse/OutboundOps';
@@ -22,6 +23,7 @@ import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 
 const TAB_IDS = [
   'overview',
+  'navigation',
   'inbound',
   'inventory',
   'outbound',
@@ -61,6 +63,7 @@ export function WarehouseManagement({ onLogout }: { onLogout: () => void }) {
         <main className="flex-1 min-w-0 px-3 sm:px-6 md:px-8 pb-12 max-w-[1920px] mx-auto w-full pt-1">
             <WarehouseBreadcrumbs activeTab={effectiveTab} />
             {effectiveTab === 'overview' && <WarehouseOverview />}
+            {effectiveTab === 'navigation' && <WarehouseNavigation />}
             {effectiveTab === 'inbound' && <InboundOps />}
             {effectiveTab === 'inventory' && <InventoryStorage />}
             {effectiveTab === 'outbound' && <OutboundOps />}

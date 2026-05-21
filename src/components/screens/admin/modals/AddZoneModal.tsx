@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Zone, createZone, updateZone } from '../masterDataApi';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { LocationMapPicker } from './LocationMapPicker';
 
 interface AddZoneModalProps {
   open: boolean;
@@ -840,6 +841,17 @@ export function AddZoneModal({ open, onOpenChange, onSuccess, editZone, cities }
                   <FieldHint error={errors.centerLng} />
                 </div>
               </div>
+              <LocationMapPicker
+                latitude={centerLat}
+                longitude={centerLng}
+                onPositionChange={(lat, lng) => {
+                  clearError('centerLat');
+                  clearError('centerLng');
+                  setCenterLat(lat);
+                  setCenterLng(lng);
+                }}
+                height="240px"
+              />
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-4 py-4">

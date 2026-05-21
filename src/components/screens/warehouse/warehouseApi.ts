@@ -12,7 +12,21 @@ function authHeaders(): Record<string, string> {
 
 async function parseApiError(response: Response, fallbackMessage: string): Promise<Error> {
   const err = await response.json().catch(() => ({} as any));
-  const message = err?.message || err?.error || fallbackMessage;
+  const details = err?.error?.details;
+  if (Array.isArray(details) && details.length > 0) {
+    const fieldMsgs = details
+      .map((d: { field?: string; message?: string }) =>
+        d.field ? `${d.field}: ${d.message}` : d.message
+      )
+      .filter(Boolean)
+      .join('; ');
+    if (fieldMsgs) return new Error(fieldMsgs);
+  }
+  const message =
+    (typeof err?.message === 'string' && err.message) ||
+    (typeof err?.error === 'string' && err.error) ||
+    (typeof err?.error?.message === 'string' && err.error.message) ||
+    fallbackMessage;
   return new Error(message);
 }
 
@@ -43,6 +57,7 @@ export interface WarehouseMetrics {
   capacityUtilization: {
     bins: number;
     coldStorage: number;
+    stage?: number;
     ambient: number;
   };
 }
@@ -63,7 +78,7 @@ const DEFAULT_METRICS: WarehouseMetrics = {
   outboundQueue: 0,
   inventoryHealth: 0,
   criticalAlerts: 0,
-  capacityUtilization: { bins: 0, coldStorage: 0, ambient: 0 },
+  capacityUtilization: { bins: 0, coldStorage: 0, stage: 0, ambient: 0 },
 };
 
 export async function fetchWarehouseMetrics(): Promise<WarehouseMetrics> {
@@ -83,7 +98,7 @@ export async function fetchOrderFlow(): Promise<PicklistFlow[]> {
   return data.map((entry: any, index: number) => ({
     id: entry.id ?? entry.orderId ?? entry.order_id ?? `flow-${index}`,
     orderId: entry.orderId ?? entry.order_id ?? entry.id ?? `N/A-${index + 1}`,
-    customer: entry.customer ?? entry.customerName ?? entry.customer_name ?? 'Unknown destination',
+    customer: entry.customer ?? entry.customerName ?? entry.customer_name ?? '',
     items: Number.isFinite(Number(entry.items))
       ? Number(entry.items)
       : (Array.isArray(entry.items) ? entry.items.length : 0),
@@ -92,6 +107,154 @@ export async function fetchOrderFlow(): Promise<PicklistFlow[]> {
     zone: entry.zone ?? 'General',
     updatedAt: entry.updatedAt,
   }));
+}
+
+export interface WarehouseDailyReport {
+  date: string;
+  stats: {
+    totalGRNsProcessed: number;
+    totalOrdersPicked: number;
+    totalItemsAdjusted: number;
+    qcPassRate: string;
+    activeStaff: number;
+  };
+  topPerformers: { name: string; tasks: number }[];
+}
+
+export interface WarehouseOperationsView {
+  lastUpdate: string;
+  operationalStatus: 'healthy' | 'warning' | 'critical';
+  statusMessage: string;
+  metrics: WarehouseMetrics;
+  orderFlow: {
+    total: number;
+    byStatus: { picking: number; pending: number; dispatching: number };
+    recent: PicklistFlow[];
+  };
+  zones: { id: string; name: string; utilization: number; total: number; occupied: number }[];
+  equipmentStatus: Record<string, { total: number; active: number; maintenance: number }>;
+  openExceptions: number;
+  activeStaff: number;
+}
+
+export async function fetchDailyReport(date?: string): Promise<WarehouseDailyReport> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.warehouse.dailyReport}${query}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to fetch daily report');
+  const result = await response.json();
+  return extractPayload<WarehouseDailyReport>(result);
+}
+
+export async function fetchOperationsView(): Promise<WarehouseOperationsView> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.warehouse.operationsView}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to fetch operations view');
+  const result = await response.json();
+  const data = extractPayload<WarehouseOperationsView>(result);
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    !data.metrics ||
+    typeof data.metrics.inboundQueue !== 'number' ||
+    !data.orderFlow ||
+    typeof data.orderFlow.total !== 'number'
+  ) {
+    throw new Error('Invalid operations view data from server');
+  }
+  return {
+    ...data,
+    zones: Array.isArray(data.zones) ? data.zones : [],
+    equipmentStatus: data.equipmentStatus && typeof data.equipmentStatus === 'object' ? data.equipmentStatus : {},
+    orderFlow: {
+      ...data.orderFlow,
+      recent: Array.isArray(data.orderFlow.recent)
+        ? data.orderFlow.recent.map((o, i) => ({
+            id: o.id ?? o.orderId ?? `flow-${i}`,
+            orderId: o.orderId ?? '—',
+            customer: o.customer ?? '',
+            items: Number.isFinite(Number(o.items)) ? Number(o.items) : 0,
+            priority: o.priority ?? 'standard',
+            status: o.status ?? 'pending',
+            zone: o.zone ?? '',
+          }))
+        : [],
+      byStatus: {
+        pending: data.orderFlow.byStatus?.pending ?? 0,
+        picking: data.orderFlow.byStatus?.picking ?? 0,
+        dispatching: data.orderFlow.byStatus?.dispatching ?? 0,
+      },
+    },
+  };
+}
+
+export function downloadDailyReportCsv(report: WarehouseDailyReport): void {
+  const rows: (string | number)[][] = [
+    ['Warehouse Daily Report', `Date: ${report.date}`],
+    [''],
+    ['Metric', 'Value'],
+    ['GRNs Processed', report.stats.totalGRNsProcessed],
+    ['Orders Picked', report.stats.totalOrdersPicked],
+    ['Inventory Adjustments', report.stats.totalItemsAdjusted],
+    ['QC Pass Rate', report.stats.qcPassRate],
+    ['Active Staff', report.stats.activeStaff],
+    [''],
+    ['Top Performers', 'Tasks Completed'],
+    ...report.topPerformers.map((p) => [p.name || 'Unknown', p.tasks ?? 0]),
+  ];
+  const csv = rows.map((row) => row.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `warehouse-daily-report-${report.date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export function downloadOperationsViewCsv(view: WarehouseOperationsView): void {
+  const today = new Date().toISOString().split('T')[0];
+  const time = new Date().toLocaleTimeString();
+  const m = view.metrics;
+  const rows: (string | number)[][] = [
+    ['Warehouse Operations View', `Date: ${today}`, `Time: ${time}`],
+    ['Status', view.operationalStatus, view.statusMessage],
+    [''],
+    ['=== LIVE METRICS ==='],
+    ['Inbound Queue', m.inboundQueue],
+    ['Outbound Queue', m.outboundQueue],
+    ['Inventory Health', `${m.inventoryHealth}%`],
+    ['Critical Alerts', m.criticalAlerts],
+    ['Open Exceptions', view.openExceptions],
+    ['Active Staff', view.activeStaff],
+    [''],
+    ['=== ORDER FLOW ==='],
+    ['Total Active', view.orderFlow.total],
+    ['Picking', view.orderFlow.byStatus.picking],
+    ['Pending', view.orderFlow.byStatus.pending],
+    ['Dispatching', view.orderFlow.byStatus.dispatching],
+    [''],
+    ['Order ID', 'Destination', 'Status', 'Items'],
+    ...view.orderFlow.recent.map((o) => [o.orderId, o.customer, o.status, o.items]),
+    [''],
+    ['=== ZONE UTILIZATION ==='],
+    ['Zone', 'Utilization %', 'Occupied', 'Total'],
+    ...view.zones.map((z) => [z.name, z.utilization, z.occupied, z.total]),
+  ];
+  const csv = rows.map((row) => row.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `warehouse-operations-view-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
 
 export async function fetchWarehouseAnalytics(): Promise<any> {
@@ -123,6 +286,12 @@ export interface GRN {
   status: 'pending' | 'in-progress' | 'discrepancy' | 'completed';
   timestamp: string;
   items?: number;
+  dockId?: string;
+}
+
+export interface DockActiveGrn extends GRN {
+  discrepancyNotes?: string;
+  discrepancyType?: string;
 }
 
 export interface DockSlot {
@@ -132,22 +301,114 @@ export interface DockSlot {
   truck?: string;
   vendor?: string;
   eta?: string;
+  grnId?: string;
+  activeGrn?: DockActiveGrn | null;
 }
 
-export async function fetchGRNs(): Promise<GRN[]> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.grns}?limit=100`, { headers: authHeaders() });
+export interface InboundSummary {
+  pendingGRNs: number;
+  inProgressGRNs: number;
+  putawayPendingItems: number;
+  putawayPendingGrns: number;
+  dockTotal: number;
+  dockActive: number;
+  dockUtilizationPercent: number;
+}
+
+function normalizeGrnStatus(status: unknown): GRN['status'] {
+  const s = String(status ?? 'pending').toLowerCase().replace(/_/g, '-');
+  if (s === 'in_progress' || s === 'inprogress' || s === 'counting') return 'in-progress';
+  if (s === 'discrepancy' || s === 'issue') return 'discrepancy';
+  if (s === 'completed' || s === 'complete' || s === 'done') return 'completed';
+  return 'pending';
+}
+
+function mapGrnFromApi(g: Record<string, unknown>): GRN {
+  const businessId = typeof g.id === 'string' && g.id.trim() ? g.id.trim() : '';
+  const fallbackId = g._id != null ? String(g._id) : '';
+  const ts = g.timestamp ?? g.createdAt ?? g.updatedAt;
+  return {
+    id: businessId || fallbackId,
+    poNumber: String(g.poNumber ?? ''),
+    vendor: String(g.vendor ?? ''),
+    status: normalizeGrnStatus(g.status),
+    timestamp: ts
+      ? (typeof ts === 'string' ? ts : new Date(ts as string | number | Date).toISOString())
+      : new Date().toISOString(),
+    items: Number(g.items ?? 0),
+    dockId: typeof g.dockId === 'string' && g.dockId.trim() ? g.dockId.trim() : undefined,
+  };
+}
+
+function mapDockActiveGrn(g: Record<string, unknown> | null | undefined): DockActiveGrn | null {
+  if (!g || typeof g !== 'object' || !g.id) return null;
+  const base = mapGrnFromApi(g);
+  return {
+    ...base,
+    discrepancyNotes:
+      typeof g.discrepancyNotes === 'string' ? g.discrepancyNotes : undefined,
+    discrepancyType:
+      typeof g.discrepancyType === 'string' ? g.discrepancyType : undefined,
+  };
+}
+
+function mapDockFromApi(d: Record<string, unknown>): DockSlot {
+  return {
+    id: typeof d.id === 'string' && d.id.trim() ? d.id.trim() : String(d._id ?? ''),
+    name: String(d.name ?? ''),
+    status: (d.status === 'active' || d.status === 'offline' ? d.status : 'empty') as DockSlot['status'],
+    truck: d.truck != null ? String(d.truck) : undefined,
+    vendor: d.vendor != null ? String(d.vendor) : undefined,
+    eta: d.eta != null ? String(d.eta) : undefined,
+    grnId: typeof d.grnId === 'string' && d.grnId.trim() ? d.grnId.trim() : undefined,
+    activeGrn: mapDockActiveGrn(
+      d.activeGrn && typeof d.activeGrn === 'object'
+        ? (d.activeGrn as Record<string, unknown>)
+        : undefined
+    ),
+  };
+}
+
+export async function fetchInboundSummary(): Promise<InboundSummary> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.summary}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to fetch inbound summary');
+  const result = await response.json();
+  const data = extractPayload<InboundSummary>(result);
+  return {
+    pendingGRNs: data?.pendingGRNs ?? 0,
+    inProgressGRNs: data?.inProgressGRNs ?? 0,
+    putawayPendingItems: data?.putawayPendingItems ?? 0,
+    putawayPendingGrns: data?.putawayPendingGrns ?? 0,
+    dockTotal: data?.dockTotal ?? 0,
+    dockActive: data?.dockActive ?? 0,
+    dockUtilizationPercent: data?.dockUtilizationPercent ?? 0,
+  };
+}
+
+export async function fetchGRNs(opts?: { queueOnly?: boolean }): Promise<GRN[]> {
+  const qs = opts?.queueOnly ? '?limit=100&queueOnly=true' : '?limit=100';
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.grns}${qs}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch GRNs');
   const result = await response.json();
-  const arr = result.data ?? result ?? [];
-  const list = Array.isArray(arr) ? arr : [];
-  return list.map((g: any) => ({
-    id: g.id ?? g._id?.toString?.() ?? String(g._id),
-    poNumber: g.poNumber ?? '',
-    vendor: g.vendor ?? '',
-    status: g.status ?? 'pending',
-    timestamp: g.timestamp ? (typeof g.timestamp === 'string' ? g.timestamp : new Date(g.timestamp).toISOString()) : new Date().toISOString(),
-    items: g.items ?? 0,
-  }));
+  const list = extractList(result);
+  return list.map((g) => mapGrnFromApi(g as Record<string, unknown>));
+}
+
+export async function fetchGRNById(id: string): Promise<GRN & { discrepancyNotes?: string; discrepancyType?: string }> {
+  const response = await fetch(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.grnById(encodeURIComponent(id))}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) throw new Error('Failed to fetch GRN details');
+  const result = await response.json();
+  const g = extractPayload<Record<string, unknown>>(result);
+  return {
+    ...mapGrnFromApi(g),
+    discrepancyNotes: typeof g.discrepancyNotes === 'string' ? g.discrepancyNotes : undefined,
+    discrepancyType: typeof g.discrepancyType === 'string' ? g.discrepancyType : undefined,
+  };
 }
 
 export async function createGRN(data: Partial<GRN>): Promise<GRN> {
@@ -158,45 +419,93 @@ export async function createGRN(data: Partial<GRN>): Promise<GRN> {
   });
   if (!response.ok) throw await parseApiError(response, 'Failed to create GRN');
   const result = await response.json();
-  return result.data ?? result;
+  const raw = extractPayload<Record<string, unknown>>(result);
+  return mapGrnFromApi(raw && typeof raw === 'object' ? raw : {});
 }
 
-export async function startGRN(id: string): Promise<void> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.startGrn(id)}`, { method: 'POST', headers: authHeaders() });
-  if (!response.ok) throw new Error('Failed to start GRN');
+export async function startGRN(
+  id: string,
+  options?: { dockId?: string; truck?: string; eta?: string }
+): Promise<{ grn: GRN; dock: DockSlot }> {
+  const response = await fetch(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.startGrn(encodeURIComponent(id))}`,
+    { method: 'POST', headers: authHeaders(), body: JSON.stringify(options ?? {}) }
+  );
+  if (!response.ok) throw await parseApiError(response, 'Failed to start GRN');
+  const result = await response.json();
+  const data = extractPayload<{ grn?: Record<string, unknown>; dock?: Record<string, unknown> }>(result);
+  return {
+    grn: mapGrnFromApi(data?.grn && typeof data.grn === 'object' ? data.grn : {}),
+    dock: mapDockFromApi(data?.dock && typeof data.dock === 'object' ? data.dock : {}),
+  };
 }
 
 export async function completeGRN(id: string): Promise<void> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.completeGrn(id)}`, { method: 'POST', headers: authHeaders() });
-  if (!response.ok) throw new Error('Failed to complete GRN');
+  const response = await fetch(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.completeGrn(encodeURIComponent(id))}`,
+    { method: 'POST', headers: authHeaders() }
+  );
+  if (!response.ok) throw await parseApiError(response, 'Failed to complete GRN');
 }
 
 export async function logGRNDiscrepancy(id: string, data: { notes?: string; type?: string }): Promise<void> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.logDiscrepancy(id)}`, {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.logDiscrepancy(encodeURIComponent(id))}`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(data),
   });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || 'Failed to log discrepancy');
-  }
+  if (!response.ok) throw await parseApiError(response, 'Failed to log discrepancy');
+}
+
+/** Sort GRNs for the processing queue (active work first, completed last). */
+export function sortGrnsForQueue(grns: GRN[]): GRN[] {
+  const order: Record<GRN['status'], number> = {
+    pending: 0,
+    'in-progress': 1,
+    discrepancy: 2,
+    completed: 3,
+  };
+  return [...grns].sort((a, b) => {
+    const oa = order[a.status] ?? 99;
+    const ob = order[b.status] ?? 99;
+    if (oa !== ob) return oa - ob;
+    const ta = new Date(a.timestamp).getTime();
+    const tb = new Date(b.timestamp).getTime();
+    if (a.status === 'completed') return tb - ta;
+    return ta - tb;
+  });
 }
 
 export async function fetchDocks(): Promise<DockSlot[]> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.docks}?limit=50`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch docks');
   const result = await response.json();
-  const arr = result.data ?? result ?? [];
-  const list = Array.isArray(arr) ? arr : [];
-  return list.map((d: any) => ({
-    id: d.id ?? d._id?.toString?.() ?? String(d._id),
-    name: d.name ?? '',
-    status: d.status ?? 'empty',
-    truck: d.truck,
-    vendor: d.vendor,
-    eta: d.eta,
-  }));
+  const list = extractList(result);
+  return list.map((d) => mapDockFromApi(d as Record<string, unknown>));
+}
+
+export async function updateDock(
+  id: string,
+  data: Partial<Pick<DockSlot, 'status' | 'truck' | 'vendor' | 'eta'>>
+): Promise<DockSlot> {
+  const response = await fetch(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.updateDock(encodeURIComponent(id))}`,
+    { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) }
+  );
+  if (!response.ok) throw await parseApiError(response, 'Failed to update dock');
+  const result = await response.json();
+  const d = extractPayload<Record<string, unknown>>(result);
+  return mapDockFromApi(d && typeof d === 'object' ? d : { id });
+}
+
+export async function exportInboundGrnsCsv(): Promise<string> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inbound.exportGrns}?limit=500`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to export GRNs');
+  const result = await response.json();
+  const data = extractPayload<{ csv?: string }>(result);
+  return typeof data?.csv === 'string' ? data.csv : '';
 }
 
 // --- Outbound Ops ---
@@ -260,12 +569,43 @@ export interface RouteOptimization {
 
 // ... Outbound Ops Functions ...
 
+function normalizePicklistOrder(raw: unknown, index: number): PicklistOrder {
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const items = Number(p.items);
+  const itemCount = Number.isFinite(items) && items > 0
+    ? items
+    : Number(p.items_count) || 0;
+  const priorityRaw = String(p.priority ?? 'standard').toLowerCase();
+  const priority: PicklistOrder['priority'] =
+    priorityRaw === 'urgent' || priorityRaw === 'high' ? 'urgent'
+    : priorityRaw === 'medium' ? 'high'
+    : 'standard';
+  const statusRaw = String(p.status ?? 'pending').toLowerCase();
+  const status: PicklistOrder['status'] =
+    statusRaw === 'queued' ? 'pending'
+    : statusRaw === 'inprogress' || statusRaw === 'in-progress' ? 'picking'
+    : (['pending', 'assigned', 'picking', 'completed'].includes(statusRaw)
+      ? statusRaw as PicklistOrder['status']
+      : 'pending');
+
+  return {
+    id: String(p.id ?? p.picklist_id ?? `picklist-${index}`),
+    orderId: String(p.orderId ?? p.order_id ?? p.id ?? ''),
+    customer: String(p.customer ?? p.customerName ?? p.customer_name ?? '').trim(),
+    items: itemCount,
+    priority,
+    status,
+    picker: typeof p.picker === 'string' ? p.picker : (typeof p.picker_id === 'string' ? p.picker_id : undefined),
+    zone: typeof p.zone === 'string' ? p.zone : undefined,
+  };
+}
+
 export async function fetchPicklists(): Promise<PicklistOrder[]> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.outbound.picklists}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch picklists');
   const result = await response.json();
   const list = result.data ?? result ?? [];
-  return Array.isArray(list) ? list : [];
+  return Array.isArray(list) ? list.map(normalizePicklistOrder) : [];
 }
 
 export async function assignPickerToOrder(id: string, pickerName: string): Promise<void> {
@@ -406,9 +746,215 @@ export interface StorageLocation {
   id: string;
   aisle: string;
   rack: number;
+  shelf?: number;
+  zone?: string;
   status: 'occupied' | 'empty' | 'restricted';
   sku?: string;
   quantity?: number;
+}
+
+export interface InventorySummary {
+  totalBins: number;
+  occupiedBins: number;
+  totalSKUs: number;
+  stockValue: number;
+  cycleCountsInProgress: number;
+  highPriorityAlerts: number;
+}
+
+export interface InventoryMetaStaff {
+  id: string;
+  name: string;
+  role: string;
+  zone?: string | null;
+  status?: string;
+}
+
+export interface InventoryMetaZone {
+  id: string;
+  name: string;
+  code?: string | null;
+}
+
+export interface InventoryMeta {
+  zones: InventoryMetaZone[];
+  staff: InventoryMetaStaff[];
+  adjustmentTypes: string[];
+}
+
+function formatDateValue(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value.split('T')[0];
+  const date = new Date(value as string | number | Date);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().split('T')[0];
+}
+
+function formatTimestamp(value: unknown): string {
+  if (!value) return '';
+  const date = new Date(value as string | number | Date);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function normalizeStorageLocation(raw: Record<string, unknown>): StorageLocation {
+  const aisle = String(raw.aisle ?? raw.zone ?? '');
+  const rack = typeof raw.rack === 'number' ? raw.rack : parseInt(String(raw.rack ?? '1'), 10) || 1;
+  const shelf = typeof raw.shelf === 'number' ? raw.shelf : parseInt(String(raw.shelf ?? '1'), 10) || 1;
+  const id =
+    (typeof raw.id === 'string' && raw.id.trim()) ||
+    `${aisle}-${String(rack).padStart(2, '0')}-${String(shelf).padStart(2, '0')}`;
+  const statusRaw = String(raw.status ?? 'empty').toLowerCase();
+  const status: StorageLocation['status'] =
+    statusRaw === 'occupied' || statusRaw === 'restricted' ? statusRaw : 'empty';
+
+  return {
+    id,
+    aisle,
+    rack,
+    shelf,
+    zone: typeof raw.zone === 'string' ? raw.zone : undefined,
+    status,
+    sku: typeof raw.sku === 'string' && raw.sku.trim() ? raw.sku : undefined,
+    quantity: typeof raw.quantity === 'number' ? raw.quantity : undefined,
+  };
+}
+
+function normalizeInventoryItem(raw: Record<string, unknown>): InventoryItem {
+  return {
+    id: String(raw.id ?? raw._id ?? raw.sku ?? ''),
+    sku: String(raw.sku ?? ''),
+    productName: String(raw.productName ?? raw.name ?? raw.sku ?? 'Unknown'),
+    category: String(raw.category ?? 'General'),
+    currentStock: typeof raw.currentStock === 'number' ? raw.currentStock : 0,
+    minStock: typeof raw.minStock === 'number' ? raw.minStock : 0,
+    maxStock: typeof raw.maxStock === 'number' ? raw.maxStock : 0,
+    location: String(raw.location ?? '—'),
+    lastUpdated: formatTimestamp(raw.lastUpdated ?? raw.updatedAt),
+    value: typeof raw.value === 'number' ? raw.value : 0,
+  };
+}
+
+function normalizeAdjustment(raw: Record<string, unknown>): Adjustment {
+  return {
+    id: String(raw.id ?? raw._id ?? ''),
+    type: String(raw.type ?? 'Manual Correction'),
+    sku: String(raw.sku ?? ''),
+    productName: String(raw.productName ?? raw.sku ?? ''),
+    change: typeof raw.change === 'number' ? raw.change : 0,
+    reason: String(raw.reason ?? ''),
+    user: String(raw.user ?? 'System'),
+    timestamp: formatTimestamp(raw.timestamp ?? raw.createdAt),
+  };
+}
+
+function normalizeCycleCount(raw: Record<string, unknown>): CycleCount {
+  const statusRaw = String(raw.status ?? 'scheduled').toLowerCase().replace('_', '-');
+  const status: CycleCount['status'] =
+    statusRaw === 'in-progress' || statusRaw === 'inprogress'
+      ? 'in-progress'
+      : statusRaw === 'completed'
+        ? 'completed'
+        : 'scheduled';
+
+  return {
+    id: String(raw.id ?? raw._id ?? raw.countId ?? ''),
+    countId: String(raw.countId ?? raw.id ?? ''),
+    zone: String(raw.zone ?? ''),
+    assignedTo: String(raw.assignedTo ?? ''),
+    scheduledDate: formatDateValue(raw.scheduledDate),
+    status,
+    itemsTotal: typeof raw.itemsTotal === 'number' ? raw.itemsTotal : 0,
+    itemsCounted: typeof raw.itemsCounted === 'number' ? raw.itemsCounted : 0,
+    discrepancies: typeof raw.discrepancies === 'number' ? raw.discrepancies : 0,
+  };
+}
+
+function normalizeInternalTransfer(raw: Record<string, unknown>): InternalTransfer {
+  const statusRaw = String(raw.status ?? 'pending').toLowerCase().replace('_', '-');
+  const status: InternalTransfer['status'] =
+    statusRaw === 'in-transit' || statusRaw === 'intransit'
+      ? 'in-transit'
+      : statusRaw === 'completed'
+        ? 'completed'
+        : 'pending';
+
+  return {
+    id: String(raw.id ?? raw._id ?? raw.transferId ?? ''),
+    transferId: String(raw.transferId ?? raw.id ?? ''),
+    fromLocation: String(raw.fromLocation ?? ''),
+    toLocation: String(raw.toLocation ?? ''),
+    sku: String(raw.sku ?? ''),
+    productName: String(raw.productName ?? raw.sku ?? ''),
+    quantity: typeof raw.quantity === 'number' ? raw.quantity : 0,
+    status,
+    initiatedBy: String(raw.initiatedBy ?? 'System'),
+    timestamp: formatTimestamp(raw.timestamp ?? raw.createdAt),
+  };
+}
+
+export async function fetchInventorySummary(): Promise<InventorySummary> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inventory.summary}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch inventory summary');
+  const result = await response.json();
+  const data = extractPayload<InventorySummary>(result);
+  return {
+    totalBins: data?.totalBins ?? 0,
+    occupiedBins: data?.occupiedBins ?? 0,
+    totalSKUs: data?.totalSKUs ?? 0,
+    stockValue: data?.stockValue ?? 0,
+    cycleCountsInProgress: data?.cycleCountsInProgress ?? 0,
+    highPriorityAlerts: data?.highPriorityAlerts ?? 0,
+  };
+}
+
+function normalizeInventoryMetaZone(raw: unknown): InventoryMetaZone | null {
+  if (typeof raw === 'string' && raw.trim()) {
+    const name = raw.trim();
+    return { id: name, name };
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const z = raw as Record<string, unknown>;
+  const name = typeof z.name === 'string' ? z.name.trim() : '';
+  if (!name) return null;
+  const id =
+    (typeof z.id === 'string' && z.id.trim()) ||
+    (typeof z._id === 'string' && z._id.trim()) ||
+    name;
+  return {
+    id,
+    name,
+    code: typeof z.code === 'string' ? z.code : null,
+  };
+}
+
+export async function fetchInventoryMeta(): Promise<InventoryMeta> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inventory.meta}`, { headers: authHeaders() });
+  if (!response.ok) throw new Error('Failed to fetch inventory metadata');
+  const result = await response.json();
+  const data = extractPayload<InventoryMeta>(result);
+  const zones = Array.isArray(data?.zones)
+    ? data.zones.map(normalizeInventoryMetaZone).filter((z): z is InventoryMetaZone => z != null)
+    : [];
+  return {
+    zones,
+    staff: Array.isArray(data?.staff) ? data.staff : [],
+    adjustmentTypes: Array.isArray(data?.adjustmentTypes) ? data.adjustmentTypes : [],
+  };
+}
+
+export async function createReorderRequest(data: {
+  sku: string;
+  quantity: number;
+  priority?: 'high' | 'medium' | 'low';
+  notes?: string;
+  alertId?: string;
+  productName?: string;
+}): Promise<void> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inventory.createReorder}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw await parseApiError(response, 'Failed to create reorder request');
 }
 
 export interface InventoryItem {
@@ -475,15 +1021,17 @@ export async function fetchInventoryItems(): Promise<InventoryItem[]> {
   if (!response.ok) throw new Error('Failed to fetch inventory items');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => normalizeInventoryItem(item as Record<string, unknown>));
 }
 
 export async function fetchStorageLocations(): Promise<StorageLocation[]> {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inventory.locations}?limit=100`, { headers: authHeaders() });
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inventory.locations}?limit=500`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch storage locations');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => normalizeStorageLocation(item as Record<string, unknown>));
 }
 
 export async function fetchAdjustments(): Promise<Adjustment[]> {
@@ -491,7 +1039,8 @@ export async function fetchAdjustments(): Promise<Adjustment[]> {
   if (!response.ok) throw new Error('Failed to fetch adjustments');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => normalizeAdjustment(item as Record<string, unknown>));
 }
 
 export async function createAdjustment(data: Partial<Adjustment>): Promise<Adjustment> {
@@ -513,7 +1062,8 @@ export async function fetchCycleCounts(): Promise<CycleCount[]> {
   if (!response.ok) throw new Error('Failed to fetch cycle counts');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => normalizeCycleCount(item as Record<string, unknown>));
 }
 
 export async function startCycleCount(id: string): Promise<void> {
@@ -531,7 +1081,8 @@ export async function fetchInternalTransfers(): Promise<InternalTransfer[]> {
   if (!response.ok) throw new Error('Failed to fetch internal transfers');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => normalizeInternalTransfer(item as Record<string, unknown>));
 }
 
 export async function createInternalTransfer(data: Partial<InternalTransfer>): Promise<InternalTransfer> {
@@ -554,12 +1105,59 @@ export async function updateTransferStatus(id: string, status: string): Promise<
   if (!response.ok) throw new Error('Failed to update transfer status');
 }
 
+function normalizeStockAlert(raw: Record<string, unknown>): StockAlert {
+  const severity = typeof raw.severity === 'string' ? raw.severity : undefined;
+  const priorityRaw = typeof raw.priority === 'string' ? raw.priority : undefined;
+  const priority: StockAlert['priority'] =
+    priorityRaw === 'high' || priorityRaw === 'medium' || priorityRaw === 'low'
+      ? priorityRaw
+      : severity === 'critical'
+        ? 'high'
+        : severity === 'warning'
+          ? 'medium'
+          : 'low';
+
+  const currentLevel =
+    typeof raw.currentLevel === 'number'
+      ? raw.currentLevel
+      : typeof raw.current_count === 'number'
+        ? raw.current_count
+        : typeof raw.currentStock === 'number'
+          ? raw.currentStock
+          : 0;
+
+  const threshold = typeof raw.threshold === 'number' ? raw.threshold : 0;
+  const typeRaw = typeof raw.type === 'string' ? raw.type : undefined;
+  const type: StockAlert['type'] =
+    typeRaw === 'low-stock' ||
+    typeRaw === 'overstock' ||
+    typeRaw === 'expiring' ||
+    typeRaw === 'out-of-stock'
+      ? typeRaw
+      : currentLevel === 0
+        ? 'out-of-stock'
+        : currentLevel < threshold
+          ? 'low-stock'
+          : 'overstock';
+
+  return {
+    id: String(raw.id ?? raw._id ?? raw.sku ?? ''),
+    type,
+    sku: String(raw.sku ?? ''),
+    productName: String(raw.productName ?? raw.item_name ?? raw.name ?? raw.sku ?? 'Unknown'),
+    currentLevel,
+    threshold,
+    priority,
+  };
+}
+
 export async function fetchStockAlerts(): Promise<StockAlert[]> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.inventory.alerts}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch stock alerts');
   const result = await response.json();
   const arr = result.data ?? result ?? [];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => normalizeStockAlert(item as Record<string, unknown>));
 }
 
 // --- Inter-Warehouse Transfers ---
@@ -658,12 +1256,34 @@ export interface Rejection {
   severity: 'critical' | 'high' | 'medium';
 }
 
+function normalizeQCInspection(raw: unknown, index: number): QCInspection {
+  const i = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const statusRaw = String(i.status ?? 'pending').toLowerCase();
+  const status: QCInspection['status'] =
+    statusRaw === 'passed' || statusRaw === 'failed' || statusRaw === 'pending'
+      ? statusRaw
+      : 'pending';
+
+  return {
+    id: String(i.id ?? i.inspection_id ?? `inspection-${index}`),
+    inspectionId: String(i.inspectionId ?? i.inspection_id ?? i.id ?? ''),
+    batchId: String(i.batchId ?? i.batch_id ?? ''),
+    productName: String(i.productName ?? i.product_name ?? i.check_type ?? ''),
+    inspector: String(i.inspector ?? 'System'),
+    date: String(i.date ?? '').split('T')[0] || new Date().toISOString().split('T')[0],
+    status,
+    score: Number(i.score) || 0,
+    itemsInspected: Number(i.itemsInspected ?? i.items_inspected) || 0,
+    defectsFound: Number(i.defectsFound ?? i.defects_found) || 0,
+  };
+}
+
 export async function fetchQCInspections(): Promise<QCInspection[]> {
   const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.qc.inspections}`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Failed to fetch inspections');
   const result = await response.json();
   const list = result.data ?? result ?? [];
-  return Array.isArray(list) ? list : [];
+  return Array.isArray(list) ? list.map(normalizeQCInspection) : [];
 }
 
 export async function createQCInspection(data: Partial<QCInspection>): Promise<void> {
@@ -689,7 +1309,7 @@ export async function createTemperatureLog(data: Partial<TemperatureLog>): Promi
     headers: authHeaders(),
     body: JSON.stringify(data)
   });
-  if (!response.ok) throw new Error('Failed to create temperature log');
+  if (!response.ok) throw await parseApiError(response, 'Failed to create temperature log');
 }
 
 export async function fetchQCRejections(): Promise<Rejection[]> {
@@ -714,7 +1334,68 @@ export async function fetchComplianceDocs(): Promise<ComplianceDoc[]> {
   if (!response.ok) throw new Error('Failed to fetch compliance docs');
   const result = await response.json();
   const list = result.data ?? result ?? [];
-  return Array.isArray(list) ? list : [];
+  return Array.isArray(list) ? list.map(normalizeComplianceDoc) : [];
+}
+
+function normalizeSampleResult(raw: unknown): SampleTest['result'] {
+  const value = String(raw ?? 'pending').toLowerCase();
+  if (value === 'pass' || value === 'passed') return 'pass';
+  if (value === 'fail' || value === 'failed') return 'fail';
+  return 'pending';
+}
+
+function normalizeSampleTest(raw: unknown, index: number): SampleTest {
+  const s = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const dateRaw = s.date ?? s.testDate ?? s.received_date ?? s.createdAt;
+  const date =
+    typeof dateRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw)
+      ? dateRaw
+      : String(dateRaw ?? '').split('T')[0] || new Date().toISOString().split('T')[0];
+
+  return {
+    id: String(s.id ?? s.sample_id ?? `sample-${index}`),
+    sampleId: String(s.sampleId ?? s.sample_id ?? s.id ?? ''),
+    batchId: String(s.batchId ?? s.batch_id ?? ''),
+    productName: String(s.productName ?? s.product_name ?? ''),
+    testType: String(s.testType ?? s.test_type ?? ''),
+    result: normalizeSampleResult(s.result),
+    testedBy: String(s.testedBy ?? s.tested_by ?? s.tester ?? 'System'),
+    date,
+  };
+}
+
+function normalizeComplianceDocStatus(raw: unknown): ComplianceDoc['status'] {
+  const value = String(raw ?? 'valid').toLowerCase();
+  if (value === 'active' || value === 'valid') return 'valid';
+  if (value === 'expiring-soon' || value === 'expiring_soon' || value === 'expiring soon' || value === 'pending') {
+    return 'expiring-soon';
+  }
+  if (value === 'expired') return 'expired';
+  return 'valid';
+}
+
+function normalizeComplianceDoc(raw: unknown, index: number): ComplianceDoc {
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const issuedRaw = d.issuedDate ?? d.issued_date ?? d.createdAt;
+  const expiryRaw = d.expiryDate ?? d.expiry_date;
+  const issuedDate =
+    typeof issuedRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(issuedRaw)
+      ? issuedRaw
+      : String(issuedRaw ?? '').split('T')[0] || '—';
+  const expiryDate =
+    typeof expiryRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(expiryRaw)
+      ? expiryRaw
+      : String(expiryRaw ?? '').split('T')[0] || '—';
+
+  return {
+    id: String(d.id ?? d.doc_id ?? `doc-${index}`),
+    docId: String(d.docId ?? d.doc_id ?? d.id ?? ''),
+    docName: String(d.docName ?? d.doc_name ?? d.title ?? 'Untitled Document'),
+    type: String(d.type ?? 'License'),
+    issuedDate,
+    expiryDate,
+    status: normalizeComplianceDocStatus(d.status),
+  };
 }
 
 export async function fetchSampleTests(): Promise<SampleTest[]> {
@@ -722,7 +1403,7 @@ export async function fetchSampleTests(): Promise<SampleTest[]> {
   if (!response.ok) throw new Error('Failed to fetch samples');
   const result = await response.json();
   const list = result.data ?? result ?? [];
-  return Array.isArray(list) ? list : [];
+  return Array.isArray(list) ? list.map(normalizeSampleTest) : [];
 }
 
 export async function createSampleTest(data: Partial<SampleTest>): Promise<void> {
@@ -882,10 +1563,21 @@ export async function assignPickerToShift(shiftId: string, pickerId: string, dat
     headers: authHeaders(),
     body: JSON.stringify({ pickerId, date }),
   });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || 'Failed to assign picker');
-  }
+  if (!response.ok) throw await parseApiError(response, 'Failed to assign picker');
+}
+
+export async function reassignPickerToShift(
+  shiftId: string,
+  previousPickerId: string,
+  newPickerId: string,
+  date: string
+): Promise<void> {
+  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.pickerShifts.reassign(shiftId)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ previousPickerId, newPickerId, date }),
+  });
+  if (!response.ok) throw await parseApiError(response, 'Failed to reassign picker');
 }
 
 // --- Workforce & Shifts ---
@@ -974,7 +1666,7 @@ export async function addStaff(data: Partial<Staff>): Promise<Staff> {
     headers: authHeaders(),
     body: JSON.stringify(data)
   });
-  if (!response.ok) throw new Error('Failed to add staff');
+  if (!response.ok) throw await parseApiError(response, 'Failed to add staff');
   const result = await response.json();
   return result.data ?? result;
 }
@@ -1147,7 +1839,7 @@ export async function addMachinery(data: Partial<Equipment>): Promise<Equipment>
     headers: authHeaders(),
     body: JSON.stringify(data)
   });
-  if (!response.ok) throw new Error('Failed to add machinery');
+  if (!response.ok) throw await parseApiError(response, 'Failed to add machinery');
   const result = await response.json();
   return result.data ?? result;
 }

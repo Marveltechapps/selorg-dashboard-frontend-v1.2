@@ -10,6 +10,7 @@ import { Warehouse, createWarehouse, updateWarehouse, fetchManagers, fetchCities
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AdminModal } from './AdminModal';
+import { LocationMapPicker } from './LocationMapPicker';
 
 interface AddWarehouseModalProps {
   open: boolean;
@@ -542,8 +543,19 @@ export function AddWarehouseModal({ open, onOpenChange, onSuccess, editWarehouse
                             <FieldHint error={errors.longitude} />
                           </div>
                         </div>
+                        <LocationMapPicker
+                          latitude={latitude}
+                          longitude={longitude}
+                          onPositionChange={(lat, lng) => {
+                            clearError('latitude');
+                            clearError('longitude');
+                            setLatitude(lat);
+                            setLongitude(lng);
+                          }}
+                          height="220px"
+                        />
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-                          Tip: Use Google Maps → right-click a location → coordinates for accurate lat/long.
+                          Tip: You can also type coordinates above; the map updates as you type.
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="space-y-2">

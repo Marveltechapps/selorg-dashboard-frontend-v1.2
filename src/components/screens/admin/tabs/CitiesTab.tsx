@@ -12,7 +12,11 @@ import { AddCityModal } from '../modals/AddCityModal';
 
 const PAGE_SIZE = 20;
 
-export function CitiesTab() {
+interface CitiesTabProps {
+  listRefreshKey?: number;
+}
+
+export function CitiesTab({ listRefreshKey = 0 }: CitiesTabProps) {
   const [data, setData] = useState<City[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -36,7 +40,9 @@ export function CitiesTab() {
     }
   }, [search, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load, listRefreshKey]);
 
   const handleAdd = () => {
     setEditCity(null);

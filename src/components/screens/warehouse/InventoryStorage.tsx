@@ -16,13 +16,23 @@ import {
   createInternalTransfer as apiCreateInternalTransfer,
   updateTransferStatus as apiUpdateTransferStatus,
   fetchStockAlerts,
+  fetchInventorySummary,
+  fetchInventoryMeta,
+  createReorderRequest as apiCreateReorderRequest,
   InventoryItem,
   StorageLocation,
   Adjustment,
   CycleCount,
   InternalTransfer,
-  StockAlert
+  StockAlert,
+  InventorySummary,
+  InventoryMeta,
 } from './warehouseApi';
+
+function formatAlertPriority(priority?: StockAlert['priority']): string {
+  const value = priority ?? 'medium';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 export function InventoryStorage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'stock-levels' | 'cycle-counts' | 'transfers' | 'alerts'>('overview');
@@ -43,6 +53,8 @@ export function InventoryStorage() {
   const [transfers, setTransfers] = useState<InternalTransfer[]>([]);
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const [storage, setStorage] = useState<StorageLocation[]>([]);
+  const [summary, setSummary] = useState<InventorySummary | null>(null);
+  const [meta, setMeta] = useState<InventoryMeta>({ zones: [], staff: [], adjustmentTypes: [] });
 
   const [newAdjustment, setNewAdjustment] = useState({
     type: 'Cycle Count Adj.',
@@ -85,31 +97,68 @@ export function InventoryStorage() {
   const loadData = async () => {
     setLoading(true);
     try {
+      const metaPromise = fetchInventoryMeta();
+      const summaryPromise = fetchInventorySummary();
+
       if (activeTab === 'overview') {
-        const [locs, adjs, items, counts, alerts] = await Promise.all([
+        const [locs, adjs, items, counts, alerts, metaData, summaryData] = await Promise.all([
           fetchStorageLocations(),
           fetchAdjustments(),
           fetchInventoryItems(),
           fetchCycleCounts(),
-          fetchStockAlerts()
+          fetchStockAlerts(),
+          metaPromise,
+          summaryPromise,
         ]);
         setStorage(locs);
         setAdjustments(adjs);
         setInventoryItems(items);
         setCycleCounts(counts);
         setStockAlerts(alerts);
+        setMeta(metaData);
+        setSummary(summaryData);
       } else if (activeTab === 'stock-levels') {
-        const items = await fetchInventoryItems();
+        const [items, metaData, summaryData] = await Promise.all([
+          fetchInventoryItems(),
+          metaPromise,
+          summaryPromise,
+        ]);
         setInventoryItems(items);
+        setMeta(metaData);
+        setSummary(summaryData);
       } else if (activeTab === 'cycle-counts') {
-        const counts = await fetchCycleCounts();
+        const [counts, metaData, summaryData] = await Promise.all([
+          fetchCycleCounts(),
+          metaPromise,
+          summaryPromise,
+        ]);
         setCycleCounts(counts);
+        setMeta(metaData);
+        setSummary(summaryData);
       } else if (activeTab === 'transfers') {
-        const trfs = await fetchInternalTransfers();
+        const [trfs, items, locs, metaData, summaryData] = await Promise.all([
+          fetchInternalTransfers(),
+          fetchInventoryItems(),
+          fetchStorageLocations(),
+          metaPromise,
+          summaryPromise,
+        ]);
         setTransfers(trfs);
+        setInventoryItems(items);
+        setStorage(locs);
+        setMeta(metaData);
+        setSummary(summaryData);
       } else if (activeTab === 'alerts') {
-        const alerts = await fetchStockAlerts();
+        const [alerts, items, metaData, summaryData] = await Promise.all([
+          fetchStockAlerts(),
+          fetchInventoryItems(),
+          metaPromise,
+          summaryPromise,
+        ]);
         setStockAlerts(alerts);
+        setInventoryItems(items);
+        setMeta(metaData);
+        setSummary(summaryData);
       }
     } catch (error) {
       toast.error('Failed to load inventory data');
@@ -225,29 +274,35 @@ export function InventoryStorage() {
     setShowReorderModal(true);
   };
 
-  const createReorder = () => {
+  const createReorder = async () => {
     if (newReorder.sku && newReorder.reorderQuantity) {
-      // In a real app, this would call an API to create a purchase order/reorder request
-      toast.success(`Reorder request created for ${newReorder.productName}`, {
-        description: `Quantity: ${newReorder.reorderQuantity} units`,
-      });
-      
-      // Update the alert if it was out of stock or low stock
-      if (selectedAlertForReorder && (selectedAlertForReorder.type === 'out-of-stock' || selectedAlertForReorder.type === 'low-stock')) {
-        setStockAlerts(stockAlerts.filter(a => a.id !== selectedAlertForReorder.id));
+      try {
+        await apiCreateReorderRequest({
+          sku: newReorder.sku,
+          quantity: parseInt(newReorder.reorderQuantity, 10),
+          priority: newReorder.priority,
+          notes: newReorder.notes,
+          alertId: selectedAlertForReorder?.id,
+          productName: newReorder.productName,
+        });
+        toast.success(`Reorder request created for ${newReorder.productName}`, {
+          description: `Quantity: ${newReorder.reorderQuantity} units`,
+        });
+        setNewReorder({
+          sku: '',
+          productName: '',
+          currentStock: 0,
+          minStock: 0,
+          reorderQuantity: '',
+          priority: 'medium',
+          notes: '',
+        });
+        setShowReorderModal(false);
+        setSelectedAlertForReorder(null);
+        loadData();
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to create reorder request');
       }
-      
-      setNewReorder({
-        sku: '',
-        productName: '',
-        currentStock: 0,
-        minStock: 0,
-        reorderQuantity: '',
-        priority: 'medium',
-        notes: '',
-      });
-      setShowReorderModal(false);
-      setSelectedAlertForReorder(null);
     } else {
       toast.error('Please fill in all required fields');
     }
@@ -313,10 +368,54 @@ export function InventoryStorage() {
     window.URL.revokeObjectURL(url);
   };
 
-  const occupiedBins = storage.filter(s => s.status === 'occupied').length;
-  const totalBins = storage.length;
+  const occupiedBins = summary?.occupiedBins ?? storage.filter(s => s.status === 'occupied').length;
+  const totalBins = summary?.totalBins ?? storage.length;
   const occupancyRate = totalBins > 0 ? Math.round((occupiedBins / totalBins) * 100) : 0;
-  const totalStockValue = inventoryItems.reduce((sum, item) => sum + item.value, 0);
+  const totalStockValue = summary?.stockValue ?? inventoryItems.reduce((sum, item) => sum + item.value, 0);
+  const totalSkus = summary?.totalSKUs ?? inventoryItems.length;
+  const cycleCountsInProgress = summary?.cycleCountsInProgress ?? cycleCounts.filter(c => c.status === 'in-progress').length;
+  const highPriorityAlerts = summary?.highPriorityAlerts ?? stockAlerts.filter(a => a.priority === 'high').length;
+
+  const storageGroups = (() => {
+    const groups = new Map<string, StorageLocation[]>();
+    for (const location of storage) {
+      const key = location.zone?.trim() || location.aisle?.trim() || 'General';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(location);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  })();
+
+  const locationOptions = (() => {
+    const options = new Map<string, string>();
+    for (const loc of storage) {
+      options.set(loc.id, loc.sku ? `${loc.id} (${loc.sku})` : loc.id);
+    }
+    for (const item of inventoryItems) {
+      if (item.location && item.location !== '—' && !options.has(item.location)) {
+        options.set(item.location, `${item.location} — ${item.productName}`);
+      }
+    }
+    return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+  })();
+
+  const handleAdjustmentSkuChange = (sku: string) => {
+    const item = inventoryItems.find((i) => i.sku === sku);
+    setNewAdjustment({
+      ...newAdjustment,
+      sku,
+      productName: item?.productName ?? '',
+    });
+  };
+
+  const handleTransferSkuChange = (sku: string) => {
+    const item = inventoryItems.find((i) => i.sku === sku);
+    setNewTransfer({
+      ...newTransfer,
+      sku,
+      fromLocation: item?.location ?? newTransfer.fromLocation,
+    });
+  };
   
   const filteredInventoryItems = inventoryItems.filter(i =>
     i.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -383,7 +482,7 @@ export function InventoryStorage() {
       />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-5 gap-3">
         <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Grid size={18} /></div>
@@ -397,7 +496,7 @@ export function InventoryStorage() {
             <div className="p-2 bg-green-50 text-green-600 rounded-lg"><Package size={18} /></div>
             <span className="text-sm font-bold text-[#64748B]">Total SKUs</span>
           </div>
-          <p className="text-2xl font-bold text-[#1E293B]">{inventoryItems.length}</p>
+          <p className="text-2xl font-bold text-[#1E293B]">{totalSkus}</p>
           <p className="text-xs text-[#64748B]">In Stock</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
@@ -413,7 +512,7 @@ export function InventoryStorage() {
             <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><ClipboardCheck size={18} /></div>
             <span className="text-sm font-bold text-[#64748B]">Cycle Counts</span>
           </div>
-          <p className="text-2xl font-bold text-[#1E293B]">{cycleCounts.filter(c => c.status === 'in-progress').length}</p>
+          <p className="text-2xl font-bold text-[#1E293B]">{cycleCountsInProgress}</p>
           <p className="text-xs text-[#64748B]">In Progress</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
@@ -421,7 +520,7 @@ export function InventoryStorage() {
             <div className="p-2 bg-red-50 text-red-600 rounded-lg"><AlertTriangle size={18} /></div>
             <span className="text-sm font-bold text-[#64748B]">Alerts</span>
           </div>
-          <p className="text-2xl font-bold text-[#1E293B]">{stockAlerts.filter(a => a.priority === 'high').length}</p>
+          <p className="text-2xl font-bold text-[#1E293B]">{highPriorityAlerts}</p>
           <p className="text-xs text-[#64748B]">High Priority</p>
         </div>
       </div>
@@ -481,14 +580,14 @@ export function InventoryStorage() {
               </div>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-4 gap-4">
+              <div className={`grid gap-4 ${storageGroups.length <= 4 ? 'grid-cols-4' : 'grid-cols-2 md:grid-cols-4'}`}>
                 {storage.length === 0 ? (
                   <div className="col-span-4 py-12 text-center text-[#64748B] text-sm">No storage locations configured</div>
-                ) : ['A', 'B', 'C', 'D'].map((aisle) => (
-                  <div key={aisle} className="space-y-2">
-                    <h4 className="text-center font-bold text-[#64748B] text-xs">Aisle {aisle}</h4>
+                ) : storageGroups.map(([groupKey, locations]) => (
+                  <div key={groupKey} className="space-y-2">
+                    <h4 className="text-center font-bold text-[#64748B] text-xs">Zone {groupKey}</h4>
                     <div className="grid grid-rows-6 gap-1">
-                      {storage.filter(s => s.aisle === aisle || (s.aisle && s.aisle.startsWith(aisle))).map((location) => (
+                      {locations.map((location) => (
                         <div 
                           key={location.id}
                           onClick={() => setSelectedLocation(location)}
@@ -865,11 +964,11 @@ export function InventoryStorage() {
                   </div>
                 </div>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  alert.priority === 'high' ? 'bg-red-100 text-red-700' :
-                  alert.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
+                  (alert.priority ?? 'medium') === 'high' ? 'bg-red-100 text-red-700' :
+                  (alert.priority ?? 'medium') === 'medium' ? 'bg-amber-100 text-amber-700' :
                   'bg-blue-100 text-blue-700'
                 }`}>
-                  {alert.priority.charAt(0).toUpperCase() + alert.priority.slice(1)}
+                  {formatAlertPriority(alert.priority)}
                 </span>
               </div>
               
@@ -968,31 +1067,33 @@ export function InventoryStorage() {
                   onChange={(e) => setNewAdjustment({...newAdjustment, type: e.target.value})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 >
-                  <option>Cycle Count Adj.</option>
-                  <option>Damage Write-off</option>
-                  <option>Expiry Removal</option>
-                  <option>Found Items</option>
-                  <option>Manual Correction</option>
+                  {(meta.adjustmentTypes.length ? meta.adjustmentTypes : ['Cycle Count Adj.', 'Manual Correction']).map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">SKU</label>
-                <input 
-                  type="text"
-                  placeholder="SKU-XXXX"
+                <select
                   value={newAdjustment.sku}
-                  onChange={(e) => setNewAdjustment({...newAdjustment, sku: e.target.value})}
+                  onChange={(e) => handleAdjustmentSkuChange(e.target.value)}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
-                />
+                >
+                  <option value="">Select SKU</option>
+                  {inventoryItems.map((item) => (
+                    <option key={item.id} value={item.sku}>
+                      {item.sku} — {item.productName}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">Product Name</label>
                 <input 
                   type="text"
-                  placeholder="Product name"
+                  readOnly
                   value={newAdjustment.productName}
-                  onChange={(e) => setNewAdjustment({...newAdjustment, productName: e.target.value})}
-                  className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
+                  className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg bg-[#F8FAFC] text-[#64748B]"
                 />
               </div>
               <div>
@@ -1053,10 +1154,9 @@ export function InventoryStorage() {
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 >
                   <option value="">Select zone</option>
-                  <option>Zone A</option>
-                  <option>Zone B</option>
-                  <option>Zone C</option>
-                  <option>Zone D</option>
+                  {meta.zones.map((zone) => (
+                    <option key={zone.id} value={zone.name}>{zone.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1066,11 +1166,12 @@ export function InventoryStorage() {
                   onChange={(e) => setNewCycleCount({...newCycleCount, assignedTo: e.target.value})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 >
-                  <option value="">Select picker</option>
-                  <option>Mike T.</option>
-                  <option>Sarah L.</option>
-                  <option>Emma K.</option>
-                  <option>John D.</option>
+                  <option value="">Select staff member</option>
+                  {meta.staff.map((member) => (
+                    <option key={member.id} value={member.name}>
+                      {member.name} ({member.role})
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1114,34 +1215,45 @@ export function InventoryStorage() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">SKU</label>
-                <input 
-                  type="text"
-                  placeholder="SKU-XXXX"
+                <select
                   value={newTransfer.sku}
-                  onChange={(e) => setNewTransfer({...newTransfer, sku: e.target.value})}
+                  onChange={(e) => handleTransferSkuChange(e.target.value)}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
-                />
+                >
+                  <option value="">Select SKU</option>
+                  {inventoryItems.map((item) => (
+                    <option key={item.id} value={item.sku}>
+                      {item.sku} — {item.productName} ({item.currentStock} in stock)
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-[#1E293B] mb-2">From Location</label>
-                  <input 
-                    type="text"
-                    placeholder="A-12-03"
+                  <select
                     value={newTransfer.fromLocation}
                     onChange={(e) => setNewTransfer({...newTransfer, fromLocation: e.target.value})}
                     className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
-                  />
+                  >
+                    <option value="">Select location</option>
+                    {locationOptions.map((loc) => (
+                      <option key={`from-${loc.value}`} value={loc.value}>{loc.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#1E293B] mb-2">To Location</label>
-                  <input 
-                    type="text"
-                    placeholder="B-15-02"
+                  <select
                     value={newTransfer.toLocation}
                     onChange={(e) => setNewTransfer({...newTransfer, toLocation: e.target.value})}
                     className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
-                  />
+                  >
+                    <option value="">Select location</option>
+                    {locationOptions.map((loc) => (
+                      <option key={`to-${loc.value}`} value={loc.value}>{loc.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div>

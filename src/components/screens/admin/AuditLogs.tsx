@@ -86,15 +86,15 @@ export function AuditLogs() {
   });
   const [meta, setMeta] = useState<{ total: number; page: number; limit: number; pages: number } | null>(null);
 
-  const getDateRange = () => {
-    if (!filters.timeframe) return {};
+  const getDateRange = (sourceFilters = filters) => {
+    if (!sourceFilters.timeframe) return {};
     const now = new Date();
     const to = now.toISOString().split('T')[0];
     let from: string;
-    if (filters.timeframe === '24h') {
+    if (sourceFilters.timeframe === '24h') {
       const d = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       from = d.toISOString().split('T')[0];
-    } else if (filters.timeframe === '7d') {
+    } else if (sourceFilters.timeframe === '7d') {
       const d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       from = d.toISOString().split('T')[0];
     } else {
@@ -104,14 +104,14 @@ export function AuditLogs() {
     return { dateFrom: from, dateTo: to };
   };
 
-  const buildFilters = (page = 1) => {
-    const { dateFrom, dateTo } = getDateRange();
+  const buildFilters = (page = 1, sourceFilters = filters) => {
+    const { dateFrom, dateTo } = getDateRange(sourceFilters);
     return {
-      module: filters.module || undefined,
-      action: filters.action || undefined,
-      severity: filters.severity || undefined,
-      user: filters.user?.trim() || undefined,
-      search: filters.search?.trim() || undefined,
+      module: sourceFilters.module || undefined,
+      action: sourceFilters.action || undefined,
+      severity: sourceFilters.severity || undefined,
+      user: sourceFilters.user?.trim() || undefined,
+      search: sourceFilters.search?.trim() || undefined,
       dateFrom,
       dateTo,
       page,
@@ -123,10 +123,10 @@ export function AuditLogs() {
     loadData();
   }, []);
 
-  const loadData = async (page = 1) => {
+  const loadData = async (page = 1, sourceFilters = filters) => {
     setLoading(true);
     try {
-      const f = buildFilters(page);
+      const f = buildFilters(page, sourceFilters);
       const [logsResult, statsData] = await Promise.all([
         fetchAuditLogs(f),
         fetchAuditStats(),
@@ -158,8 +158,9 @@ export function AuditLogs() {
   };
 
   const handleClearFilters = () => {
-    setFilters({ module: '', action: '', severity: '', user: '', search: '', timeframe: '' });
-    loadData(1);
+    const reset = { module: '', action: '', severity: '', user: '', search: '', timeframe: '' as '' };
+    setFilters(reset);
+    loadData(1, reset);
   };
 
   const handlePageChange = (nextPage: number) => {

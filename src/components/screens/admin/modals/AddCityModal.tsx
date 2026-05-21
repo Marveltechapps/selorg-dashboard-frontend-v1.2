@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { City, createCity, updateCity } from '../masterDataApi';
 import { toast } from 'sonner';
+import { LocationMapPicker } from './LocationMapPicker';
 
 interface AddCityModalProps {
   open: boolean;
@@ -23,6 +24,8 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
   const [state, setState] = useState('');
   const [country, setCountry] = useState('India');
   const [isActive, setIsActive] = useState(true);
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
   const [metadataJson, setMetadataJson] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,6 +37,8 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
         setState(editCity.state ?? '');
         setCountry(editCity.country ?? 'India');
         setIsActive(editCity.isActive !== false);
+        setLatitude(editCity.latitude != null ? String(editCity.latitude) : '');
+        setLongitude(editCity.longitude != null ? String(editCity.longitude) : '');
         setMetadataJson(
           editCity.metadata != null && Object.keys(editCity.metadata as object).length
             ? JSON.stringify(editCity.metadata, null, 2)
@@ -45,6 +50,8 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
         setState('');
         setCountry('India');
         setIsActive(true);
+        setLatitude('');
+        setLongitude('');
         setMetadataJson('');
       }
     }
@@ -61,6 +68,25 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
       toast.error('City code must be exactly 3 uppercase letters (e.g. BLR)');
       return;
     }
+    const latTrim = latitude.trim();
+    const lngTrim = longitude.trim();
+    if ((latTrim === '') !== (lngTrim === '')) {
+      toast.error('Enter both latitude and longitude, or leave both empty');
+      return;
+    }
+    if (latTrim && lngTrim) {
+      const la = parseFloat(latTrim);
+      const lo = parseFloat(lngTrim);
+      if (!Number.isFinite(la) || la < -90 || la > 90) {
+        toast.error('Latitude must be between -90 and 90');
+        return;
+      }
+      if (!Number.isFinite(lo) || lo < -180 || lo > 180) {
+        toast.error('Longitude must be between -180 and 180');
+        return;
+      }
+    }
+
     let metadata: Record<string, unknown> | null | undefined = undefined;
     if (metadataJson.trim()) {
       try {
@@ -80,6 +106,13 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
 
     setSubmitting(true);
     try {
+      const coordPayload =
+        latTrim && lngTrim
+          ? { latitude: parseFloat(latTrim), longitude: parseFloat(lngTrim) }
+          : editCity
+            ? { latitude: '', longitude: '' }
+            : {};
+
       if (editCity) {
         await updateCity(editCity.id, {
           code: codeTrim,
@@ -87,6 +120,7 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
           state: state.trim() || undefined,
           country: country.trim() || 'India',
           isActive,
+          ...coordPayload,
           ...(metadata !== undefined ? { metadata } : {}),
         });
         toast.success('City updated');
@@ -96,6 +130,7 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
           name: name.trim(),
           state: state.trim() || undefined,
           country: country.trim() || 'India',
+          ...coordPayload,
           ...(metadata ? { metadata } : {}),
         });
         toast.success('City created');
@@ -148,6 +183,39 @@ export function AddCityModal({ open, onOpenChange, onSuccess, editCity }: AddCit
             <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="India" />
           </div>
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="city-lat">Latitude (optional)</Label>
+            <Input
+              id="city-lat"
+              type="number"
+              step="0.0001"
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value)}
+              placeholder="12.9716"
+            />
+          </div>
+          <div>
+            <Label htmlFor="city-lng">Longitude (optional)</Label>
+            <Input
+              id="city-lng"
+              type="number"
+              step="0.0001"
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value)}
+              placeholder="77.5946"
+            />
+          </div>
+        </div>
+        <LocationMapPicker
+          latitude={latitude}
+          longitude={longitude}
+          onPositionChange={(lat, lng) => {
+            setLatitude(lat);
+            setLongitude(lng);
+          }}
+          height="200px"
+        />
         {editCity && (
           <div className="flex items-center gap-2">
             <Switch checked={isActive} onCheckedChange={setIsActive} id="city-active" />

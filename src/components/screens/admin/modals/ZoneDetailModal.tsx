@@ -12,22 +12,45 @@ import {
   AlertTriangle,
   Activity,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
-import { Zone, Incident, LiveMetrics, fetchIncidents, fetchLiveMetrics, fetchZoneDetails, fetchZoneOrderTrend } from '../citywideControlApi';
+import {
+  Zone,
+  Incident,
+  LiveMetrics,
+  fetchIncidents,
+  fetchLiveMetrics,
+  fetchZoneDetails,
+  fetchZoneOrderTrend,
+  requestZoneRiders,
+} from '../citywideControlApi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { toast } from 'sonner';
 
 interface ZoneDetailModalProps {
   zoneId: string | null;
   open: boolean;
   onClose: () => void;
+  onViewIncident?: (incidentId: string) => void;
+  onManageStoreOutage?: (store: { storeId: string; storeName: string }) => void;
+  onDataRefresh?: () => void;
 }
 
-export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps) {
+export function ZoneDetailModal({
+  zoneId,
+  open,
+  onClose,
+  onViewIncident,
+  onManageStoreOutage,
+  onDataRefresh,
+}: ZoneDetailModalProps) {
   const [zone, setZone] = useState<Zone | null>(null);
   const [trendData, setTrendData] = useState<{ time: string; orders: number }[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [liveMetrics, setLiveMetrics] = useState<LiveMetrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [assigningRiders, setAssigningRiders] = useState(false);
 
   useEffect(() => {
     if (open && zoneId) {
@@ -66,6 +89,38 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
 
   const handleOpenChange = (next: boolean) => {
     if (!next) onClose();
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadZoneDetails(false);
+      onDataRefresh?.();
+      toast.success('Zone data refreshed');
+    } catch {
+      toast.error('Failed to refresh zone data');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleAssignMoreRiders = async () => {
+    if (!zoneId || !zone) return;
+    setAssigningRiders(true);
+    try {
+      const result = await requestZoneRiders(zoneId);
+      toast.success(
+        result.notified > 0
+          ? `Notified ${result.notified} rider(s) for ${result.zoneName}`
+          : `Rider request logged for ${result.zoneName} (no riders online to notify)`,
+      );
+      await loadZoneDetails(true);
+      onDataRefresh?.();
+    } catch {
+      toast.error('Failed to request additional riders');
+    } finally {
+      setAssigningRiders(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -123,6 +178,21 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
       title={zone ? `Zone ${zone.zoneNumber} - ${zone.zoneName}` : 'Zone details'}
       subtitle={zone ? `Capacity: ${zone.capacityPercent}%` : 'Loading zone data…'}
       maxWidth="max-w-3xl"
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing || loading || !zone}
+          >
+            <RefreshCw size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      }
     >
       {loading || !zone ? (
         <div className="flex min-h-[16rem] items-center justify-center px-6 py-12">
@@ -185,7 +255,7 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                   Avg Delivery Time
                 </div>
                 <div className="text-2xl font-bold">{zone.avgDeliveryTime}</div>
-                <div className="text-xs text-gray-500 mt-1">Target: 15m 00s</div>
+                <div className="text-xs text-gray-500 mt-1">Target: {targetTime}</div>
               </div>
             </div>
 
@@ -239,9 +309,22 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                   </div>
                 </div>
                 {store.status === 'offline' && (
-                  <div className="mt-2 text-xs text-rose-600 flex items-center gap-1">
-                    <AlertTriangle size={12} />
-                    Store is currently offline
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="text-xs text-rose-600 flex items-center gap-1">
+                      <AlertTriangle size={12} />
+                      Store is currently offline
+                    </div>
+                    {onManageStoreOutage && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
+                        onClick={() => onManageStoreOutage({ storeId: store.storeId, storeName: store.storeName })}
+                      >
+                        Manage
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -279,7 +362,21 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                 </div>
               )}
 
-              <Button className="w-full">Assign More Riders</Button>
+              <Button
+                type="button"
+                className="w-full"
+                disabled={assigningRiders || !zoneId}
+                onClick={() => void handleAssignMoreRiders()}
+              >
+                {assigningRiders ? (
+                  <>
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    Requesting riders…
+                  </>
+                ) : (
+                  'Assign More Riders'
+                )}
+              </Button>
             </div>
           </TabsContent>
 
@@ -329,14 +426,23 @@ export function ZoneDetailModal({ zoneId, open, onClose }: ZoneDetailModalProps)
                   Active Incidents
                 </div>
                 {zoneIncidents.map((incident) => (
-                  <div key={incident.id} className="bg-white p-3 rounded border border-rose-200 mb-2 last:mb-0">
+                  <button
+                    key={incident.id}
+                    type="button"
+                    className="w-full text-left bg-white p-3 rounded border border-rose-200 mb-2 last:mb-0 hover:bg-rose-50/50 transition-colors"
+                    onClick={() => onViewIncident?.(incident.id)}
+                    disabled={!onViewIncident}
+                  >
                     <div className="font-bold">{incident.title}</div>
                     <div className="text-sm text-gray-500 mt-1">
                       {incident.storeName || incident.storeId || zone.zoneName}
                     </div>
                     <div className="text-xs text-gray-500 mt-1">{incident.description}</div>
                     <div className="text-xs text-rose-700 mt-1 uppercase font-semibold">{incident.severity}</div>
-                  </div>
+                    {onViewIncident && (
+                      <div className="text-xs text-emerald-700 mt-2 font-medium">View details →</div>
+                    )}
+                  </button>
                 ))}
               </div>
             ) : (

@@ -440,8 +440,8 @@ export function OutboundOps() {
                 )}
                 {filteredAutoPicklists.map(order => (
                   <tr key={order.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-6 py-4 font-mono text-[#475569]">{order.orderId}</td>
-                    <td className="px-6 py-4 font-medium text-[#1E293B]">{order.customer}</td>
+                    <td className="px-6 py-4 font-mono text-[#475569]">{order.orderId || '—'}</td>
+                    <td className="px-6 py-4 font-medium text-[#1E293B]">{order.customer || '—'}</td>
                     <td className="px-6 py-4 text-[#64748B]">{order.items} items</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -526,8 +526,8 @@ export function OutboundOps() {
                 )}
                 {filteredManualPicklists.map(order => (
                   <tr key={order.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-6 py-4 font-mono text-[#475569]">{order.orderId}</td>
-                    <td className="px-6 py-4 font-medium text-[#1E293B]">{order.customer}</td>
+                    <td className="px-6 py-4 font-mono text-[#475569]">{order.orderId || '—'}</td>
+                    <td className="px-6 py-4 font-medium text-[#1E293B]">{order.customer || '—'}</td>
                     <td className="px-6 py-4 text-[#64748B]">{order.items} items</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${

@@ -26,6 +26,14 @@ import {
   LeaveRequest,
   Training
 } from './warehouseApi';
+import {
+  STAFF_ROLES,
+  STAFF_SHIFTS,
+  formatIndianPhoneInput,
+  normalizeIndianPhone,
+  validateNewStaffForm,
+  type NewStaffForm,
+} from './workforceConstants';
 
 export function WorkforceShifts() {
   const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'attendance' | 'live-attendance' | 'performance' | 'leave-requests' | 'training'>('overview');
@@ -56,7 +64,8 @@ export function WorkforceShifts() {
   const [liveSite, setLiveSite] = useState('');
   const [newSchedule, setNewSchedule] = useState({ date: '', shift: 'morning' as const, requiredStaff: '' });
   const [newAttendance, setNewAttendance] = useState({ staffId: '', date: '', checkIn: '', checkOut: '' });
-  const [newStaff, setNewStaff] = useState({ name: '', email: '', phone: '', role: '', shift: 'morning' as const, hourlyRate: '' });
+  const [newStaff, setNewStaff] = useState<NewStaffForm>({ name: '', email: '', phone: '', role: '', shift: 'morning', hourlyRate: '' });
+  const [addingStaff, setAddingStaff] = useState(false);
   const [newLeave, setNewLeave] = useState({ staffId: '', leaveType: 'casual' as const, startDate: '', endDate: '', reason: '' });
   const [newTraining, setNewTraining] = useState({ title: '', type: '', date: '', duration: '', instructor: '', capacity: '' });
 
@@ -175,25 +184,37 @@ export function WorkforceShifts() {
   };
 
   const addStaff = async () => {
-    if (!newStaff.name?.trim()) {
-      toast.error('Name is required');
+    const validationError = validateNewStaffForm(newStaff);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
+
+    const normalizedPhone = normalizeIndianPhone(newStaff.phone);
+    if (!normalizedPhone) {
+      toast.error('Enter a valid Indian mobile number');
+      return;
+    }
+
+    setAddingStaff(true);
     try {
-      await apiAddStaff({
+      const created = await apiAddStaff({
         name: newStaff.name.trim(),
-        email: newStaff.email || undefined,
-        phone: newStaff.phone || undefined,
-        role: newStaff.role || 'Picker',
+        email: newStaff.email.trim().toLowerCase(),
+        phone: normalizedPhone,
+        role: newStaff.role,
         shift: newStaff.shift,
-        hourlyRate: newStaff.hourlyRate ? parseFloat(newStaff.hourlyRate) : undefined,
+        hourlyRate: parseFloat(newStaff.hourlyRate),
       });
       toast.success('Staff member added');
       setShowRosterModal(false);
       setNewStaff({ name: '', email: '', phone: '', role: '', shift: 'morning', hourlyRate: '' });
-      loadData();
+      setStaff((prev) => [...prev, created]);
+      void loadData();
     } catch (error) {
-      toast.error('Failed to add staff');
+      toast.error(error instanceof Error ? error.message : 'Failed to add staff');
+    } finally {
+      setAddingStaff(false);
     }
   };
 
@@ -441,7 +462,7 @@ export function WorkforceShifts() {
       />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Users size={18} /></div>
@@ -1207,9 +1228,9 @@ export function WorkforceShifts() {
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">Phone</label>
                 <input 
                   type="tel"
-                  placeholder="+1-555-0000"
+                  placeholder="+91 98765 43210"
                   value={newStaff.phone}
-                  onChange={(e) => setNewStaff({...newStaff, phone: e.target.value})}
+                  onChange={(e) => setNewStaff({...newStaff, phone: formatIndianPhoneInput(e.target.value)})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 />
               </div>
@@ -1217,35 +1238,34 @@ export function WorkforceShifts() {
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">Role</label>
                 <select 
                   value={newStaff.role}
-                  onChange={(e) => setNewStaff({...newStaff, role: e.target.value})}
+                  onChange={(e) => setNewStaff({...newStaff, role: e.target.value as NewStaffForm['role']})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 >
                   <option value="">Select role</option>
-                  <option>Picker</option>
-                  <option>Packer</option>
-                  <option>Forklift Operator</option>
-                  <option>QC Inspector</option>
-                  <option>Supervisor</option>
-                  <option>Warehouse Manager</option>
+                  {STAFF_ROLES.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">Shift</label>
                 <select 
                   value={newStaff.shift}
-                  onChange={(e) => setNewStaff({...newStaff, shift: e.target.value as any})}
+                  onChange={(e) => setNewStaff({...newStaff, shift: e.target.value as NewStaffForm['shift']})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
                 >
-                  <option value="morning">Morning (6AM - 2PM)</option>
-                  <option value="afternoon">Afternoon (2PM - 10PM)</option>
-                  <option value="night">Night (10PM - 6AM)</option>
+                  {STAFF_SHIFTS.map((shift) => (
+                    <option key={shift.value} value={shift.value}>{shift.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#1E293B] mb-2">Hourly Rate (₹)</label>
                 <input 
                   type="number"
-                  placeholder="18.00"
+                  min="1"
+                  step="1"
+                  placeholder="250"
                   value={newStaff.hourlyRate}
                   onChange={(e) => setNewStaff({...newStaff, hourlyRate: e.target.value})}
                   className="w-full px-4 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0891b2]"
@@ -1261,9 +1281,10 @@ export function WorkforceShifts() {
               </button>
               <button 
                 onClick={addStaff}
-                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4]"
+                disabled={addingStaff}
+                className="px-4 py-2 bg-[#0891b2] text-white font-medium rounded-lg hover:bg-[#06b6d4] disabled:opacity-50"
               >
-                Add Staff
+                {addingStaff ? 'Adding...' : 'Add Staff'}
               </button>
             </div>
           </div>

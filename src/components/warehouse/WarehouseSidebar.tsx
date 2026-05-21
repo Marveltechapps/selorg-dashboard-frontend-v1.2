@@ -1,6 +1,7 @@
 import React from 'react';
 import {
-  LayoutDashboard, 
+  LayoutDashboard,
+  Activity,
   ArrowDownToLine, 
   Package,
   TabletSmartphone,
@@ -53,6 +54,7 @@ export function WarehouseSidebar({ activeTab, setActiveTab, onLogout }: Warehous
 
   const navItems = [
     { id: 'overview', label: 'Warehouse Overview', icon: LayoutDashboard },
+    { id: 'navigation', label: 'Navigation', icon: Activity },
     { id: 'inbound', label: 'Inbound Ops', icon: ArrowDownToLine },
     { id: 'inventory', label: 'Inventory & Storage', icon: Package },
     { id: 'outbound', label: 'Outbound Ops', icon: ArrowUpFromLine },

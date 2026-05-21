@@ -32,6 +32,7 @@ function resultTypeBadgeClass(type: string): string {
 
 const WAREHOUSE_TABS = new Set([
   'overview',
+  'navigation',
   'inbound',
   'inventory',
   'outbound',

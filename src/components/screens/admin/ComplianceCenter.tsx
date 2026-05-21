@@ -33,6 +33,8 @@ import {
   fetchMetrics,
   fetchViolations,
   uploadDocument,
+  updateDocument,
+  deleteDocument,
   scheduleAudit,
   updateFindingStatus,
   acknowledgePolicy,
@@ -66,6 +68,8 @@ import {
   Search,
   Filter,
   BarChart3,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 
 export function ComplianceCenter() {
@@ -79,6 +83,7 @@ export function ComplianceCenter() {
 
   // Modal states
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showEditDocModal, setShowEditDocModal] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [showDocDetailsModal, setShowDocDetailsModal] = useState(false);
   const [showCertDetailsModal, setShowCertDetailsModal] = useState(false);
@@ -111,6 +116,21 @@ export function ComplianceCenter() {
     type: 'internal' as AuditRecord['type'],
     auditor: '',
     scheduledDate: '',
+  });
+  const [editDocForm, setEditDocForm] = useState<{
+    id: string;
+    name: string;
+    type: ComplianceDocument['type'];
+    category: ComplianceDocument['category'];
+    description: string;
+    file: File | null;
+  }>({
+    id: '',
+    name: '',
+    type: 'policy',
+    category: 'legal',
+    description: '',
+    file: null,
   });
 
   useEffect(() => {
@@ -173,6 +193,62 @@ export function ComplianceCenter() {
       loadData();
     } catch (error) {
       toast.error('Failed to schedule audit');
+    }
+  };
+
+  const handleDownloadDocument = (doc: ComplianceDocument) => {
+    if (doc.fileUrl) {
+      window.open(doc.fileUrl, '_blank', 'noopener,noreferrer');
+      toast.success(`${doc.name} download started`);
+      return;
+    }
+    toast.error('No file URL found for this document');
+  };
+
+  const handleOpenEditDocument = (doc: ComplianceDocument) => {
+    setEditDocForm({
+      id: doc.id,
+      name: doc.name,
+      type: doc.type,
+      category: doc.category,
+      description: doc.description || '',
+      file: null,
+    });
+    setShowEditDocModal(true);
+  };
+
+  const handleUpdateDocument = async () => {
+    if (!editDocForm.id) return;
+    if (!editDocForm.name.trim()) {
+      toast.error('Please enter a document name');
+      return;
+    }
+    try {
+      await updateDocument(editDocForm.id, {
+        name: editDocForm.name,
+        type: editDocForm.type,
+        category: editDocForm.category,
+        description: editDocForm.description,
+        file: editDocForm.file || undefined,
+      });
+      toast.success('Document updated successfully');
+      setShowEditDocModal(false);
+      setEditDocForm({ id: '', name: '', type: 'policy', category: 'legal', description: '', file: null });
+      loadData();
+    } catch (error) {
+      toast.error('Failed to update document');
+    }
+  };
+
+  const handleDeleteDocument = async (doc: ComplianceDocument) => {
+    const ok = window.confirm(`Delete document "${doc.name}"? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await deleteDocument(doc.id);
+      toast.success('Document deleted successfully');
+      loadData();
+    } catch (error) {
+      toast.error('Failed to delete document');
     }
   };
 
@@ -627,28 +703,25 @@ export function ComplianceCenter() {
                           size="sm" 
                           variant="outline"
                           type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const content = `Compliance Document: ${doc.name}\nVersion: ${doc.version}\nCategory: ${doc.category}\nStatus: ${doc.status}\nLast Updated: ${new Date(doc.lastUpdated ?? doc.uploadedAt).toLocaleString()}`;
-                            const blob = new Blob([content], { type: 'text/plain' });
-                            const url = window.URL.createObjectURL(blob);
-                            const link = document.createElement('a');
-                            link.href = url;
-                            link.download = `${doc.name}-v${doc.version}.txt`;
-                            link.style.display = 'none';
-                            document.body.appendChild(link);
-                            requestAnimationFrame(() => {
-                              link.click();
-                              setTimeout(() => {
-                                document.body.removeChild(link);
-                                window.URL.revokeObjectURL(url);
-                              }, 100);
-                            });
-                            toast.success(`${doc.name} downloaded`);
-                          }}
+                          onClick={() => handleDownloadDocument(doc)}
                         >
                           <Download size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          type="button"
+                          onClick={() => handleOpenEditDocument(doc)}
+                        >
+                          <Pencil size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          type="button"
+                          onClick={() => handleDeleteDocument(doc)}
+                        >
+                          <Trash2 size={14} />
                         </Button>
                       </div>
                     </TableCell>
@@ -1188,6 +1261,101 @@ export function ComplianceCenter() {
       </AdminModal>
 
       <AdminModal
+        open={showEditDocModal}
+        onOpenChange={(open) => {
+          setShowEditDocModal(open);
+          if (!open) {
+            setEditDocForm({ id: '', name: '', type: 'policy', category: 'legal', description: '', file: null });
+          }
+        }}
+        title="Edit Compliance Document"
+        subtitle="Update metadata and optionally replace the file"
+        icon={<Pencil className="h-5 w-5" />}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowEditDocModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateDocument}>Save Changes</Button>
+          </>
+        }
+      >
+        <AdminFormBody>
+          <AdminField label="Document Name" htmlFor="edit-doc-name">
+            <Input
+              id="edit-doc-name"
+              value={editDocForm.name}
+              onChange={(e) => setEditDocForm({ ...editDocForm, name: e.target.value })}
+            />
+          </AdminField>
+          <AdminFormGrid cols={2}>
+            <AdminField label="Type">
+              <Select
+                value={editDocForm.type}
+                onValueChange={(value: ComplianceDocument['type']) =>
+                  setEditDocForm({ ...editDocForm, type: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="certificate">Certificate</SelectItem>
+                  <SelectItem value="policy">Policy</SelectItem>
+                  <SelectItem value="license">License</SelectItem>
+                  <SelectItem value="audit">Audit Report</SelectItem>
+                  <SelectItem value="report">Compliance Report</SelectItem>
+                  <SelectItem value="agreement">Agreement</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
+            <AdminField label="Category">
+              <Select
+                value={editDocForm.category}
+                onValueChange={(value: ComplianceDocument['category']) =>
+                  setEditDocForm({ ...editDocForm, category: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="data-protection">Data Protection</SelectItem>
+                  <SelectItem value="financial">Financial</SelectItem>
+                  <SelectItem value="operational">Operational</SelectItem>
+                  <SelectItem value="legal">Legal</SelectItem>
+                  <SelectItem value="security">Security</SelectItem>
+                  <SelectItem value="tax">Tax</SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminField>
+          </AdminFormGrid>
+          <AdminField label="Description" htmlFor="edit-doc-description">
+            <Textarea
+              id="edit-doc-description"
+              rows={3}
+              value={editDocForm.description}
+              onChange={(e) => setEditDocForm({ ...editDocForm, description: e.target.value })}
+            />
+          </AdminField>
+          <AdminField label="Replace File (Optional)">
+            <Input
+              type="file"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                if (file && file.size > 10 * 1024 * 1024) {
+                  toast.error('File size must be less than 10MB');
+                  return;
+                }
+                setEditDocForm({ ...editDocForm, file });
+              }}
+            />
+          </AdminField>
+        </AdminFormBody>
+      </AdminModal>
+
+      <AdminModal
         open={showAuditModal}
         onOpenChange={(open) => {
           setShowAuditModal(open);
@@ -1277,18 +1445,7 @@ export function ComplianceCenter() {
               type="button"
               onClick={() => {
                 if (!selectedDoc) return;
-                const content = `Compliance Document: ${selectedDoc.name}\nVersion: ${selectedDoc.version}\nType: ${selectedDoc.type}\nCategory: ${selectedDoc.category}\nStatus: ${selectedDoc.status}\nLast Updated: ${new Date(selectedDoc.lastUpdated).toLocaleString()}\nUploaded: ${new Date(selectedDoc.uploadedAt).toLocaleDateString()}\nUploaded By: ${selectedDoc.uploadedBy}${selectedDoc.expiresAt ? `\nExpires: ${new Date(selectedDoc.expiresAt).toLocaleDateString()}` : ''}`;
-                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${selectedDoc.name}-v${selectedDoc.version}.txt`;
-                link.setAttribute('download', link.download);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
-                toast.success(`${selectedDoc.name} downloaded`);
+                handleDownloadDocument(selectedDoc);
               }}
             >
               <Download size={14} className="mr-1.5" /> Download
@@ -1339,6 +1496,19 @@ export function ComplianceCenter() {
                   <span className="text-[#71717a]">Uploaded By:</span>{' '}
                   <span className="font-medium text-[#18181b]">{selectedDoc.uploadedBy}</span>
                 </div>
+                {selectedDoc.fileUrl && (
+                  <div className="col-span-2">
+                    <span className="text-[#71717a]">File Link:</span>{' '}
+                    <a
+                      href={selectedDoc.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline break-all"
+                    >
+                      {selectedDoc.fileUrl}
+                    </a>
+                  </div>
+                )}
                 {selectedDoc.expiresAt && (
                   <>
                     <div>

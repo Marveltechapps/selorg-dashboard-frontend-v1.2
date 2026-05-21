@@ -8,6 +8,8 @@ export interface City {
   state?: string;
   country?: string;
   isActive?: boolean;
+  latitude?: number;
+  longitude?: number;
   metadata?: Record<string, unknown> | null;
   createdAt?: string;
   updatedAt?: string;
@@ -120,6 +122,8 @@ export async function fetchCities(params?: { isActive?: boolean; search?: string
     state: c.state,
     country: c.country,
     isActive: c.isActive,
+    latitude: c.latitude,
+    longitude: c.longitude,
     metadata: c.metadata,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
@@ -138,6 +142,8 @@ export async function getCity(id: string): Promise<City> {
     state: c.state,
     country: c.country,
     isActive: c.isActive,
+    latitude: c.latitude,
+    longitude: c.longitude,
     metadata: c.metadata,
   };
 }
@@ -156,6 +162,8 @@ export async function createCity(data: Partial<City>): Promise<City> {
     state: c.state,
     country: c.country,
     isActive: c.isActive,
+    latitude: c.latitude,
+    longitude: c.longitude,
     metadata: c.metadata,
   };
 }
@@ -174,6 +182,8 @@ export async function updateCity(id: string, data: Partial<City>): Promise<City>
     state: c.state,
     country: c.country,
     isActive: c.isActive,
+    latitude: c.latitude,
+    longitude: c.longitude,
     metadata: c.metadata,
   };
 }
