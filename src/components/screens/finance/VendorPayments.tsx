@@ -9,6 +9,7 @@ import { VendorInvoicesTable } from './VendorInvoicesTable';
 import { VendorInvoiceDetailsDrawer } from './VendorInvoiceDetailsDrawer';
 import { UploadInvoiceModal } from './UploadInvoiceModal';
 import { NewPaymentModal } from './NewPaymentModal';
+import { VendorPaymentWorkflowModal } from './VendorPaymentWorkflowModal';
 import { RejectInvoiceModal } from './RejectInvoiceModal';
 
 import { 
@@ -52,6 +53,8 @@ export function VendorPayments() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [workflowPaymentId, setWorkflowPaymentId] = useState<string | null>(null);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
 
   // --- Data Fetching ---
   const loadSummary = useCallback(async () => {
@@ -198,9 +201,22 @@ export function VendorPayments() {
   };
 
   const handleSchedule = (invoice: VendorInvoice) => {
-      // Set selected invoice for payment modal with today's date as default
       setSelectedInvoice(invoice);
       setPaymentOpen(true);
+  };
+
+  const handleContinueWorkflow = (invoice: VendorInvoice) => {
+      if (!invoice.paymentId) {
+          toast.error('No payment linked to this invoice');
+          return;
+      }
+      setWorkflowPaymentId(invoice.paymentId);
+      setWorkflowOpen(true);
+  };
+
+  const openWorkflow = (paymentId: string) => {
+      setWorkflowPaymentId(paymentId);
+      setWorkflowOpen(true);
   };
 
   const handleExport = () => {
@@ -291,6 +307,7 @@ export function VendorPayments() {
             onMarkPaid={handleMarkPaid}
             onReject={handleReject}
             onSchedule={handleSchedule}
+            onContinueWorkflow={handleContinueWorkflow}
             onViewDetails={handleViewDetails}
         />
       </div>
@@ -303,6 +320,10 @@ export function VendorPayments() {
             loadInvoices();
             loadSummary();
         }}
+        onOpenWorkflow={(paymentId) => {
+          setDetailsOpen(false);
+          openWorkflow(paymentId);
+        }}
       />
 
       <UploadInvoiceModal 
@@ -311,6 +332,7 @@ export function VendorPayments() {
         onSuccess={() => {
             loadInvoices();
             loadSummary();
+            loadVendors();
         }}
         vendors={vendors}
       />
@@ -321,12 +343,29 @@ export function VendorPayments() {
           setPaymentOpen(false);
           setSelectedInvoice(null);
         }}
-        onSuccess={() => {
+        onSuccess={(paymentId) => {
             loadInvoices();
             loadSummary();
+            if (paymentId) {
+              openWorkflow(paymentId);
+            }
         }}
         vendors={vendors}
+        onRefreshVendors={loadVendors}
         preselectedInvoice={selectedInvoice}
+      />
+
+      <VendorPaymentWorkflowModal
+        paymentId={workflowPaymentId}
+        open={workflowOpen}
+        onClose={() => {
+          setWorkflowOpen(false);
+          setWorkflowPaymentId(null);
+        }}
+        onUpdate={() => {
+          loadInvoices();
+          loadSummary();
+        }}
       />
       
       <RejectInvoiceModal

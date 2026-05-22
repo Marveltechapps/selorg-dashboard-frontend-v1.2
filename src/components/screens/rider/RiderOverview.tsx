@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
-import { api } from './overview/riderApi';
+import { api, normalizeOrderId } from './overview/riderApi';
 import { DashboardSummary, Order, Rider } from './overview/types';
 import { SummaryCards } from './overview/SummaryCards';
 import { LiveOrderBoard } from './overview/LiveOrderBoard';
@@ -60,11 +60,13 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
   const [orderToAssign, setOrderToAssign] = useState<Order | null>(null);
 
   const applyLocalOrderUpdates = (list: Order[]) =>
-    list.map(o => {
-      const normalizedId = o.id.replace(/^ord-/i, 'ORD-');
-      const update = localOrderUpdates.current[o.id] || localOrderUpdates.current[normalizedId];
-      return update ? { ...o, ...update } : o;
-    });
+    list
+      .filter((o) => Boolean(o?.id))
+      .map((o) => {
+        const normalizedId = normalizeOrderId(o.id);
+        const update = localOrderUpdates.current[o.id] || localOrderUpdates.current[normalizedId];
+        return update ? { ...o, ...update } : o;
+      });
 
   const fetchData = async (showLoading = false) => {
     setRefreshStatus('idle');
@@ -77,15 +79,23 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       ]);
 
       const summaryData = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
-      const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
-      const ridersData = ridersResult.status === 'fulfilled' ? ridersResult.value : [];
+      const ordersData =
+        ordersResult.status === 'fulfilled' && Array.isArray(ordersResult.value)
+          ? ordersResult.value
+          : [];
+      const ridersData =
+        ridersResult.status === 'fulfilled' && Array.isArray(ridersResult.value)
+          ? ridersResult.value
+          : [];
 
       setSummary(summaryData ?? null);
 
       const baseOrders = ordersData.length > 0 ? ordersData : (lastOrdersRef.current.length > 0 ? lastOrdersRef.current : []);
 
-      const merged = baseOrders.map(o => {
-        const normalizedId = o.id.replace(/^ord-/i, 'ORD-');
+      const merged = baseOrders
+        .filter((o) => Boolean(o?.id != null && String(o.id).trim()))
+        .map((o) => {
+        const normalizedId = normalizeOrderId(o.id);
         // Only apply local updates if they don't conflict with server data
         // Server data takes precedence for persistence
         const update = localOrderUpdates.current[o.id] || localOrderUpdates.current[normalizedId];
@@ -206,7 +216,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
   const handleReassignConfirm = async (riderId: string, riderName: string, overrideSla = false) => {
     if (!orderToReassign) return;
     const orderId = orderToReassign.id;
-    const normalizedId = orderId.replace(/^ord-/i, 'ORD-');
+    const normalizedId = normalizeOrderId(orderId);
     const orderToUpdate = orderToReassign;
     const wasReassignment = !!orderToUpdate.riderId;
     
@@ -231,7 +241,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       
       // Only proceed if API call was successful
       const serverOrderId = result.orderId;
-      const serverNormalizedId = serverOrderId.replace(/^ord-/i, 'ORD-');
+      const serverNormalizedId = normalizeOrderId(serverOrderId);
       const serverRiderId = result.riderId;
       const serverStatus = (result.status || 'assigned') as Order['status'];
       
@@ -247,7 +257,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       // Helper function to check if an order ID matches the target order
       const isTargetOrder = (o: Order) => {
         const oId = o.id;
-        const oNormalized = oId.replace(/^ord-/i, 'ORD-');
+        const oNormalized = normalizeOrderId(oId);
         return oId === orderId || oId === normalizedId || oId === serverOrderId || oId === serverNormalizedId ||
                oNormalized === orderId || oNormalized === normalizedId || oNormalized === serverOrderId || oNormalized === serverNormalizedId;
       };
@@ -292,7 +302,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
           
           // Helper to normalize and create a unique key
           const getOrderKey = (o: Order) => {
-            const normalized = o.id.replace(/^ord-/i, 'ORD-');
+            const normalized = normalizeOrderId(o.id);
             return `${o.id.toLowerCase()}|${normalized.toLowerCase()}`;
           };
 
@@ -313,7 +323,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
                 console.log('[Reassign] Updated order from API:', apiOrder.id, 'API riderId:', apiOrder.riderId, 'Server riderId:', serverRiderId, 'Final:', finalRiderId);
               } else {
                 // Regular order, use API data as-is
-                const apiNormalized = apiOrder.id.replace(/^ord-/i, 'ORD-');
+                const apiNormalized = normalizeOrderId(apiOrder.id);
                 const localUpdate = localOrderUpdates.current[apiOrder.id] || localOrderUpdates.current[apiNormalized];
                 if (localUpdate && apiOrder.riderId && localUpdate.riderId && apiOrder.riderId !== localUpdate.riderId) {
                   // Server data conflicts with local update, use server data
@@ -344,7 +354,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
                   console.log('[Reassign] Preserved order from current state:', currentOrder.id, 'with rider:', serverRiderId);
                 } else {
                   // Regular order, preserve as-is (don't apply the update to other orders!)
-                  const currentNormalized = currentOrder.id.replace(/^ord-/i, 'ORD-');
+                  const currentNormalized = normalizeOrderId(currentOrder.id);
                   const localUpdate = localOrderUpdates.current[currentOrder.id] || localOrderUpdates.current[currentNormalized];
                   merged.push(localUpdate ? { ...currentOrder, ...localUpdate } : currentOrder);
                 }
@@ -642,6 +652,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
         isOpen={isMapOpen}
         onClose={() => setIsMapOpen(false)}
         riders={riders}
+        orders={orders}
       />
     </div>
   );

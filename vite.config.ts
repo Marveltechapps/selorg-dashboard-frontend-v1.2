@@ -70,7 +70,13 @@
     const proxyTarget = mode === 'development'
       ? devProxyTarget
       : resolveOrigin(apiBaseUrl, devProxyTarget);
-    const wsServerUrl = env.VITE_WS_URL?.trim() || proxyTarget;
+    // Standalone ws-server (5050) when VITE_WS_URL is set; otherwise same target as REST API (embedded Socket.IO on backend).
+    const wsProxyPort = env.VITE_WS_PROXY_PORT?.trim() || env.VITE_PROXY_PORT?.trim() || canonicalBackendPort;
+    const wsProxyTarget = resolveOrigin(
+      env.VITE_WS_PROXY_TARGET?.trim() || '',
+      `http://localhost:${wsProxyPort}`
+    );
+    const wsServerUrl = env.VITE_WS_URL?.trim() || wsProxyTarget;
     const devServerPort = Number(env.VITE_DEV_PORT || '5173');
 
     const projectRoot = path.resolve(__dirname);

@@ -13,6 +13,20 @@ export interface FinanceSummary {
   failedPaymentsRatePercent: number;
   failedPaymentsCount: number;
   failedPaymentsThresholdPercent: number;
+  netRevenueToday: number;
+  refundsTodayAmount: number;
+  refundsTodayCount: number;
+  settlementSuccessRatePercent: number;
+  settledPaymentsCount: number;
+  settlementAttemptsCount: number;
+  averageOrderValue: number;
+  successfulOrderCount: number;
+  refundRatePercent: number;
+  codPercent: number;
+  codTxnCount: number;
+  gatewaySuccessRatePercent: number;
+  gatewaySuccessCount: number;
+  gatewayTerminalCount: number;
 }
 
 export interface PaymentMethodSplitItem {
@@ -89,6 +103,37 @@ function normalizePaymentMethodSplit(data: any): PaymentMethodSplitItem[] {
   }));
 }
 
+function normalizeFinanceSummary(raw: Record<string, unknown>): FinanceSummary {
+  const num = (key: string, fallback = 0) => Number(raw[key] ?? fallback);
+  return {
+    entityId: String(raw.entityId ?? 'default'),
+    date: String(raw.date ?? new Date().toISOString()),
+    totalReceivedToday: num('totalReceivedToday'),
+    totalReceivedChangePercent: num('totalReceivedChangePercent'),
+    pendingSettlementsAmount: num('pendingSettlementsAmount'),
+    pendingSettlementsGateways: num('pendingSettlementsGateways'),
+    vendorPayoutsAmount: num('vendorPayoutsAmount'),
+    vendorPayoutsStatusText: String(raw.vendorPayoutsStatusText ?? 'No payouts scheduled'),
+    failedPaymentsRatePercent: num('failedPaymentsRatePercent'),
+    failedPaymentsCount: num('failedPaymentsCount'),
+    failedPaymentsThresholdPercent: num('failedPaymentsThresholdPercent', 1),
+    netRevenueToday: num('netRevenueToday', num('totalReceivedToday')),
+    refundsTodayAmount: num('refundsTodayAmount'),
+    refundsTodayCount: num('refundsTodayCount'),
+    settlementSuccessRatePercent: num('settlementSuccessRatePercent', 100),
+    settledPaymentsCount: num('settledPaymentsCount'),
+    settlementAttemptsCount: num('settlementAttemptsCount'),
+    averageOrderValue: num('averageOrderValue'),
+    successfulOrderCount: num('successfulOrderCount'),
+    refundRatePercent: num('refundRatePercent'),
+    codPercent: num('codPercent'),
+    codTxnCount: num('codTxnCount'),
+    gatewaySuccessRatePercent: num('gatewaySuccessRatePercent', 100),
+    gatewaySuccessCount: num('gatewaySuccessCount'),
+    gatewayTerminalCount: num('gatewayTerminalCount'),
+  };
+}
+
 export const fetchFinanceSummary = async (entityId: string, date: string): Promise<FinanceSummary> => {
   const params = new URLSearchParams({ entityId: resolveFinanceEntityId(entityId), date });
   const response = await fetch(
@@ -100,7 +145,7 @@ export const fetchFinanceSummary = async (entityId: string, date: string): Promi
   }
   const json = await response.json();
   const data = json.success ? json.data : json;
-  return data as FinanceSummary;
+  return normalizeFinanceSummary(data as Record<string, unknown>);
 };
 
 export const fetchPaymentMethodSplit = async (entityId: string, date: string): Promise<PaymentMethodSplitItem[]> => {

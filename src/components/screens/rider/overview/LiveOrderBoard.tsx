@@ -285,7 +285,7 @@ export function LiveOrderBoard({
 
       <div className="overflow-auto max-h-[600px]">
         <Table>
-          <TableHeader className="bg-[#F5F7FA] sticky top-0 z-10">
+          <TableHeader className="bg-[#F5F7FA] sticky top-0 z-[1]">
             <TableRow>
               <TableHead className="w-[120px]">Order ID</TableHead>
               <TableHead>Status</TableHead>

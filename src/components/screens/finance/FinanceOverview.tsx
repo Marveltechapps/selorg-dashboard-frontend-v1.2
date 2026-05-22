@@ -77,10 +77,18 @@ export function FinanceOverview() {
         if (!prev) return prev;
         const amount = data.amount || 0;
         const isFailed = data.status === 'failed';
+        const newReceived = isFailed ? prev.totalReceivedToday : prev.totalReceivedToday + amount;
+        const newFailedCount = isFailed ? prev.failedPaymentsCount + 1 : prev.failedPaymentsCount;
+        const newOrderCount = isFailed ? prev.successfulOrderCount : prev.successfulOrderCount + 1;
+        const txnDenom = newFailedCount + newOrderCount;
         return {
           ...prev,
-          totalReceivedToday: isFailed ? prev.totalReceivedToday : prev.totalReceivedToday + amount,
-          failedPaymentsCount: isFailed ? prev.failedPaymentsCount + 1 : prev.failedPaymentsCount,
+          totalReceivedToday: newReceived,
+          netRevenueToday: isFailed ? prev.netRevenueToday : prev.netRevenueToday + amount,
+          failedPaymentsCount: newFailedCount,
+          failedPaymentsRatePercent: txnDenom > 0 ? (newFailedCount / txnDenom) * 100 : prev.failedPaymentsRatePercent,
+          successfulOrderCount: newOrderCount,
+          averageOrderValue: newOrderCount > 0 ? newReceived / newOrderCount : prev.averageOrderValue,
         };
       });
 
@@ -126,9 +134,13 @@ export function FinanceOverview() {
       if (wasPaid && amount > 0) {
         setSummary((prev) => {
           if (!prev) return prev;
+          const newReceived = Math.max(0, prev.totalReceivedToday - amount);
           return {
             ...prev,
-            totalReceivedToday: Math.max(0, prev.totalReceivedToday - amount),
+            totalReceivedToday: newReceived,
+            netRevenueToday: Math.max(0, prev.netRevenueToday - amount),
+            averageOrderValue:
+              prev.successfulOrderCount > 0 ? newReceived / prev.successfulOrderCount : prev.averageOrderValue,
           };
         });
 

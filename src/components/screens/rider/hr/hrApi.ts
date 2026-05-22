@@ -58,10 +58,48 @@ interface ApiDocument {
 interface ApiListResponse<T> {
   data?: T[];
   riders?: T[];
+  documents?: T[];
   total: number;
   page: number;
   limit: number;
   totalPages?: number;
+}
+
+/** Unwrap `{ success, data }` envelopes from apiEnvelopeMiddleware. */
+function unwrapEnvelope<T>(json: unknown): T {
+  if (!json || typeof json !== 'object') return json as T;
+  const o = json as Record<string, unknown>;
+  if (o.success === true && o.data !== undefined && o.data !== null) {
+    return o.data as T;
+  }
+  return json as T;
+}
+
+function extractDocumentList(response: unknown): ApiDocument[] {
+  const payload = unwrapEnvelope<ApiListResponse<ApiDocument> | ApiDocument[]>(response);
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.documents)) return payload.documents;
+  return [];
+}
+
+function extractRiderList(response: unknown): ApiRider[] {
+  const payload = unwrapEnvelope<ApiListResponse<ApiRider> | ApiRider[]>(response);
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.riders)) return payload.riders;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function listMeta(response: unknown, listLength: number): { total: number } {
+  const outer = response as Record<string, unknown> | null;
+  const payload = unwrapEnvelope<ApiListResponse<unknown>>(response);
+  const pagination = outer?.pagination as { total?: number } | null | undefined;
+  const total =
+    (typeof payload?.total === 'number' ? payload.total : undefined) ??
+    (typeof pagination?.total === 'number' ? pagination.total : undefined) ??
+    listLength;
+  return { total };
 }
 
 /**
@@ -147,7 +185,17 @@ function fallbackOnboardingDaysFromCreated(
 }
 
 function transformRider(apiRider: ApiRider): Rider {
-  const defaultIso = new Date().toISOString();
+  const today = new Date().toISOString().split('T')[0];
+  const contract = apiRider.contract ?? {
+    startDate: today,
+    endDate: today,
+    renewalDue: false,
+  };
+  const compliance = apiRider.compliance ?? {
+    isCompliant: true,
+    lastAuditDate: today,
+    policyViolationsCount: 0,
+  };
   const onboardingDaysActive =
     typeof apiRider.onboardingDaysActive === "number"
       ? apiRider.onboardingDaysActive
@@ -166,16 +214,16 @@ function transformRider(apiRider: ApiRider): Rider {
     onboardingDaysActive,
     createdAt: apiRider.createdAt || undefined, // Backend returns ISO string format
     contract: {
-      startDate: apiRider.contract.startDate, // Backend returns YYYY-MM-DD format
-      endDate: apiRider.contract.endDate, // Backend returns YYYY-MM-DD format
-      renewalDue: apiRider.contract.renewalDue,
-      status: apiRider.contract.status || (apiRider.contract.renewalDue ? 'pending_renewal' : 'active'),
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      renewalDue: contract.renewalDue ?? false,
+      status: contract.status || (contract.renewalDue ? 'pending_renewal' : 'active'),
     },
     compliance: {
-      isCompliant: apiRider.compliance.isCompliant,
-      lastAuditDate: apiRider.compliance.lastAuditDate, // Backend returns YYYY-MM-DD format
-      policyViolationsCount: apiRider.compliance.policyViolationsCount,
-      lastViolationReason: apiRider.compliance.lastViolationReason || undefined,
+      isCompliant: compliance.isCompliant,
+      lastAuditDate: compliance.lastAuditDate,
+      policyViolationsCount: compliance.policyViolationsCount ?? 0,
+      lastViolationReason: compliance.lastViolationReason || undefined,
     },
     suspension: apiRider.suspension ? {
       isSuspended: apiRider.suspension.isSuspended,
@@ -209,7 +257,8 @@ function transformDocument(apiDoc: ApiDocument): RiderDocument {
  * Real API implementation with mock fallbacks
  */
 export async function fetchHrSummary(): Promise<HrDashboardSummary> {
-  const data = await apiRequest<HrDashboardSummary>(API_ENDPOINTS.hr.summary);
+  const raw = await apiRequest<HrDashboardSummary>(API_ENDPOINTS.hr.summary);
+  const data = unwrapEnvelope<HrDashboardSummary>(raw);
   return {
     pendingVerifications: data?.pendingVerifications ?? 0,
     expiredDocuments: data?.expiredDocuments ?? 0,
@@ -231,14 +280,15 @@ export async function fetchDocuments(params: {
   const queryString = queryParams.toString();
   const endpoint = queryString ? `${API_ENDPOINTS.hr.documents}?${queryString}` : API_ENDPOINTS.hr.documents;
   const response = await apiRequest<ApiListResponse<ApiDocument>>(endpoint);
-  const documents = response?.data ?? [];
-  return { data: documents.map(transformDocument), total: response?.total ?? documents.length };
+  const documents = extractDocumentList(response);
+  const { total } = listMeta(response, documents.length);
+  return { data: documents.map(transformDocument), total };
 }
 
 export async function fetchRiderDetails(riderId: string): Promise<Rider | null> {
   try {
-    const data = await apiRequest<ApiRider>(API_ENDPOINTS.hr.rider(riderId));
-    return transformRider(data);
+    const raw = await apiRequest<ApiRider>(API_ENDPOINTS.hr.rider(riderId));
+    return transformRider(unwrapEnvelope<ApiRider>(raw));
   } catch (error) {
     console.error(`[HR API] Error fetching rider ${riderId}:`, error);
     return null;
@@ -247,8 +297,8 @@ export async function fetchRiderDetails(riderId: string): Promise<Rider | null> 
 
 export async function fetchDocumentDetails(documentId: string): Promise<RiderDocument | null> {
   try {
-    const data = await apiRequest<ApiDocument>(API_ENDPOINTS.hr.document(documentId));
-    return transformDocument(data);
+    const raw = await apiRequest<ApiDocument>(API_ENDPOINTS.hr.document(documentId));
+    return transformDocument(unwrapEnvelope<ApiDocument>(raw));
   } catch (error) {
     console.error(`[HR API] Error fetching document ${documentId}:`, error);
     return null;
@@ -256,7 +306,8 @@ export async function fetchDocumentDetails(documentId: string): Promise<RiderDoc
 }
 
 export async function fetchDocumentDownloadUrl(documentId: string): Promise<string> {
-  const data = await apiRequest<{ fileUrl?: string }>(API_ENDPOINTS.hr.documentDownload(documentId));
+  const raw = await apiRequest<{ fileUrl?: string }>(API_ENDPOINTS.hr.documentDownload(documentId));
+  const data = unwrapEnvelope<{ fileUrl?: string }>(raw);
   if (!data?.fileUrl) {
     throw new Error('Document file is unavailable for download');
   }
@@ -285,14 +336,13 @@ export async function markDocumentResubmitted(docId: string): Promise<void> {
 }
 
 export async function onboardRider(data: Partial<Rider> & { name?: string; email?: string; phone?: string }): Promise<Rider> {
-  const response = await apiRequest<ApiRider>(API_ENDPOINTS.hr.riders, { method: 'POST', body: JSON.stringify(data) });
-  return transformRider(response);
+  const raw = await apiRequest<ApiRider>(API_ENDPOINTS.hr.riders, { method: 'POST', body: JSON.stringify(data) });
+  return transformRider(unwrapEnvelope<ApiRider>(raw));
 }
 
 export async function fetchAllRiders(): Promise<Rider[]> {
   const response = await apiRequest<ApiListResponse<ApiRider>>(`${API_ENDPOINTS.hr.riders}?limit=100`);
-  const riders = response?.riders ?? response?.data ?? [];
-  return riders.map(transformRider);
+  return extractRiderList(response).map(transformRider);
 }
 
 export async function updateRiderAccess(riderId: string, access: "enabled" | "disabled"): Promise<void> {
@@ -304,7 +354,11 @@ export async function updateRiderTraining(riderId: string): Promise<void> {
 }
 
 export async function sendReminderToRider(riderId: string): Promise<{ success: boolean; message: string }> {
-  return await apiRequest<{ success: boolean; message: string; riderName: string }>(API_ENDPOINTS.hr.remindRider(riderId), { method: 'POST' });
+  const raw = await apiRequest<{ success: boolean; message: string; riderName: string }>(
+    API_ENDPOINTS.hr.remindRider(riderId),
+    { method: 'POST' }
+  );
+  return unwrapEnvelope<{ success: boolean; message: string; riderName: string }>(raw);
 }
 
 export async function renewContract(riderId: string): Promise<void> {

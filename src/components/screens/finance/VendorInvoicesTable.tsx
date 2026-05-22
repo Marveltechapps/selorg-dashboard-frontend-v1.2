@@ -23,6 +23,7 @@ interface Props {
   onBulkApprove?: () => void;
   onViewDetails: (invoice: VendorInvoice) => void;
   onSchedule: (invoice: VendorInvoice) => void;
+  onContinueWorkflow?: (invoice: VendorInvoice) => void;
   onMarkPaid: (id: string) => void;
   onReject: (invoice: VendorInvoice) => void;
 }
@@ -36,7 +37,8 @@ export function VendorInvoicesTable({
   onApprove, 
   onBulkApprove,
   onViewDetails, 
-  onSchedule, 
+  onSchedule,
+  onContinueWorkflow,
   onMarkPaid, 
   onReject 
 }: Props) {
@@ -167,6 +169,11 @@ export function VendorInvoicesTable({
                                     {(invoice.status === 'approved' || invoice.status === 'overdue') && (
                                         <DropdownMenuItem onClick={() => onSchedule(invoice)}>
                                             <Clock className="mr-2 h-4 w-4" /> Schedule Payment
+                                        </DropdownMenuItem>
+                                    )}
+                                    {invoice.status === 'scheduled' && invoice.paymentId && onContinueWorkflow && (
+                                        <DropdownMenuItem onClick={() => onContinueWorkflow(invoice)}>
+                                            <Clock className="mr-2 h-4 w-4" /> Continue Payment Workflow
                                         </DropdownMenuItem>
                                     )}
                                     {invoice.status !== 'paid' && invoice.status !== 'rejected' && (

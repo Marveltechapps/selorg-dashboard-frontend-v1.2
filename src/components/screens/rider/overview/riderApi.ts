@@ -19,8 +19,28 @@ interface ApiRider {
   zone?: string | null;
 }
 
+/** Resolve order id from API payloads (camelCase, snake_case, or Mongo _id). */
+export function resolveOrderId(raw: Record<string, unknown>): string {
+  const candidates = [raw.id, raw.order_id, raw.orderId];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+  }
+  if (raw._id != null) return String(raw._id);
+  return '';
+}
+
+/** Normalize ORD- prefix casing for lookups. */
+export function normalizeOrderId(id: unknown): string {
+  const s = id == null ? '' : String(id).trim();
+  if (!s) return '';
+  return s.replace(/^ord-/i, 'ORD-');
+}
+
 interface ApiOrder {
-  id: string;
+  id?: string;
+  order_id?: string;
+  orderId?: string;
+  _id?: unknown;
   status: OrderStatus;
   riderId?: string | null;
   rider_id?: string | null; // Backend might use snake_case
@@ -169,7 +189,13 @@ function transformRider(apiRider: ApiRider): Rider {
 /**
  * Transform backend order to frontend order
  */
-function transformOrder(apiOrder: ApiOrder): Order {
+function transformOrder(apiOrder: ApiOrder): Order | null {
+  const id = resolveOrderId(apiOrder as Record<string, unknown>);
+  if (!id) {
+    logger.warn('[RiderAPI] Skipping order without id', apiOrder);
+    return null;
+  }
+
   // Transform timeline dates to ISO strings if needed, but guard against invalid dates
   const timeline = (apiOrder.timeline || []).map(event => {
     let time: string;
@@ -187,7 +213,7 @@ function transformOrder(apiOrder: ApiOrder): Order {
   });
 
   return {
-    id: apiOrder.id,
+    id,
     status: apiOrder.status,
     // Handle both camelCase and snake_case from backend
     riderId: apiOrder.riderId || apiOrder.rider_id || undefined,
@@ -279,7 +305,8 @@ export const api = {
       // If data is a single object (not an array), log warning but don't crash
       else if (data && typeof data === 'object' && !Array.isArray(data)) {
         // Check if it looks like a single order object (has order-like properties)
-        if (data.id && (data.id.startsWith('ORD-') || data.id.startsWith('ord-'))) {
+        const singleId = resolveOrderId(data as Record<string, unknown>);
+        if (singleId && (singleId.startsWith('ORD-') || singleId.startsWith('ord-'))) {
           // It's a single order, wrap it in an array
           ordersArray = [data];
         } else {
@@ -291,9 +318,10 @@ export const api = {
         return [];
       }
       
-      return ordersArray.map(transformOrder).sort((a, b) =>
-        (a.etaMinutes ?? 999) - (b.etaMinutes ?? 999)
-      );
+      return ordersArray
+        .map(transformOrder)
+        .filter((o): o is Order => o != null)
+        .sort((a, b) => (a.etaMinutes ?? 999) - (b.etaMinutes ?? 999));
     } catch (e) {
       logger.warn('[RiderAPI.getOrders] failed', e);
       throw e;

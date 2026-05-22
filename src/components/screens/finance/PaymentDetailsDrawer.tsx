@@ -42,24 +42,38 @@ export function PaymentDetailsDrawer({ payment, onClose, open, onRetry }: Props)
 
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col h-full bg-white">
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center gap-2 text-xs font-semibold tracking-wider text-gray-500 mb-2 uppercase">
-             Payment Details
-          </div>
-          <SheetTitle className="text-xl font-mono flex items-center gap-2 text-gray-900">
-            {payment.id} 
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-400 hover:text-gray-600">
-                <Copy size={12} />
+      <SheetContent className="w-full sm:max-w-[420px] p-0 flex flex-col h-full gap-0 overflow-hidden">
+        <SheetHeader className="shrink-0 px-6 pt-6 pb-5 pr-14 border-b border-[#E0E0E0] space-y-2 text-left">
+          <p className="text-xs font-semibold tracking-wider text-[#757575] uppercase">
+            Payment Details
+          </p>
+          <SheetTitle className="text-xl font-mono text-[#212121] flex items-center gap-2 leading-tight">
+            {payment.id}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              type="button"
+              onClick={() => navigator.clipboard.writeText(payment.id)}
+            >
+              <Copy size={14} />
             </Button>
           </SheetTitle>
-          <SheetDescription className="mt-1">
-            Processed via {payment.gatewayRef.substring(0, 8)}... on {new Date(payment.createdAt).toLocaleString()}
+          <SheetDescription className="text-sm text-[#757575] leading-relaxed">
+            Processed via {payment.gatewayRef.substring(0, 8)}... on{' '}
+            {new Date(payment.createdAt).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            })}
           </SheetDescription>
-        </div>
+        </SheetHeader>
 
-        <ScrollArea className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-            <div className="p-6 space-y-6">
+        <ScrollArea className="flex-1 min-h-0">
+            <div className="px-6 py-6 space-y-6">
                 {/* Status Banner */}
                 <div className={`p-4 rounded-xl border flex justify-between items-center ${statusColor}`}>
                     <div>
@@ -213,7 +227,7 @@ export function PaymentDetailsDrawer({ payment, onClose, open, onRetry }: Props)
             </div>
         </ScrollArea>
 
-        <div className="p-6 border-t border-gray-100 bg-gray-50 space-y-3">
+        <div className="shrink-0 px-6 py-5 border-t border-[#E0E0E0] bg-white space-y-3">
              <Button 
                type="button"
                variant="outline" 

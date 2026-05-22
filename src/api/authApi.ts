@@ -47,10 +47,23 @@ export class ApiNetworkError extends Error {
       typeof window !== 'undefined' && window.location?.origin
         ? window.location.origin
         : 'this site';
+    const isCrossOrigin =
+      typeof window !== 'undefined' &&
+      apiBaseUrl.startsWith('http') &&
+      !apiBaseUrl.startsWith(window.location.origin);
+    const crossOriginHint = isCrossOrigin
+      ? 'Browsers often show this as a CORS error when the API returns 502 without CORS headers. '
+      : '';
+    const sameOriginHint =
+      !isCrossOrigin && apiBaseUrl.startsWith('/')
+        ? 'Ensure dashboard nginx proxies /api/ to the Node backend (port 3333). '
+        : '';
     super(
       `Cannot reach the API at ${apiBaseUrl}. ` +
-        `The server may be down or misconfigured (common symptom: nginx 502 on api.selorg.com). ` +
-        `Requests from ${origin} require a working API with CORS headers on OPTIONS preflight.`
+        crossOriginHint +
+        sameOriginHint +
+        `The API backend may be stopped (nginx 502 on api.selorg.com). ` +
+        `Restart: cd selorg-dashboard-backend-v1.1 && pm2 start app.js --name selorg-backend`
     );
     this.name = 'ApiNetworkError';
     this.apiBaseUrl = apiBaseUrl;
@@ -64,6 +77,35 @@ function isFetchNetworkFailure(err: unknown): boolean {
   if (!(err instanceof TypeError)) return false;
   const msg = err.message.toLowerCase();
   return msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed');
+}
+
+function resolveHealthCheckUrl(apiBaseUrl: string): string {
+  if (apiBaseUrl.startsWith('http')) {
+    try {
+      return new URL('/health', new URL(apiBaseUrl).origin).href;
+    } catch {
+      return '/health';
+    }
+  }
+  return '/health';
+}
+
+/** Probe /health so nginx 502 surfaces as a clear error before login POST (which browsers mask as CORS). */
+async function assertApiReachable(apiBaseUrl: string): Promise<void> {
+  const healthUrl = resolveHealthCheckUrl(apiBaseUrl);
+  try {
+    const res = await fetch(healthUrl, { method: 'GET', credentials: 'omit', cache: 'no-store' });
+    if (res.ok) return;
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new ApiNetworkError(apiBaseUrl);
+    }
+  } catch (err) {
+    if (err instanceof ApiNetworkError) throw err;
+    if (isFetchNetworkFailure(err)) {
+      throw new ApiNetworkError(apiBaseUrl, err);
+    }
+    throw err;
+  }
 }
 
 function parseRetryAfterSeconds(response: Response, body: Record<string, unknown>): number {
@@ -120,6 +162,8 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   const endpoint = getLoginEndpoint(credentials.role);
   const url = `${API_CONFIG.baseURL}${endpoint}`;
 
+  await assertApiReachable(API_CONFIG.baseURL);
+
   let response: Response;
   try {
     response = await fetch(url, {
@@ -146,10 +190,18 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
       error && typeof error.error === 'object' && error.error !== null
         ? (error.error as Record<string, unknown>)
         : null;
-    const message =
+    let message =
       (typeof error.message === 'string' && error.message) ||
       (nested && typeof nested.message === 'string' && nested.message) ||
       'Login failed';
+
+    if (
+      response.status === 503 ||
+      /buffering timed out|database is not available/i.test(message)
+    ) {
+      message =
+        'Database is temporarily unavailable. Ensure the backend is running and MongoDB is connected, then try again.';
+    }
 
     if (response.status === 429) {
       const seconds = parseRetryAfterSeconds(response, error);

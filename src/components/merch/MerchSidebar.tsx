@@ -19,7 +19,9 @@ import {
   Building2,
   ArrowRightLeft,
   Users,
-  Network
+  Network,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 

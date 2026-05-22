@@ -1,11 +1,18 @@
 /**
  * API Configuration
  * Base URL for backend API.
- * For server/hosted run: set VITE_API_BASE_URL in .env (e.g. http://65.2.153.16:5000/api/v1).
- * For local dev with proxy: leave unset to use /api/v1 (proxied by Vite).
+ * - Local dev: leave unset → `/api/v1` (Vite proxies to backend).
+ * - Production dashboard: leave unset → same-origin `/api/v1` (nginx proxies `/api/` to Node).
+ * - Cross-origin API: set VITE_API_BASE_URL (e.g. https://api.selorg.com/api/v1); requires CORS on the API host.
  */
+export function resolveApiBaseUrl(): string {
+  const configured = (import.meta.env.VITE_API_BASE_URL ?? '').trim();
+  if (configured) return configured.replace(/\/$/, '');
+  return '/api/v1';
+}
+
 export const API_CONFIG = {
-  baseURL: (import.meta.env.VITE_API_BASE_URL ?? '').trim() || '/api/v1',
+  baseURL: resolveApiBaseUrl(),
   timeout: 30000, // 30 seconds
 };
 
@@ -115,6 +122,11 @@ export const API_ENDPOINTS = {
       rejectInvoice: (id: string) => `/finance/vendor-payments/invoices/${id}/reject`,
       markInvoicePaid: (id: string) => `/finance/vendor-payments/invoices/${id}/mark-paid`,
       createPayment: '/finance/vendor-payments/payments',
+      payments: '/finance/vendor-payments/payments',
+      paymentById: (paymentId: string) => `/finance/vendor-payments/payments/${paymentId}`,
+      advanceWorkflow: (paymentId: string, invoiceId: string) =>
+        `/finance/vendor-payments/payments/${paymentId}/invoices/${invoiceId}/workflow/advance`,
+      cancelPayment: (paymentId: string) => `/finance/vendor-payments/payments/${paymentId}/cancel`,
       vendors: '/finance/vendor-payments/vendors',
     },
     riderCash: {

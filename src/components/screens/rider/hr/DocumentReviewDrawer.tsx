@@ -107,15 +107,15 @@ export function DocumentReviewDrawer({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Review Document</SheetTitle>
-          <SheetDescription>
+      <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col h-full gap-0 overflow-hidden">
+        <SheetHeader className="shrink-0 px-6 pt-6 pb-4 pr-14 border-b border-[#E0E0E0] space-y-1.5 text-left">
+          <SheetTitle className="text-lg text-[#212121]">Review Document</SheetTitle>
+          <SheetDescription className="text-sm text-[#757575] leading-relaxed">
             Review the submitted document for {document.riderName}.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
           {/* Rider Info */}
           <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 space-y-2">
             <h4 className="font-semibold text-sm text-gray-900">Rider Information</h4>

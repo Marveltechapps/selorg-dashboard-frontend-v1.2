@@ -23,9 +23,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onUpdate: () => void;
+  onOpenWorkflow?: (paymentId: string) => void;
 }
 
-export function VendorInvoiceDetailsDrawer({ invoice, open, onClose, onUpdate }: Props) {
+export function VendorInvoiceDetailsDrawer({ invoice, open, onClose, onUpdate, onOpenWorkflow }: Props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -199,6 +200,37 @@ export function VendorInvoiceDetailsDrawer({ invoice, open, onClose, onUpdate }:
                   </Button>
                 </div>
               )}
+
+              {invoice.paymentWorkflow && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+                  <h4 className="font-medium text-blue-900">Payment workflow</h4>
+                  <p className="text-sm text-blue-800">
+                    Payment {invoice.paymentWorkflow.paymentId} ·{' '}
+                    {invoice.paymentWorkflow.overallStatus.replace('_', ' ')}
+                  </p>
+                  {(() => {
+                    const line = invoice.paymentWorkflow?.invoices.find(
+                      (l) => l.invoiceId === invoice.id
+                    );
+                    if (!line) return null;
+                    return (
+                      <p className="text-sm text-blue-800">
+                        Current step: <strong>{line.currentStepLabel}</strong>
+                        {line.lineStatus === 'completed' && ' (completed)'}
+                      </p>
+                    );
+                  })()}
+                  {invoice.paymentId && onOpenWorkflow && invoice.paymentWorkflow.overallStatus === 'in_progress' && (
+                    <Button
+                      type="button"
+                      className="w-full bg-[#14B8A6] hover:bg-[#0D9488]"
+                      onClick={() => onOpenWorkflow(invoice.paymentId!)}
+                    >
+                      Continue workflow
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </ScrollArea>
 
@@ -226,6 +258,16 @@ export function VendorInvoiceDetailsDrawer({ invoice, open, onClose, onUpdate }:
                 </Button>
               </div>
             )}
+            {invoice.status === 'scheduled' && invoice.paymentId && onOpenWorkflow && (
+              <Button
+                type="button"
+                className="w-full bg-[#14B8A6] hover:bg-[#0D9488]"
+                onClick={() => onOpenWorkflow(invoice.paymentId!)}
+              >
+                <Calendar className="mr-2 h-4 w-4" />
+                Continue payment workflow
+              </Button>
+            )}
             {(invoice.status === 'approved' || invoice.status === 'overdue') && (
               <Button 
                 className="w-full bg-[#14B8A6] hover:bg-[#0D9488]" 
@@ -233,7 +275,7 @@ export function VendorInvoiceDetailsDrawer({ invoice, open, onClose, onUpdate }:
                 disabled={isProcessing}
               >
                 {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                Mark as Paid
+                Mark as Paid (manual)
               </Button>
             )}
           </div>

@@ -54,7 +54,7 @@ export function RiderShiftManagement({ searchQuery }: Props) {
 
   const openCreate = () => {
     setEditing({
-      status: 'draft',
+      status: 'published',
       capacity: 1,
       basePay: 0,
       bonus: 0,
