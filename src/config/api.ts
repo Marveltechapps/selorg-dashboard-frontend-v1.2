@@ -287,6 +287,7 @@ export const API_ENDPOINTS = {
   // Rider Shifts (mounted at /api/v1/rider/shifts)
   riderShifts: {
     list: '/rider/shifts',
+    filterOptions: '/rider/shifts/filter-options',
     create: '/rider/shifts',
     byId: (id: string) => `/rider/shifts/${id}`,
     update: (id: string) => `/rider/shifts/${id}`,
@@ -451,15 +452,30 @@ export const API_ENDPOINTS = {
       bulkImport: '/vendor/inbound/bulk-import',
       bulkImportStatus: (id: string) => `/vendor/inbound/bulk-import/${id}`,
       report: '/vendor/inbound/report',
+      archiveGrn: (id: string) => `/vendor/inbound/grns/${id}/archive`,
+      rtvs: '/vendor/inbound/rtvs',
+      createRtv: '/vendor/inbound/rtvs',
+      patchRtvStatus: (id: string) => `/vendor/inbound/rtvs/${id}/status`,
     },
     // Inventory
     inventory: {
+      hubAgingAlerts: '/vendor/inventory/hub/aging-alerts',
       summary: (vendorId: string) => `/vendor/inventory/${vendorId}`,
       stock: (vendorId: string) => `/vendor/inventory/${vendorId}/stock`,
       sync: (vendorId: string) => `/vendor/inventory/${vendorId}/sync`,
       reconcile: (vendorId: string) => `/vendor/inventory/${vendorId}/reconcile`,
       agingAlerts: (vendorId: string) => `/vendor/inventory/${vendorId}/aging-alerts`,
       ackAlert: (vendorId: string, alertId: string) => `/vendor/inventory/${vendorId}/aging-alerts/${alertId}/ack`,
+      stockouts: (vendorId: string) => `/vendor/inventory/${vendorId}/stockouts`,
+      agingInventory: (vendorId: string) => `/vendor/inventory/${vendorId}/aging-inventory`,
+      kpis: (vendorId: string) => `/vendor/inventory/${vendorId}/kpis`,
+      supplyPerformance: (vendorId: string) => `/vendor/inventory/${vendorId}/supply-performance`,
+      bulkReorder: (vendorId: string) => `/vendor/inventory/${vendorId}/stockouts/bulk-reorder`,
+      alertAll: (vendorId: string) => `/vendor/inventory/${vendorId}/stockouts/alert-all`,
+      returnInventory: (vendorId: string, itemId: string) =>
+        `/vendor/inventory/${vendorId}/aging-inventory/${itemId}/return`,
+      liquidateInventory: (vendorId: string, itemId: string) =>
+        `/vendor/inventory/${vendorId}/aging-inventory/${itemId}/liquidate`,
     },
     // Purchase Orders
     purchaseOrders: {
@@ -482,6 +498,12 @@ export const API_ENDPOINTS = {
       submitDecision: (id: string) => `/vendor/approvals/tasks/${id}/decision`,
     },
     // QC
+    qcCompliance: {
+      audits: '/vendor/qc-compliance/audits',
+      temperature: '/vendor/qc-compliance/temperature',
+      ratings: '/vendor/qc-compliance/ratings',
+      certificates: '/vendor/qc-compliance/certificates',
+    },
     qc: {
       list: '/vendor/qc',
       create: '/vendor/qc',

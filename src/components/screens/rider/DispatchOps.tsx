@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
-import { Send, RefreshCw, Settings2, Clock, CheckCircle2, CircleDot, MapPin, User, Truck, Camera } from 'lucide-react';
+import { RefreshCw, Settings2, User, Truck, Camera } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import { apiRequest } from '@/api/apiClient';
 import { UnassignedOrdersPanel } from "./dispatch/UnassignedOrdersPanel";
 import { DispatchMapPanel } from "./dispatch/DispatchMapPanel";
 import { AssignRiderModal } from "./dispatch/AssignRiderModal";
 import { RulesConfigDrawer } from "./dispatch/RulesConfigDrawer";
-import { ManualOrderModal } from "./dispatch/ManualOrderModal";
 import { 
   DispatchOrder, 
   DispatchRider, 
@@ -37,9 +35,9 @@ export function DispatchOps() {
 
   // UI State
   const [autoAssignEnabled, setAutoAssignEnabled] = useState(false);
+  const [autoAssignRunning, setAutoAssignRunning] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [manualOrderModalOpen, setManualOrderModalOpen] = useState(false);
   
   // Selection State
   const [selectedOrder, setSelectedOrder] = useState<DispatchOrder | null>(null);
@@ -49,6 +47,8 @@ export function DispatchOps() {
   const [detailOrder, setDetailOrder] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const unassignedOrdersRef = useRef(unassignedOrders);
+  unassignedOrdersRef.current = unassignedOrders;
 
   // Initial Load
   useEffect(() => {
@@ -71,32 +71,37 @@ export function DispatchOps() {
     };
   }, []);
 
-  // Auto-Assign Simulation - disabled automatic polling
-  // useEffect(() => {
-  //   let interval: NodeJS.Timeout;
-  //   if (autoAssignEnabled) {
-  //     interval = setInterval(async () => {
-  //       const unassignedIds = unassignedOrders.map(o => o.id);
-  //       if (unassignedIds.length > 0) {
-  //         try {
-  //           const result = await autoAssignOrders(unassignedIds);
-  //           if (result.assigned > 0) {
-  //              toast.success(`Auto-assigned ${result.assigned} orders`);
-  //              loadData();
-  //           }
-  //         } catch (e) {
-  //           console.error("Auto-assign error:", e);
-  //           toast.error("Auto-assign failed", {
-  //             description: e instanceof Error ? e.message : "Please try again",
-  //           });
-  //         }
-  //       }
-  //     }, 10000); // Check every 10s if on
-  //   }
-  //   return () => {
-  //     if (interval) clearInterval(interval);
-  //   };
-  // }, [autoAssignEnabled, unassignedOrders]);
+  const runAutoAssign = async (orderIds?: string[]) => {
+    if (autoAssignRunning) return;
+    setAutoAssignRunning(true);
+    try {
+      const ids = orderIds ?? unassignedOrders.map((o) => o.id);
+      const result = await autoAssignOrders(ids);
+      if (result.disabled) {
+        toast.info(result.message || "Auto-assign is disabled in configuration");
+        setAutoAssignEnabled(false);
+        return;
+      }
+      if (result.assigned > 0) {
+        toast.success(`Auto-assigned ${result.assigned} order${result.assigned === 1 ? "" : "s"}`);
+        await loadData();
+      } else if (ids.length > 0) {
+        toast.message("No orders were auto-assigned", {
+          description: "Check constraints: radius, zone, rider capacity, or rider GPS.",
+        });
+      }
+      if (result.failed > 0) {
+        toast.warning(`${result.failed} order${result.failed === 1 ? "" : "s"} could not be assigned`);
+      }
+    } catch (e) {
+      console.error("Auto-assign error:", e);
+      toast.error("Auto-assign failed", {
+        description: e instanceof Error ? e.message : "Please try again",
+      });
+    } finally {
+      setAutoAssignRunning(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -111,6 +116,7 @@ export function DispatchOps() {
       setAllOrders(aOrders);
       setRiders(onlineRiders);
       setRules(rulesData);
+      setAutoAssignEnabled(Boolean(rulesData[0]?.isActive));
     } catch (error) {
       console.error("Failed to load dispatch data", error);
       toast.error("Failed to refresh dispatch data", {
@@ -120,6 +126,15 @@ export function DispatchOps() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoAssignEnabled) return;
+    const interval = setInterval(() => {
+      const ids = unassignedOrdersRef.current.map((o) => o.id);
+      if (ids.length > 0) runAutoAssign(ids);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [autoAssignEnabled]);
 
   const handleViewOrderDetail = async (order: DispatchOrder) => {
     setDetailOrder(order);
@@ -195,12 +210,13 @@ export function DispatchOps() {
               <Settings2 size={16} />
               Auto-Assign Rules
             </button>
-            <button 
-              onClick={() => setManualOrderModalOpen(true)}
-              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2"
+            <button
+              onClick={() => runAutoAssign()}
+              disabled={!autoAssignEnabled || autoAssignRunning || unassignedOrders.length === 0}
+              className="px-4 py-2 bg-[#F97316] text-white font-medium rounded-lg hover:bg-[#EA580C] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              <Send size={16} />
-              Manual Dispatch
+              <RefreshCw size={16} className={autoAssignRunning ? "animate-spin" : ""} />
+              {autoAssignRunning ? "Assigning…" : "Run Auto-Assign"}
             </button>
           </div>
         }
@@ -241,34 +257,27 @@ export function DispatchOps() {
         isOpen={isRulesOpen}
         onClose={() => setIsRulesOpen(false)}
         rules={rules}
-        onRulesUpdate={loadData}
-      />
-
-      <ManualOrderModal 
-        isOpen={manualOrderModalOpen}
-        onClose={() => setManualOrderModalOpen(false)}
-        riders={riders}
-        onSuccess={() => {
-          toast.success("Order created successfully", {
-            description: "The order has been added to the queue",
-          });
-          loadData();
+        onRulesUpdate={async () => {
+          await loadData();
         }}
       />
 
       {/* Order Detail Drawer (P1-11 to P1-13) */}
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent className="w-[400px] sm:w-[520px] overflow-y-auto">
+        <SheetContent className="w-[400px] sm:w-[520px] p-0 flex flex-col h-full gap-0 overflow-hidden">
           {detailOrder && (
-            <div className="space-y-6">
-              <SheetHeader>
-                <SheetTitle className="flex items-center gap-2">
+            <>
+              <SheetHeader className="shrink-0 px-6 pt-6 pb-4 pr-14 border-b border-[#E0E0E0] space-y-1.5 text-left">
+                <SheetTitle className="flex flex-wrap items-center gap-2 text-lg text-[#212121]">
                   Order {detailOrder.id}
                   <Badge variant="outline" className="capitalize">{detailOrder.status}</Badge>
                 </SheetTitle>
-                <SheetDescription>Delivery details and history</SheetDescription>
+                <SheetDescription className="text-sm text-[#757575]">
+                  Delivery details
+                </SheetDescription>
               </SheetHeader>
 
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
               {detailLoading && <p className="text-sm text-gray-400">Loading details...</p>}
 
               {/* Basic Info */}
@@ -277,35 +286,6 @@ export function DispatchOps() {
                 <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">Zone</p><p className="font-medium">{detailOrder.zone}</p></div>
                 <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">Distance</p><p className="font-medium">{detailOrder.distanceKm} km</p></div>
                 <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">ETA</p><p className="font-medium">{detailOrder.etaMinutes} mins</p></div>
-              </div>
-
-              {/* Delivery Timeline (P1-11) */}
-              <div className="space-y-3">
-                <h4 className="font-semibold text-gray-900 flex items-center gap-2"><Clock size={16} /> Delivery Timeline</h4>
-                <div className="relative pl-6">
-                  <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200" />
-                  {(() => {
-                    const stages = ['assigned', 'picked_up', 'in_transit', 'at_location', 'delivered'];
-                    const labels: Record<string, string> = { assigned: 'Assigned', picked_up: 'Picked Up', in_transit: 'In Transit', at_location: 'At Location', delivered: 'Delivered' };
-                    const timeline = detailOrder.timeline || detailOrder.deliveryTimeline || [];
-                    const tlMap: Record<string, any> = {};
-                    timeline.forEach((t: any) => { tlMap[t.status || t.stage] = t; });
-                    const statusOrder = stages.indexOf(detailOrder.status);
-                    return stages.map((stage, idx) => {
-                      const entry = tlMap[stage];
-                      const isCompleted = !!entry?.timestamp || idx < statusOrder;
-                      const isCurrent = idx === statusOrder;
-                      return (
-                        <div key={stage} className="relative flex items-start gap-3 pb-4">
-                          <div className={cn("w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 border-2 z-10 bg-white", isCompleted ? "border-green-500 bg-green-500" : isCurrent ? "border-orange-500 bg-orange-50" : "border-gray-300")}>
-                            {isCompleted ? <CheckCircle2 size={14} className="text-white" /> : isCurrent ? <CircleDot size={14} className="text-orange-500" /> : <div className="w-2 h-2 rounded-full bg-gray-300" />}
-                          </div>
-                          <div className="flex-1"><p className={cn("text-sm font-medium", isCompleted ? "text-green-700" : isCurrent ? "text-orange-700" : "text-gray-400")}>{labels[stage]}</p>{entry?.timestamp && <p className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleString()}</p>}</div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
               </div>
 
               {/* Assignment History (P1-12) */}
@@ -347,11 +327,12 @@ export function DispatchOps() {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-2">
                 <Button variant="outline" className="flex-1" onClick={() => setDetailOpen(false)}>Close</Button>
                 <Button className="flex-1 bg-[#F97316] hover:bg-[#EA580C]" onClick={() => { setDetailOpen(false); handleAssignClick(detailOrder); }}>Assign Rider</Button>
               </div>
-            </div>
+              </div>
+            </>
           )}
         </SheetContent>
       </Sheet>

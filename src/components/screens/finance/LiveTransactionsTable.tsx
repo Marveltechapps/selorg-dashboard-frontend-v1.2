@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LiveTransaction, fetchLiveTransactions } from './financeApi';
+import { txnMatchesPaymentBucket } from './paymentMethodBuckets';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -100,13 +101,8 @@ export function LiveTransactionsTable({ entityId, onTransactionClick, filterMeth
     };
   }, [entityId]);
 
-  const filteredTransactions = filterMethod 
-    ? transactions.filter(t => {
-        if (filterMethod === 'cards') return t.gateway === 'Stripe' || t.methodDisplay.includes('Visa') || t.methodDisplay.includes('Mastercard');
-        if (filterMethod === 'digital_wallets') return t.methodDisplay.includes('Pay');
-        if (filterMethod === 'cod') return t.methodDisplay === 'COD';
-        return true;
-      })
+  const filteredTransactions = filterMethod
+    ? transactions.filter((t) => txnMatchesPaymentBucket(t, filterMethod))
     : transactions;
 
   const getStatusBadge = (status: string) => {

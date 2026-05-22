@@ -1,9 +1,37 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarClock, Plus, RefreshCw, Save, X, Edit, Trash2 } from 'lucide-react';
-import { RiderShift, fetchRiderShifts, createRiderShift, updateRiderShift, deleteRiderShift } from './riderShiftApi';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Plus, RefreshCw, Save, Edit, Trash2, Search, X, SlidersHorizontal } from 'lucide-react';
+import {
+  RiderShift,
+  RiderShiftListSummary,
+  RiderShiftHubOption,
+  fetchRiderShifts,
+  fetchRiderShiftFilterOptions,
+  createRiderShift,
+  updateRiderShift,
+  deleteRiderShift,
+  type RiderShiftStatusFilter,
+  type RiderShiftPeakFilter,
+  type RiderShiftAvailabilityFilter,
+  type RiderShiftSortBy,
+} from './riderShiftApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 interface Props {
@@ -12,45 +40,128 @@ interface Props {
 
 type FormState = Partial<RiderShift>;
 
-type StatusFilter = 'all' | 'draft' | 'published' | 'cancelled';
+const defaultSummary: RiderShiftListSummary = {
+  all: 0,
+  draft: 0,
+  published: 0,
+  cancelled: 0,
+  peak: 0,
+};
 
 export function RiderShiftManagement({ searchQuery }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [shifts, setShifts] = useState<RiderShift[]>([]);
+  const [listTotal, setListTotal] = useState(0);
+  const [summary, setSummary] = useState<RiderShiftListSummary>(defaultSummary);
+  const [hubOptions, setHubOptions] = useState<RiderShiftHubOption[]>([]);
+
+  const [localSearch, setLocalSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [date, setDate] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState<RiderShiftStatusFilter>('all');
+  const [hubFilter, setHubFilter] = useState<string>('all');
+  const [peakFilter, setPeakFilter] = useState<RiderShiftPeakFilter>('all');
+  const [availabilityFilter, setAvailabilityFilter] =
+    useState<RiderShiftAvailabilityFilter>('all');
+  const [sortBy, setSortBy] = useState<RiderShiftSortBy>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
   const [editing, setEditing] = useState<FormState | null>(null);
   const [bookingsShift, setBookingsShift] = useState<RiderShift | null>(null);
   const [bookingsOpen, setBookingsOpen] = useState(false);
 
+  const combinedSearch = useMemo(() => {
+    const parts = [searchQuery.trim(), debouncedSearch.trim()].filter(Boolean);
+    return parts.join(' ').trim();
+  }, [searchQuery, debouncedSearch]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(localSearch), 350);
+    return () => window.clearTimeout(t);
+  }, [localSearch]);
+
+  useEffect(() => {
+    void fetchRiderShiftFilterOptions()
+      .then((opts) => setHubOptions(opts.hubs))
+      .catch(() => setHubOptions([]));
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const selectedHub = hubOptions.find((h) => h.hubId === hubFilter || h.hubName === hubFilter);
       const data = await fetchRiderShifts({
-        date,
+        ...(date ? { date } : {}),
+        ...(dateFrom && !date ? { dateFrom } : {}),
+        ...(dateTo && !date ? { dateTo } : {}),
         ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+        ...(hubFilter !== 'all'
+          ? {
+              hubId: selectedHub?.hubId || undefined,
+              hubName: selectedHub?.hubName || hubFilter,
+            }
+          : {}),
+        ...(peakFilter !== 'all' ? { peakFilter } : {}),
+        ...(availabilityFilter !== 'all' ? { availability: availabilityFilter } : {}),
+        ...(combinedSearch ? { search: combinedSearch } : {}),
+        sortBy,
+        sortOrder,
+        limit: 100,
       });
-      let items = data.items;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        items = items.filter(
-          (s) =>
-            s.id.toLowerCase().includes(q) ||
-            (s.hubName ?? '').toLowerCase().includes(q)
-        );
-      }
-      setShifts(items);
+      setShifts(data.items);
+      setListTotal(data.total);
+      setSummary(data.summary ?? defaultSummary);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load rider shifts');
     } finally {
       setLoading(false);
     }
-  }, [date, searchQuery, statusFilter]);
+  }, [
+    date,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    hubFilter,
+    hubOptions,
+    peakFilter,
+    availabilityFilter,
+    combinedSearch,
+    sortBy,
+    sortOrder,
+  ]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const hasActiveFilters =
+    !!date ||
+    !!dateFrom ||
+    !!dateTo ||
+    statusFilter !== 'all' ||
+    hubFilter !== 'all' ||
+    peakFilter !== 'all' ||
+    availabilityFilter !== 'all' ||
+    !!localSearch ||
+    sortBy !== 'date' ||
+    sortOrder !== 'asc';
+
+  const clearFilters = () => {
+    setLocalSearch('');
+    setDebouncedSearch('');
+    setDate('');
+    setDateFrom('');
+    setDateTo('');
+    setStatusFilter('all');
+    setHubFilter('all');
+    setPeakFilter('all');
+    setAvailabilityFilter('all');
+    setSortBy('date');
+    setSortOrder('asc');
+  };
 
   const openCreate = () => {
     setEditing({
@@ -142,29 +253,184 @@ export function RiderShiftManagement({ searchQuery }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            { key: 'all' as const, label: 'All' },
-            { key: 'draft' as const, label: 'Draft' },
-            { key: 'published' as const, label: 'Published' },
-            { key: 'cancelled' as const, label: 'Cancelled' },
-          ] as const
-        ).map(({ key, label }) => (
+      <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 space-y-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
+            <Input
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              placeholder="Search shift ID, hub, time, status…"
+              className="pl-9"
+            />
+          </div>
+          {hasActiveFilters && (
+            <Button variant="outline" size="sm" onClick={clearFilters} className="shrink-0">
+              <X className="w-4 h-4 mr-1" />
+              Clear filters
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div>
+            <Label className="text-xs text-[#6B7280] mb-1 block">Single date</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs text-[#6B7280] mb-1 block">From</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              disabled={!!date}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-[#6B7280] mb-1 block">To</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              disabled={!!date}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-[#6B7280] mb-1 block">Hub</Label>
+            <Select value={hubFilter} onValueChange={setHubFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All hubs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All hubs</SelectItem>
+                {hubOptions.map((h) => (
+                  <SelectItem key={`${h.hubId}-${h.hubName}`} value={h.hubId || h.hubName}>
+                    {h.hubName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs text-[#6B7280] mb-1 block">Peak</Label>
+            <Select value={peakFilter} onValueChange={(v) => setPeakFilter(v as RiderShiftPeakFilter)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="peak">Peak only</SelectItem>
+                <SelectItem value="non-peak">Non-peak</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs text-[#6B7280] mb-1 block">Capacity</Label>
+            <Select
+              value={availabilityFilter}
+              onValueChange={(v) => setAvailabilityFilter(v as RiderShiftAvailabilityFilter)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any</SelectItem>
+                <SelectItem value="available">Has open slots</SelectItem>
+                <SelectItem value="full">Fully booked</SelectItem>
+                <SelectItem value="empty">No bookings</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex-1">
+            <Label className="text-xs text-[#6B7280] mb-1 block">Sort</Label>
+            <div className="flex gap-2">
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as RiderShiftSortBy)}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="startTime">Start time</SelectItem>
+                  <SelectItem value="capacity">Capacity</SelectItem>
+                  <SelectItem value="booked">Bookings</SelectItem>
+                  <SelectItem value="hub">Hub</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as 'asc' | 'desc')}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asc">Ascending</SelectItem>
+                  <SelectItem value="desc">Descending</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="text-sm text-[#6B7280] flex items-center gap-1.5 pb-0.5">
+            <SlidersHorizontal className="w-4 h-4" />
+            Showing {shifts.length} of {listTotal} shifts
+            {combinedSearch ? ` matching “${combinedSearch}”` : ''}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: 'all' as const, label: 'All', count: summary.all },
+              { key: 'draft' as const, label: 'Draft', count: summary.draft },
+              { key: 'published' as const, label: 'Published', count: summary.published },
+              { key: 'cancelled' as const, label: 'Cancelled', count: summary.cancelled },
+            ] as const
+          ).map(({ key, label, count }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStatusFilter(key)}
+              className={
+                'px-4 py-2 rounded-lg text-sm font-medium border transition-colors inline-flex items-center gap-2 ' +
+                (statusFilter === key
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-[#374151] border-[#E5E7EB] hover:bg-[#F9FAFB]')
+              }
+            >
+              {label}
+              <span
+                className={
+                  'text-xs px-1.5 py-0.5 rounded-full ' +
+                  (statusFilter === key ? 'bg-white/20' : 'bg-[#F3F4F6]')
+                }
+              >
+                {count}
+              </span>
+            </button>
+          ))}
           <button
-            key={key}
             type="button"
-            onClick={() => setStatusFilter(key)}
+            onClick={() => {
+              setPeakFilter(peakFilter === 'peak' ? 'all' : 'peak');
+            }}
             className={
-              'px-4 py-2 rounded-lg text-sm font-medium border transition-colors ' +
-              (statusFilter === key
-                ? 'bg-emerald-600 text-white border-emerald-600'
+              'px-4 py-2 rounded-lg text-sm font-medium border transition-colors inline-flex items-center gap-2 ' +
+              (peakFilter === 'peak'
+                ? 'bg-amber-500 text-white border-amber-500'
                 : 'bg-white text-[#374151] border-[#E5E7EB] hover:bg-[#F9FAFB]')
             }
           >
-            {label}
+            Peak
+            <span
+              className={
+                'text-xs px-1.5 py-0.5 rounded-full ' +
+                (peakFilter === 'peak' ? 'bg-white/20' : 'bg-[#F3F4F6]')
+              }
+            >
+              {summary.peak}
+            </span>
           </button>
-        ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] overflow-x-auto">
@@ -267,8 +533,17 @@ export function RiderShiftManagement({ searchQuery }: Props) {
             ))}
             {!loading && shifts.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-[#6B7280]">
+                <td colSpan={9} className="px-4 py-8 text-center text-[#6B7280]">
                   No shifts found for the selected filters.
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      className="block mx-auto mt-2 text-emerald-600 underline text-sm"
+                      onClick={clearFilters}
+                    >
+                      Clear all filters
+                    </button>
+                  )}
                 </td>
               </tr>
             )}
@@ -276,26 +551,23 @@ export function RiderShiftManagement({ searchQuery }: Props) {
         </table>
       </div>
 
-      {editing && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-[#111827]">
-                  {editing.id ? 'Edit Rider Shift' : 'Create Rider Shift'}
-                </h2>
-                <p className="text-sm text-[#6B7280]">
-                  Define shift timing, capacity and incentives.
-                </p>
-              </div>
-              <button
-                onClick={resetForm}
-                className="rounded-full p-1.5 hover:bg-gray-100 text-gray-500"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) resetForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl gap-4 overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-[#111827]">
+              {editing?.id ? 'Edit Rider Shift' : 'Create Rider Shift'}
+            </DialogTitle>
+            <DialogDescription>
+              Define shift timing, capacity and incentives.
+            </DialogDescription>
+          </DialogHeader>
 
+          {editing && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="date">Date</Label>
@@ -458,43 +730,44 @@ export function RiderShiftManagement({ searchQuery }: Props) {
                 />
               </div>
             </div>
+          )}
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={resetForm}>
-                Cancel
-              </Button>
-              <Button onClick={() => void handleSave()} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Save className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Shift
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-      {bookingsOpen && bookingsShift && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Bookings for {bookingsShift.id}</h3>
-              <button
-                onClick={() => {
-                  setBookingsOpen(false);
-                  setBookingsShift(null);
-                }}
-                className="rounded-full p-1.5 hover:bg-gray-100 text-gray-500"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+          <DialogFooter className="gap-3 pt-2 sm:justify-end">
+            <Button variant="outline" onClick={resetForm}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSave()} disabled={saving || !editing}>
+              {saving ? (
+                <>
+                  <Save className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Shift
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={bookingsOpen && !!bookingsShift}
+        onOpenChange={(open) => {
+          setBookingsOpen(open);
+          if (!open) setBookingsShift(null);
+        }}
+      >
+        <DialogContent className="max-w-lg gap-4 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bookings for {bookingsShift?.id}</DialogTitle>
+            <DialogDescription>
+              View booked slots and rider assignments for this shift.
+            </DialogDescription>
+          </DialogHeader>
+          {bookingsShift && (
             <div className="text-sm text-gray-600">
               <p>
                 Booked slots: <strong>{bookingsShift.bookedCount}</strong>
@@ -504,14 +777,20 @@ export function RiderShiftManagement({ searchQuery }: Props) {
                 — hook up /rider/shift-assignments endpoint to load actual riders.)
               </p>
             </div>
-            <div className="flex justify-end mt-6">
-              <Button variant="outline" onClick={() => { setBookingsOpen(false); setBookingsShift(null); }}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBookingsOpen(false);
+                setBookingsShift(null);
+              }}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

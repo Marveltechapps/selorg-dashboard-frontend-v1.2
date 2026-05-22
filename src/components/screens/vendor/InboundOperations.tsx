@@ -36,102 +36,31 @@ import { exportToPDF } from '../../../utils/pdfExport';
 import {
   fetchGRNList,
   fetchShipments,
+  fetchExceptions,
+  fetchRTVList,
+  fetchInboundOverview,
   approveGRN,
   rejectGRN,
   updateGRNItem,
-  emailGRN,
   archiveGRN,
+  createRTV,
+  patchRTVStatus,
+  createException,
+  resolveException,
+  downloadInboundReport,
 } from '../../../api/vendor/vendorInbound.api';
-
-// Types
-type GRNStatus = 'Pending Approval' | 'Approved' | 'Rejected' | 'Partial Receipt';
-type ExceptionType = 'No Issue' | 'Short' | 'Excess' | 'Damaged' | 'Missing' | 'Quality';
-type RTVStatus = 'Open' | 'In Transit' | 'Completed' | 'Rejected';
-type RTVReason = 'Short Goods' | 'Damaged Goods' | 'Excess Goods' | 'Quality Issues' | 'Wrong Item';
-
-interface LineItem {
-  sku: string;
-  product: string;
-  ordered: number;
-  received: number;
-  unit: string;
-  status: 'Complete' | 'Short' | 'Excess' | 'Damaged';
-}
-
-interface GRN {
-  id: string;
-  grnNumber: string;
-  shipmentId: string;
-  vendor: string;
-  warehouse: string;
-  date: string;
-  status: GRNStatus;
-  exceptionType: ExceptionType;
-  exceptionDetails?: string;
-  lineItems: LineItem[];
-  notes?: string;
-  qualityChecked?: boolean;
-  documentsComplete?: boolean;
-}
-
-interface Shipment {
-  id: string;
-  shipmentId: string;
-  vendor: string;
-  currentLocation: string;
-  eta: string;
-  status: 'In Transit' | 'Stopped' | 'Arriving' | 'Alert';
-  driver: string;
-  driverPhone: string;
-  truckNumber: string;
-  progress: number;
-  lat: number;
-  lng: number;
-}
-
-interface RTV {
-  id: string;
-  rtvNumber: string;
-  grnReference: string;
-  reason: RTVReason;
-  quantity: string;
-  status: RTVStatus;
-  vendor: string;
-  createdDate: string;
-  items: string[];
-}
-
-function mapShipmentRecord(raw: Record<string, unknown>): Shipment {
-  const id = String(raw._id ?? raw.id ?? '');
-  const tracking = String(raw.trackingNumber ?? raw.shipmentId ?? '—');
-  const statusRaw = String(raw.status ?? 'IN_TRANSIT').toUpperCase();
-  let status: Shipment['status'] = 'In Transit';
-  if (statusRaw.includes('STOP')) status = 'Stopped';
-  else if (statusRaw.includes('ARRIV')) status = 'Arriving';
-  else if (statusRaw.includes('ALERT')) status = 'Alert';
-  const eta =
-    raw.estimatedArrival != null && raw.estimatedArrival !== ''
-      ? new Date(String(raw.estimatedArrival)).toLocaleString()
-      : '—';
-  const lat = typeof raw.lat === 'number' ? raw.lat : Number(raw.lat) || 0;
-  const lng = typeof raw.lng === 'number' ? raw.lng : Number(raw.lng) || 0;
-  const progress =
-    typeof raw.progress === 'number' && !Number.isNaN(raw.progress) ? raw.progress : 0;
-  return {
-    id,
-    shipmentId: tracking,
-    vendor: String(raw.carrier ?? raw.vendorName ?? raw.vendor ?? '—'),
-    currentLocation: String(raw.currentLocation ?? raw.location ?? '—'),
-    eta,
-    status,
-    driver: String(raw.driver ?? '—'),
-    driverPhone: String(raw.driverPhone ?? '—'),
-    truckNumber: String(raw.truckNumber ?? '—'),
-    progress,
-    lat,
-    lng,
-  };
-}
+import {
+  type GRN,
+  type GRNStatus,
+  type ExceptionType,
+  type RTV,
+  type RTVStatus,
+  type RTVReason,
+  type LineItem,
+  type Shipment,
+  type InboundException,
+  type InboundOverview,
+} from '../../../api/vendor/vendorInboundMappers';
 
 // Status Badge Component
 const StatusBadge: React.FC<{ status: GRNStatus }> = ({ status }) => {
@@ -253,13 +182,14 @@ export function InboundOperations() {
   const [currentTrackingStep, setCurrentTrackingStep] = useState(0);
   const trackingIntervalRef = useRef<number | null>(null);
   const [createdRtvByGrn, setCreatedRtvByGrn] = useState<Record<string, boolean>>({});
-  const [archivedGrnIds, setArchivedGrnIds] = useState<Set<string>>(new Set());
   // Stateful copies so UI updates reflect immediately (in-memory)
   const [grns, setGrns] = useState<GRN[]>([]);
   const [rtvs, setRtvs] = useState<RTV[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [inboundExceptions, setInboundExceptions] = useState<InboundException[]>([]);
+  const [overview, setOverview] = useState<InboundOverview | null>(null);
+  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
-  const broadcastRef = React.useRef<BroadcastChannel | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [rtvReason, setRtvReason] = useState<string>('');
@@ -318,57 +248,40 @@ export function InboundOperations() {
     if (e.target) e.target.value = '';
   };
  
+
+  const loadInboundData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [grnList, shipList, exList, rtvList, overviewData] = await Promise.all([
+        fetchGRNList({ page: 1, limit: 100 }),
+        fetchShipments(),
+        fetchExceptions(),
+        fetchRTVList(),
+        fetchInboundOverview(),
+      ]);
+      setGrns(grnList);
+      setShipments(shipList);
+      setInboundExceptions(exList);
+      setRtvs(rtvList);
+      setOverview(overviewData);
+      const mapping: Record<string, boolean> = {};
+      rtvList.forEach((r) => {
+        const matched = grnList.find((g) => g.grnNumber === r.grnReference || g.id === r.grnId);
+        if (matched) mapping[matched.id] = true;
+      });
+      setCreatedRtvByGrn(mapping);
+    } catch (err) {
+      console.error('Failed to load inbound data', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to load inbound data');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Load GRNs from backend on mount
   React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const resp = await fetchGRNList({ page: 1, limit: 25 });
-        if (!mounted) return;
-        let items = resp?.data ?? resp?.items ?? resp;
-        if (items?.pagination && Array.isArray(items.data)) items = items.data;
-        const arr = Array.isArray(items) ? items : [];
-        const mappedItems = arr.map((item: Record<string, unknown>) => ({
-          id: String(item.id ?? item._id ?? item.grnNumber ?? `grn-${Date.now()}`),
-          grnNumber: String(item.grnNumber ?? item.grn_number ?? item.id ?? 'N/A'),
-          shipmentId: String(item.shipmentId ?? item.shipment_id ?? item.shipment ?? 'N/A'),
-          vendor: String(item.vendor ?? item.vendorName ?? 'N/A'),
-          warehouse: String(item.warehouse ?? item.warehouseName ?? 'N/A'),
-          date: item.date ? String(item.date) : (item.createdAt ? new Date(item.createdAt as string).toLocaleDateString() : new Date().toLocaleDateString()),
-          status: (item.status === 'approved' ? 'Approved' : item.status === 'pending' ? 'Pending Approval' : item.status === 'rejected' ? 'Rejected' : (item.status as string) || 'Pending Approval') as GRNStatus,
-          exceptionType: (item.exceptionType ?? item.exception_type ?? 'No Issue') as ExceptionType,
-          exceptionDetails: item.exceptionDetails ?? item.exception_details as string | undefined,
-          lineItems: Array.isArray(item.lineItems) ? item.lineItems : Array.isArray(item.items) ? item.items : [],
-          notes: item.notes as string | undefined,
-          qualityChecked: item.qualityChecked ?? item.quality_checked as boolean | undefined,
-          documentsComplete: item.documentsComplete ?? item.documents_complete as boolean | undefined,
-        })) as GRN[];
-        setGrns(mappedItems.filter((g) => !archivedGrnIds.has(g.id)));
-      } catch (err) {
-        console.error('Failed to load GRNs', err);
-        if (mounted) {
-          setGrns([]);
-          toast.error('Failed to load GRNs');
-        }
-      }
-      try {
-        const shipResp = await fetchShipments({ page: 1, limit: 50 });
-        if (!mounted) return;
-        let shipItems = shipResp?.data ?? shipResp?.items ?? shipResp;
-        if (shipItems?.pagination && Array.isArray(shipItems.data)) shipItems = shipItems.data;
-        const sarr = Array.isArray(shipItems) ? shipItems : [];
-        setShipments(sarr.map((s: Record<string, unknown>) => mapShipmentRecord(s)));
-      } catch (err) {
-        console.error('Failed to load shipments', err);
-        if (mounted) {
-          setShipments([]);
-          toast.error('Failed to load shipments');
-        }
-      }
-    })();
-    return () => { mounted = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadInboundData();
+  }, [loadInboundData]);
 
   // PDF Export function
   const downloadGRNPDF = (grn: GRN) => {
@@ -421,47 +334,7 @@ export function InboundOperations() {
     }
   };
 
-  const saveSnapshot = (nextGrns: GRN[], nextRtvs: RTV[]) => {
-    try {
-      const snapshot = { grns: nextGrns, rtvs: nextRtvs, archivedGrnIds: Array.from(archivedGrnIds) };
-      if (broadcastRef.current) {
-        broadcastRef.current.postMessage({ type: 'update', payload: snapshot });
-      }
-    } catch (e) {
-      console.warn('Failed to broadcast inbound state', e);
-    }
-  };
 
-  // Setup BroadcastChannel for multi-tab sync
-  React.useEffect(() => {
-    try {
-      const bc = new BroadcastChannel('inbound_channel');
-      broadcastRef.current = bc;
-      bc.onmessage = (ev) => {
-        const msg = ev.data;
-        if (msg?.type === 'update' && msg.payload) {
-          const { grns: incomingGrns, rtvs: incomingRtvs, archivedGrnIds: incomingArchived } = msg.payload;
-          // Merge simple strategy: replace entirely with latest snapshot
-          if (Array.isArray(incomingGrns) && Array.isArray(incomingRtvs)) {
-            const archivedIds = new Set<string>(
-              Array.isArray(incomingArchived) ? incomingArchived.map(String) : []
-            );
-            setArchivedGrnIds(archivedIds);
-            const filteredGrns = incomingGrns.filter((g: GRN) => !archivedIds.has(g.id));
-            setGrns(filteredGrns);
-            setRtvs(incomingRtvs);
-            toast.success('Inbound data synchronized from another tab');
-          }
-        }
-      };
-      return () => {
-        bc.close();
-      };
-    } catch (e) {
-      // BroadcastChannel not available in this environment
-    }
-  }, []);
- 
   // Ensure createdRtvByGrn map reflects any existing RTVs on load or when rtvs/grns change
   React.useEffect(() => {
     try {
@@ -478,94 +351,30 @@ export function InboundOperations() {
 
   // Utility & action handlers (simulate backend behavior / downloads)
   const handleRefresh = async () => {
-    try {
-      const [resp, shipResp] = await Promise.all([
-        fetchGRNList({ page: 1, limit: 25 }),
-        fetchShipments({ page: 1, limit: 50 }),
-      ]);
-      let items = resp && (resp.data || resp.items) ? resp.data || resp.items : resp;
-      if (!items) items = [];
-      if (items.pagination && Array.isArray(items.data)) items = items.data;
-      const mappedItems = (Array.isArray(items) ? items : []).map((item: Record<string, unknown>) => ({
-        id: String(item.id ?? item._id ?? item.grnNumber ?? `grn-${Date.now()}`),
-        grnNumber: String(item.grnNumber ?? item.grn_number ?? item.id ?? 'N/A'),
-        shipmentId: String(item.shipmentId ?? item.shipment_id ?? item.shipment ?? 'N/A'),
-        vendor: String(item.vendor ?? item.vendorName ?? 'N/A'),
-        warehouse: String(item.warehouse ?? item.warehouseName ?? 'N/A'),
-        date: item.date
-          ? String(item.date)
-          : item.createdAt
-            ? new Date(String(item.createdAt)).toLocaleDateString()
-            : new Date().toLocaleDateString(),
-        status: (item.status === 'approved'
-          ? 'Approved'
-          : item.status === 'pending'
-            ? 'Pending Approval'
-            : item.status === 'rejected'
-              ? 'Rejected'
-              : (item.status as string) || 'Pending Approval') as GRNStatus,
-        exceptionType: (item.exceptionType ?? item.exception_type ?? 'No Issue') as ExceptionType,
-        exceptionDetails: item.exceptionDetails ?? item.exception_details as string | undefined,
-        lineItems: Array.isArray(item.lineItems)
-          ? item.lineItems
-          : Array.isArray(item.items)
-            ? item.items
-            : [],
-        notes: item.notes as string | undefined,
-        qualityChecked: item.qualityChecked ?? item.quality_checked as boolean | undefined,
-        documentsComplete: item.documentsComplete ?? item.documents_complete as boolean | undefined,
-      })) as GRN[];
-      const filteredItems = mappedItems.filter((g: GRN) => !archivedGrnIds.has(g.id));
-      setGrns(filteredItems);
-      saveSnapshot(filteredItems, rtvs);
-
-      let shipItems = shipResp?.data ?? shipResp?.items ?? shipResp;
-      if (shipItems?.pagination && Array.isArray(shipItems.data)) shipItems = shipItems.data;
-      const sarr = Array.isArray(shipItems) ? shipItems : [];
-      setShipments(sarr.map((s: Record<string, unknown>) => mapShipmentRecord(s)));
-
-      toast.success('Data refreshed from server');
-    } catch (err) {
-      console.error('Refresh error', err);
-      toast.error('Failed to refresh inbound data');
-    }
+    await loadInboundData();
+    toast.success('Data refreshed from server');
   };
 
   const handleAcceptExcess = async (grn: GRN) => {
     setActionLoading((s) => ({ ...s, [`accept-${grn.id}`]: true }));
-    const newGrns: GRN[] = grns.map((g) =>
-      g.id === grn.id
-        ? {
-            ...g,
-            exceptionType: 'No Issue' as ExceptionType,
-            exceptionDetails: undefined,
-            notes: g.notes ? `${g.notes} | Excess accepted` : 'Excess accepted',
-          }
-        : g
-    ) as GRN[];
-    setGrns(newGrns);
-    setSelectedGRN((s) =>
-      s && s.id === grn.id
-        ? {
-            ...s,
-            exceptionType: 'No Issue' as ExceptionType,
-            exceptionDetails: undefined,
-            notes: s.notes ? `${s.notes} | Excess accepted` : 'Excess accepted',
-          }
-        : s
-    );
-    saveSnapshot(newGrns, rtvs);
     try {
-      // Try to update via API if available
-      await updateGRNItem(grn.id, grn.lineItems[0]?.sku || '', {
+      const openEx = inboundExceptions.find(
+        (e) => e.grnId === grn.id && e.status === 'OPEN' && e.type === 'Excess'
+      );
+      if (openEx) await resolveException(openEx.id);
+      const updated = await updateGRNItem(grn.id, grn.lineItems[0]?.sku || '', {
         received_quantity: grn.lineItems[0]?.received || 0,
         notes: 'Excess accepted',
       });
+      setGrns((prev) => prev.map((g) => (g.id === grn.id ? updated : g)));
+      await loadInboundData();
+      toast.success(`Accepted excess for ${grn.grnNumber}`);
     } catch (err) {
-      console.warn('Failed to update excess acceptance via API', err);
+      console.error('Failed to accept excess', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to accept excess');
+    } finally {
+      setActionLoading((s) => ({ ...s, [`accept-${grn.id}`]: false }));
     }
-    setActionLoading((s) => ({ ...s, [`accept-${grn.id}`]: false }));
-    toast.success(`Accepted excess for ${grn.grnNumber}`);
   };
 
   const downloadTextFile = (filename: string, content: string) => {
@@ -580,37 +389,34 @@ export function InboundOperations() {
     URL.revokeObjectURL(url);
   };
 
-  const handleCreateLabel = (rtv: RTV) => {
+  const handleCreateLabel = async (rtv: RTV) => {
     const labelContent = `Return Label\nRTV: ${rtv.rtvNumber}\nGRN: ${rtv.grnReference}\nVendor: ${rtv.vendor}\nItems:\n${rtv.items.join('\n')}\n\nGenerated: ${new Date().toLocaleString()}`;
     downloadTextFile(`label-${rtv.rtvNumber}.txt`, labelContent);
-    // optimistic update with loading indicator
     setActionLoading((s) => ({ ...s, [`label-${rtv.id}`]: true }));
-    const newRtvs: RTV[] = rtvs.map((r) =>
-      r.id === rtv.id ? { ...r, status: 'In Transit' as RTVStatus } : r
-    );
-    setRtvs(newRtvs);
-    saveSnapshot(grns, newRtvs);
-    setTimeout(() => {
-      setActionLoading((s) => ({ ...s, [`label-${rtv.id}`]: false }));
+    try {
+      const updated = await patchRTVStatus(rtv.id, { status: 'In Transit', currentTrackingStep: 1 });
+      setRtvs((prev) => prev.map((r) => (r.id === rtv.id ? updated : r)));
       toast.success(`Return label generated for ${rtv.rtvNumber}`);
-    }, 600);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update RTV status');
+    } finally {
+      setActionLoading((s) => ({ ...s, [`label-${rtv.id}`]: false }));
+    }
   };
 
-  const handleTrackReturn = (rtv: RTV) => {
-    // Start a richer tracking flow: set status, persist and open live tracker UI
+  const handleTrackReturn = async (rtv: RTV) => {
     setActionLoading((s) => ({ ...s, [`track-${rtv.id}`]: true }));
-    const newRtvs: RTV[] = rtvs.map((r) =>
-      r.id === rtv.id ? { ...r, status: 'In Transit' as RTVStatus } : r
-    );
-    setRtvs(newRtvs);
-    setSelectedRTV({ ...rtv, status: 'In Transit' as RTVStatus });
-    saveSnapshot(grns, newRtvs);
-    setTimeout(() => {
-      setActionLoading((s) => ({ ...s, [`track-${rtv.id}`]: false }));
+    try {
+      const updated = await patchRTVStatus(rtv.id, { status: 'In Transit', currentTrackingStep: 0 });
+      setRtvs((prev) => prev.map((r) => (r.id === rtv.id ? updated : r)));
+      setSelectedRTV(updated);
       toast.success(`Tracking started for ${rtv.rtvNumber}`);
-      // initialize step-based tracker UI
-      startRTVTrackingUI({ ...rtv, status: 'In Transit' });
-    }, 500);
+      startRTVTrackingUI(updated);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to start tracking');
+    } finally {
+      setActionLoading((s) => ({ ...s, [`track-${rtv.id}`]: false }));
+    }
   };
 
   const handleViewRTVDetails = (rtv: RTV) => {
@@ -619,75 +425,75 @@ export function InboundOperations() {
   };
 
   // Immediate create RTV (optimistic) - used by inline Create RTV buttons
-  const handleCreateRTVImmediate = (grn: GRN) => {
+  const handleCreateRTVImmediate = async (grn: GRN) => {
     if (createdRtvByGrn[grn.id]) {
       toast.info('RTV already created for this GRN');
       return;
     }
     setActionLoading((s) => ({ ...s, [`rtv-create-inline-${grn.id}`]: true }));
     const totalQty = grn.lineItems.reduce((acc, it) => acc + (it.received || 0), 0);
-    const newRtv: RTV = {
-      id: Date.now().toString(),
-      rtvNumber: `RTV-${Date.now()}`,
-      grnReference: grn.grnNumber,
-      reason: (grn.exceptionType === 'Damaged' ? 'Damaged Goods' : grn.exceptionType === 'Short' ? 'Short Goods' : 'Wrong Item') as RTVReason,
-      quantity: `${totalQty} units`,
-      status: 'Open',
-      vendor: grn.vendor,
-      createdDate: new Date().toLocaleDateString(),
-      items: grn.lineItems.map((li) => `${li.product} - ${li.received} ${li.unit}`),
-    };
-    // optimistic UI update
-    const newRtvs = [newRtv, ...rtvs];
-    setRtvs(newRtvs);
-    setCreatedRtvByGrn((s) => ({ ...s, [grn.id]: true }));
-    saveSnapshot(grns, newRtvs);
-    setTimeout(() => {
-      setActionLoading((s) => ({ ...s, [`rtv-create-inline-${grn.id}`]: false }));
-      toast.success(`RTV created for ${grn.grnNumber}`);
-      // keep selectedGRN for context
+    const reason =
+      grn.exceptionType === 'Damaged'
+        ? 'Damaged Goods'
+        : grn.exceptionType === 'Short'
+          ? 'Short Goods'
+          : 'Wrong Item';
+    try {
+      const newRtv = await createRTV({
+        grnId: grn.id,
+        grnReference: grn.grnNumber,
+        reason,
+        quantity: `${totalQty} units`,
+        vendor: grn.vendor,
+        items: grn.lineItems.map((li) => `${li.product} - ${li.received} ${li.unit}`),
+      });
+      setRtvs((prev) => [newRtv, ...prev]);
+      setCreatedRtvByGrn((s) => ({ ...s, [grn.id]: true }));
       setSelectedGRN(grn);
-    }, 600);
+      toast.success(`RTV created for ${grn.grnNumber}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create RTV');
+    } finally {
+      setActionLoading((s) => ({ ...s, [`rtv-create-inline-${grn.id}`]: false }));
+    }
   };
 
   // Live tracker UI initialization and progression
   const startRTVTrackingUI = (rtv: RTV) => {
-    // define steps
-    const steps = ['Pickup Scheduled', 'Picked Up', 'At Hub', 'Out for Delivery', 'Delivered'];
+    const steps = rtv.trackingSteps?.length
+      ? rtv.trackingSteps
+      : ['Pickup Scheduled', 'Picked Up', 'At Hub', 'Out for Delivery', 'Delivered'];
     setTrackingSteps(steps);
-    setCurrentTrackingStep(0);
+    setCurrentTrackingStep(rtv.currentTrackingStep ?? 0);
     setShowRTVTrackModal(true);
-    // clear any existing interval
     if (trackingIntervalRef.current) {
       window.clearInterval(trackingIntervalRef.current);
       trackingIntervalRef.current = null;
     }
-    // advance steps every 1.2s (simulated)
     const id = window.setInterval(() => {
       setCurrentTrackingStep((prev) => {
         const next = prev + 1;
         if (next >= steps.length) {
-          // finish
           if (trackingIntervalRef.current) {
             window.clearInterval(trackingIntervalRef.current);
             trackingIntervalRef.current = null;
           }
-          // mark RTV completed in state
-          setRtvs((prevRtvs) => prevRtvs.map((r) => (r.id === rtv.id ? { ...r, status: 'Completed' } : r)));
-          saveSnapshot(grns, rtvs.map((r) => (r.id === rtv.id ? { ...r, status: 'Completed' } : r)));
-          toast.success(`${rtv.rtvNumber} delivered`);
+          patchRTVStatus(rtv.id, { status: 'Completed', currentTrackingStep: steps.length - 1 })
+            .then((updated) => {
+              setRtvs((prevRtvs) => prevRtvs.map((r) => (r.id === rtv.id ? updated : r)));
+              toast.success(`${rtv.rtvNumber} delivered`);
+            })
+            .catch((err) => console.error('RTV complete failed', err));
           return steps.length - 1;
         }
-        // update rtv status as we move
-        setRtvs((prevRtvs) =>
-          prevRtvs.map((r) =>
-            r.id === rtv.id ? { ...r, status: next >= steps.length - 1 ? 'Completed' : 'In Transit' } : r
-          )
-        );
+        const status: RTVStatus = next >= steps.length - 1 ? 'Completed' : 'In Transit';
+        patchRTVStatus(rtv.id, { status, currentTrackingStep: next }).then((updated) => {
+          setRtvs((prevRtvs) => prevRtvs.map((r) => (r.id === rtv.id ? updated : r)));
+        }).catch((err) => console.error('RTV track step failed', err));
         return next;
       });
     }, 1200);
-    trackingIntervalRef.current = id as any;
+    trackingIntervalRef.current = id as unknown as number;
   };
 
   // cleanup tracker interval on unmount
@@ -700,14 +506,12 @@ export function InboundOperations() {
     };
   }, []);
 
-  // Calculate dashboard metrics (derived from state)
-  const todayLabel = new Date().toLocaleDateString();
-  const totalGRNsToday = grns.filter((g) => g.date === todayLabel).length;
-  const pendingApproval = grns.filter(g => g.status === 'Pending Approval').length;
-  const approvedGRNs = grns.filter(g => g.status === 'Approved').length;
-  const rejectedGRNs = grns.filter(g => g.status === 'Rejected').length;
-  const inTransit = shipments.filter((s) => s.status === 'In Transit').length;
-  const exceptions = grns.filter(g => g.exceptionType !== 'No Issue').length;
+  const totalGRNsToday = overview?.totalGRNsToday ?? 0;
+  const pendingApproval = overview?.pendingApproval ?? grns.filter((g) => g.status === 'Pending Approval').length;
+  const approvedGRNs = overview?.approvedGRNs ?? grns.filter((g) => g.status === 'Approved').length;
+  const rejectedGRNs = overview?.rejectedGRNs ?? grns.filter((g) => g.status === 'Rejected').length;
+  const inTransit = overview?.inTransitShipments ?? shipments.filter((s) => s.status === 'In Transit').length;
+  const exceptions = overview?.exceptions ?? inboundExceptions.filter((e) => e.status === 'OPEN').length;
   const shipmentsWithCoords = shipments.filter((s) => s.lat !== 0 || s.lng !== 0);
 
   // Get action buttons based on status
@@ -1144,17 +948,17 @@ export function InboundOperations() {
                                     setShowMoreMenu(null);
                                     try {
                                       setActionLoading((s) => ({ ...s, [`email-${grn.id}`]: true }));
-                                      try {
-                                        await emailGRN(grn.id, []);
-                                        toast.success(`GRN ${grn.grnNumber} emailed successfully`);
-                                      } catch (apiErr) {
-                                        // Email functionality may not be fully implemented, simulate success
-                                        console.warn('Email GRN API error (simulating success):', apiErr);
-                                        toast.success(`GRN ${grn.grnNumber} email composer opened`);
-                                      }
+                                      const blob = await downloadInboundReport();
+                                      const url = URL.createObjectURL(blob);
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = `inbound-report-${grn.grnNumber}.csv`;
+                                      a.click();
+                                      URL.revokeObjectURL(url);
+                                      toast.success('Inbound report downloaded');
                                     } catch (err) {
-                                      console.error('Email GRN error', err);
-                                      toast.success(`GRN ${grn.grnNumber} email composer opened`);
+                                      console.error('Download report error', err);
+                                      toast.error(err instanceof Error ? err.message : 'Failed to download report');
                                     } finally {
                                       setActionLoading((s) => ({ ...s, [`email-${grn.id}`]: false }));
                                     }
@@ -1163,7 +967,7 @@ export function InboundOperations() {
                                   disabled={!!actionLoading[`email-${grn.id}`]}
                                 >
                                   <Mail className="w-4 h-4" />
-                                  Email GRN
+                                  Export Report
                                 </button>
                                 {!rtvExistsForGrn(grn) ? (
                                   <button
@@ -1219,24 +1023,9 @@ export function InboundOperations() {
                                     try {
                                       setActionLoading((s) => ({ ...s, [`archive-${grn.id}`]: true }));
                                       await archiveGRN(grn.id);
-                                      // Add to archived set and remove from grns
-                                      const newArchivedIds = new Set(archivedGrnIds);
-                                      newArchivedIds.add(grn.id);
-                                      setArchivedGrnIds(newArchivedIds);
-                                      const newGrns = grns.filter((g) => g.id !== grn.id);
-                                      setGrns(newGrns);
-                                      saveSnapshot(newGrns, rtvs);
+                                      setGrns((prev) => prev.filter((g) => g.id !== grn.id));
+                                      await loadInboundData();
                                       toast.success(`GRN ${grn.grnNumber} archived successfully`);
-                                    } catch (err) {
-                                      console.error('Archive GRN error', err);
-                                      // Still remove from UI even if API fails
-                                      const newArchivedIds = new Set(archivedGrnIds);
-                                      newArchivedIds.add(grn.id);
-                                      setArchivedGrnIds(newArchivedIds);
-                                      const newGrns = grns.filter((g) => g.id !== grn.id);
-                                      setGrns(newGrns);
-                                      saveSnapshot(newGrns, rtvs);
-                                      toast.success(`GRN ${grn.grnNumber} archived`);
                                     } finally {
                                       setActionLoading((s) => ({ ...s, [`archive-${grn.id}`]: false }));
                                     }
@@ -1915,59 +1704,28 @@ export function InboundOperations() {
             onClick={async () => {
               if (!selectedGRN) return;
               setActionLoading((s) => ({ ...s, [`approve-${selectedGRN.id}`]: true }));
-              // Optimistic UI update
-              const optimistic: GRN[] = grns.map((g) =>
-                g.id === selectedGRN.id
-                  ? {
-                      ...g,
-                      status: 'Approved' as GRNStatus,
-                      qualityChecked: qualityChecks.inspected,
-                      documentsComplete: qualityChecks.documentsComplete,
-                      notes: approvalNotes || g.notes,
-                    }
-                  : g
-              );
-              setGrns(optimistic);
-              setSelectedGRN((s) =>
-                s
-                  ? {
-                      ...s,
-                      status: 'Approved' as GRNStatus,
-                      qualityChecked: qualityChecks.inspected,
-                      documentsComplete: qualityChecks.documentsComplete,
-                      notes: approvalNotes || s.notes,
-                    }
-                  : s
-              );
               try {
-                const body = {
+                await approveGRN(selectedGRN.id, {
                   notes: approvalNotes || '',
                   qualityChecked: qualityChecks.inspected,
                   documentsComplete: qualityChecks.documentsComplete,
-                };
-                try {
-                  const resp = await approveGRN(selectedGRN.id, body);
-                  const updated = resp && (resp.data || resp) ? resp.data || resp : null;
-                  if (updated) {
-                    setGrns((prev) =>
-                      prev.map((g) => (g.id === selectedGRN.id ? ({ ...g, ...updated } as GRN) : g))
-                    );
-                    setSelectedGRN((s) => (s ? ({ ...s, ...updated } as GRN) : s));
-                  }
-                } catch (apiErr) {
-                  // API call failed, but keep optimistic update
-                  console.warn('approveGRN API error (keeping optimistic update):', apiErr);
-                }
-                toast.success(`${selectedGRN?.grnNumber} has been approved`);
-                saveSnapshot(optimistic, rtvs);
+                });
+                await loadInboundData();
+                toast.success(`${selectedGRN.grnNumber} has been approved`);
               } catch (err) {
                 console.error('approveGRN error', err);
-                // Keep optimistic update even on error
-                toast.success(`${selectedGRN?.grnNumber} has been approved (local update)`);
-                saveSnapshot(optimistic, rtvs);
+                toast.error(err instanceof Error ? err.message : 'Failed to approve GRN');
               } finally {
                 setActionLoading((s) => ({ ...s, [`approve-${selectedGRN.id}`]: false }));
                 setShowApproveModal(false);
+                setApprovalNotes('');
+                setQualityChecks({
+                  inspected: false,
+                  noDamage: false,
+                  quantitiesVerified: false,
+                  documentsComplete: false,
+                });
+              }
                 setApprovalNotes('');
                 setQualityChecks({
                   inspected: false,
@@ -2163,50 +1921,19 @@ export function InboundOperations() {
             <button
             onClick={async () => {
                 if (!selectedGRN) return;
+                if (!rejectionReason || !rejectionDescription.trim()) {
+                  toast.error('Please provide rejection reason and description');
+                  return;
+                }
                 setActionLoading((s) => ({ ...s, [`reject-${selectedGRN.id}`]: true }));
-                const optimistic: GRN[] = grns.map((g) =>
-                  g.id === selectedGRN.id
-                    ? {
-                        ...g,
-                        status: 'Rejected' as GRNStatus,
-                        exceptionType: 'Damaged' as ExceptionType,
-                        exceptionDetails: rejectionDescription || g.exceptionDetails,
-                      }
-                    : g
-                );
-                setGrns(optimistic);
-                setSelectedGRN((s) =>
-                  s
-                    ? {
-                        ...s,
-                        status: 'Rejected' as GRNStatus,
-                        exceptionType: 'Damaged' as ExceptionType,
-                        exceptionDetails: rejectionDescription || s.exceptionDetails,
-                      }
-                    : s
-                );
                 try {
-                  const body = { reason: rejectionReason || 'other', description: rejectionDescription || '' };
-                  try {
-                    const resp = await rejectGRN(selectedGRN.id, body);
-                    const updated = resp && (resp.data || resp) ? resp.data || resp : null;
-                    if (updated) {
-                      setGrns((prev) =>
-                        prev.map((g) => (g.id === selectedGRN.id ? ({ ...g, ...updated } as GRN) : g))
-                      );
-                      setSelectedGRN((s) => (s ? ({ ...s, ...updated } as GRN) : s));
-                    }
-                  } catch (apiErr) {
-                    // API call failed, but keep optimistic update
-                    console.warn('rejectGRN API error (keeping optimistic update):', apiErr);
-                  }
-                  toast.success(`${selectedGRN?.grnNumber} has been rejected`);
-                  saveSnapshot(optimistic, rtvs);
+                  const reasonText = `${rejectionReason}: ${rejectionDescription}`;
+                  await rejectGRN(selectedGRN.id, { reason: reasonText });
+                  await loadInboundData();
+                  toast.success(`${selectedGRN.grnNumber} has been rejected`);
                 } catch (err) {
                   console.error('rejectGRN error', err);
-                  // Keep optimistic update even on error
-                  toast.success(`${selectedGRN?.grnNumber} has been rejected (local update)`);
-                  saveSnapshot(optimistic, rtvs);
+                  toast.error(err instanceof Error ? err.message : 'Failed to reject GRN');
                 } finally {
                   setActionLoading((s) => ({ ...s, [`reject-${selectedGRN.id}`]: false }));
                   setShowRejectModal(false);
@@ -2470,8 +2197,7 @@ export function InboundOperations() {
                   setRtvs(newRtvs);
                   setCreatedRtvByGrn((s) => ({ ...s, [selectedGRN.id]: true }));
                   setSelectedRTV(newRtv);
-                  saveSnapshot(grns, newRtvs);
-                  setTimeout(() => {
+                                    setTimeout(() => {
                     setActionLoading((s) => ({ ...s, [`rtv-create-${selectedGRN.id}`]: false }));
                     toast.success(`RTV created for ${selectedGRN.grnNumber}`);
                   }, 600);
@@ -2582,32 +2308,12 @@ export function InboundOperations() {
                 }
                 try {
                   setActionLoading((s) => ({ ...s, [`adjust-${selectedGRN.id}`]: true }));
-                  await updateGRNItem(selectedGRN.id, selectedGRN.lineItems[0].sku, {
+                  const updated = await updateGRNItem(selectedGRN.id, selectedGRN.lineItems[0].sku, {
                     received_quantity: newQuantity,
                     notes: 'Quantity adjusted',
                   });
-                  const newGrns = grns.map((g) =>
-                    g.id === selectedGRN.id
-                      ? {
-                          ...g,
-                          lineItems: g.lineItems.map((item, idx) =>
-                            idx === 0 ? { ...item, received: newQuantity } : item
-                          ),
-                        }
-                      : g
-                  );
-                  setGrns(newGrns);
-                  setSelectedGRN((s) =>
-                    s && s.id === selectedGRN.id
-                      ? {
-                          ...s,
-                          lineItems: s.lineItems.map((item, idx) =>
-                            idx === 0 ? { ...item, received: newQuantity } : item
-                          ),
-                        }
-                      : s
-                  );
-                  saveSnapshot(newGrns, rtvs);
+                  setGrns((prev) => prev.map((g) => (g.id === selectedGRN.id ? updated : g)));
+                  await loadInboundData();
                   toast.success(`Quantity adjusted for ${selectedGRN.grnNumber}`);
                   setShowAdjustModal(false);
                 } catch (err) {

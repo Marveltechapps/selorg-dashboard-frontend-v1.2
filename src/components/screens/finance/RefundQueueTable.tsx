@@ -79,24 +79,7 @@ export function RefundQueueTable({
     other: 'bg-gray-100 text-gray-800',
   };
 
-  const filteredData = React.useMemo(() => {
-    let filtered = [...data];
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(r => 
-        r.orderId.toLowerCase().includes(q) ||
-        r.customerName.toLowerCase().includes(q) ||
-        r.customerEmail.toLowerCase().includes(q)
-      );
-    }
-    if (filters.status && filters.status !== 'all') {
-      filtered = filtered.filter(r => r.status === filters.status);
-    }
-    if (filters.reason && filters.reason !== 'all') {
-      filtered = filtered.filter(r => r.reasonCode === filters.reason);
-    }
-    return filtered;
-  }, [data, searchQuery, filters.status, filters.reason]);
+  const displayData = data;
 
   const timeAgo = (dateStr: string) => {
       const diff = Date.now() - new Date(dateStr).getTime();
@@ -133,6 +116,7 @@ export function RefundQueueTable({
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="processed">Processed</SelectItem>
                 </SelectContent>
             </Select>
             <Select value={filters.reason || 'all'} onValueChange={(val) => onFilterChange({ ...filters, reason: val === 'all' ? undefined : val, page: 1 })}>
@@ -146,13 +130,16 @@ export function RefundQueueTable({
                     <SelectItem value="late_delivery">Late Delivery</SelectItem>
                     <SelectItem value="wrong_item">Wrong Item</SelectItem>
                     <SelectItem value="customer_cancelled">Customer Cancelled</SelectItem>
+                    <SelectItem value="item_not_available">Item Not Available</SelectItem>
+                    <SelectItem value="quality_issue">Quality Issue</SelectItem>
+                    <SelectItem value="partial_delivery">Partial Delivery</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
             </Select>
         </div>
       </div>
 
-      {filteredData.length === 0 ? (
+      {displayData.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
               No refund requests match your filters.
           </div>
@@ -171,9 +158,9 @@ export function RefundQueueTable({
                 </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E0E0E0]">
-                {filteredData.map((refund) => (
+                {displayData.map((refund) => (
                     <tr key={refund.id} className="hover:bg-[#FAFAFA] group transition-colors cursor-pointer" onClick={() => onViewDetails(refund)}>
-                        <td className="px-6 py-4 font-mono text-[#616161] font-medium">{refund.orderId}</td>
+                        <td className="px-6 py-4 font-mono text-[#616161] font-medium">{refund.orderNumber || refund.orderId}</td>
                         <td className="px-6 py-4">
                             <div className="font-medium text-[#212121]">{refund.customerName}</div>
                             <div className="text-xs text-[#757575]">{refund.customerEmail}</div>
@@ -195,6 +182,7 @@ export function RefundQueueTable({
                                 refund.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                 refund.status === 'approved' ? 'bg-green-100 text-green-800' :
                                 refund.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                refund.status === 'processed' || refund.status === 'completed' ? 'bg-blue-100 text-blue-800' :
                                 'bg-gray-100 text-gray-800'
                             }`}>
                                 {refund.status}
@@ -217,6 +205,13 @@ export function RefundQueueTable({
                                             Reject
                                         </button>
                                     </>
+                                ) : refund.status === 'approved' ? (
+                                    <button
+                                        onClick={() => onViewDetails(refund)}
+                                        className="px-3 py-1.5 bg-[#14B8A6] text-white text-xs font-bold rounded hover:bg-[#0D9488] transition-colors"
+                                    >
+                                        Complete
+                                    </button>
                                 ) : (
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>

@@ -1,5 +1,5 @@
 /**
- * Communication API - VendorCommunication and shared communication endpoints.
+ * Communication API - shared communication endpoints (finance/rider hubs).
  * Base: /api/v1/shared/communication
  */
 import { API_CONFIG, API_ENDPOINTS } from '../../config/api';

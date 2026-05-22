@@ -47,7 +47,7 @@ export function RefundDetailsDrawer({ refund, open, onClose, onApprove, onReject
 
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col h-full bg-white">
+      <SheetContent className="w-[min(100vw-1rem,28rem)] sm:w-[30vw] sm:max-w-[32rem] sm:min-w-[22rem] p-0 flex flex-col h-full bg-white">
         <div className="p-6 border-b border-gray-100">
             <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-semibold tracking-wider text-gray-500 uppercase">Request Details</span>
@@ -60,7 +60,7 @@ export function RefundDetailsDrawer({ refund, open, onClose, onApprove, onReject
                 </Badge>
             </div>
             <SheetTitle className="text-xl font-bold text-gray-900">
-                Refund for Order #{refund.orderId}
+                Refund for Order #{refund.orderNumber || refund.orderId}
             </SheetTitle>
             <SheetDescription className="hidden">
                 Detailed view of refund request for order #{refund.orderId}
@@ -194,7 +194,10 @@ export function RefundDetailsDrawer({ refund, open, onClose, onApprove, onReject
                         <Package size={18} /> Order Context
                     </h4>
                     <div className="text-sm text-gray-500">
-                        <p>Order ID: <span className="font-mono text-gray-700">{refund.orderId}</span></p>
+                        <p>Order: <span className="font-mono text-gray-700">{refund.orderNumber || refund.orderId}</span></p>
+                        {refund.orderIdRaw && refund.orderIdRaw !== refund.orderId && (
+                          <p className="mt-1">Internal ID: <span className="font-mono text-gray-500 text-xs">{refund.orderIdRaw}</span></p>
+                        )}
                     </div>
                 </div>
             </div>

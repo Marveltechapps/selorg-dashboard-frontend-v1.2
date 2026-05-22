@@ -21,6 +21,7 @@ export interface VendorInvoice {
   paymentWorkflow?: VendorPayment | null;
   uploadedBy: string;
   uploadedAt: string;
+  updatedAt?: string;
   attachmentUrl?: string;
   notes?: string;
   items?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
@@ -32,6 +33,9 @@ export interface VendorPayablesSummary {
   pendingApprovalCount: number;
   overdueAmount: number;
   overdueVendorsCount: number;
+  paidThisMonth?: number;
+  disputedAmount?: number;
+  avgPaymentCycle?: number;
 }
 
 export type PaymentWorkflowStep =
@@ -109,6 +113,7 @@ export interface Vendor {
   name: string;
   email?: string;
   accountNumber?: string;
+  creditLimit?: number;
 }
 
 interface ApiResponse<T> {
@@ -132,6 +137,10 @@ function mapInvoice(raw: Record<string, unknown>): VendorInvoice {
     uploadedAt: typeof raw.uploadedAt === 'string' ? raw.uploadedAt : (raw.uploadedAt as Date)?.toString?.() ?? '',
     attachmentUrl: raw.attachmentUrl != null ? String(raw.attachmentUrl) : undefined,
     notes: raw.notes != null ? String(raw.notes) : undefined,
+    updatedAt:
+      typeof raw.updatedAt === 'string'
+        ? raw.updatedAt
+        : (raw.updatedAt as Date)?.toString?.() ?? undefined,
     items: Array.isArray(raw.items)
       ? (raw.items as Array<Record<string, unknown>>).map((it) => ({
           description: String(it.description ?? ''),
@@ -163,6 +172,7 @@ function mapVendor(raw: Record<string, unknown>): Vendor {
     name: resolvedName || (resolvedId ? `Vendor ${resolvedId}` : 'Unknown Vendor'),
     email: raw.email != null ? String(raw.email) : undefined,
     accountNumber: raw.accountNumber != null ? String(raw.accountNumber) : undefined,
+    creditLimit: raw.creditLimit != null ? Number(raw.creditLimit) : undefined,
   };
 }
 

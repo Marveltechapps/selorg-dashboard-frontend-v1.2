@@ -289,25 +289,45 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
   };
 
   const handleClearResolved = async () => {
-    if (confirm("Clear all resolved alerts from this list?")) {
-      // Optimistic update: Remove resolved alerts immediately
-      const resolvedCount = alerts.filter(a => a.status === "resolved" || a.status === "dismissed").length;
-      setAlerts(prev => prev.filter(a => a.status !== "resolved" && a.status !== "dismissed"));
-      
-      try {
-        const result = await clearResolvedAlerts({ archive: true });
-        toast.success(result.message || `Cleared ${resolvedCount} resolved alerts`);
-        
-        // Refresh to get updated summary counts
-        loadAlerts(true);
-      } catch (e: any) {
-        // Revert on error by reloading
-        console.error("Failed to clear resolved alerts:", e);
-        toast.error("Failed to clear resolved alerts", {
-          description: e.message || "Please try again",
+    const resolvedAlerts = alerts.filter(
+      (a) => a.status === "resolved" || a.status === "dismissed"
+    );
+    if (resolvedAlerts.length === 0) {
+      toast.info("No resolved alerts to clear");
+      return;
+    }
+
+    if (!confirm(`Clear ${resolvedAlerts.length} resolved alert(s) from this list?`)) {
+      return;
+    }
+
+    const resolvedIds = resolvedAlerts.map((a) => a.id);
+    const previousAlerts = alerts;
+
+    setAlerts((prev) =>
+      prev.filter((a) => a.status !== "resolved" && a.status !== "dismissed")
+    );
+
+    try {
+      const result = await clearResolvedAlerts({ ids: resolvedIds, archive: true });
+
+      if (result.deleted_count === 0) {
+        setAlerts(previousAlerts);
+        toast.error("No alerts were removed", {
+          description: "They may belong to another store or were already cleared. Try Refresh.",
         });
-        loadAlerts(false);
+        await loadAlerts(true);
+        return;
       }
+
+      toast.success(result.message || `Cleared ${result.deleted_count} resolved alert(s)`);
+    } catch (e: unknown) {
+      console.error("Failed to clear resolved alerts:", e);
+      setAlerts(previousAlerts);
+      toast.error("Failed to clear resolved alerts", {
+        description: e instanceof Error ? e.message : "Please try again",
+      });
+      await loadAlerts(false);
     }
   };
 

@@ -28,8 +28,8 @@ export function VehicleDetailsDrawer({ isOpen, onClose, vehicle }: VehicleDetail
   
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
-        <SheetHeader className="pb-6">
+      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto px-6 pb-6 pt-6">
+        <SheetHeader className="pb-6 p-0">
           <div className="flex justify-between items-start">
             <div>
                <SheetTitle className="text-xl font-bold">{vehicle.vehicleId}</SheetTitle>

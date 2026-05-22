@@ -198,16 +198,16 @@ export function AlertCard({ alert, onAction, isLoading = false }: AlertCardProps
         </div>
 
         {/* Timeline Section */}
-        <div className="mt-3 pt-3 border-t border-gray-200/50">
+        <div className="mt-3 min-w-0 pt-3 border-t border-gray-200/50">
           {!showHistory ? (
             alert.timeline.length > 0 && (
               <div 
                 className="text-xs text-gray-500 flex items-center justify-between cursor-pointer hover:text-gray-700 transition-colors"
                 onClick={() => setShowHistory(true)}
               >
-                 <div className="flex items-center gap-2 truncate flex-1">
-                   <MessageSquare size={12} />
-                   <span className="italic truncate">
+                 <div className="flex items-start gap-2 flex-1 min-w-0 pr-2">
+                   <MessageSquare size={12} className="mt-0.5 shrink-0" />
+                   <span className="italic text-gray-600 line-clamp-2 break-words leading-relaxed">
                      Latest: {alert.timeline[alert.timeline.length-1].note || `Status changed to ${alert.timeline[alert.timeline.length-1].status}`}
                    </span>
                  </div>
@@ -226,32 +226,35 @@ export function AlertCard({ alert, onAction, isLoading = false }: AlertCardProps
                 <ChevronUp size={14} className="text-gray-400" />
               </div>
               
-              <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[1px] before:bg-gray-200">
+              <div className="relative ml-1 pl-5 space-y-4 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-gray-200">
                 {[...alert.timeline].reverse().map((entry, idx) => (
-                  <div key={idx} className="relative">
-                    <div className="absolute -left-[11px] top-1.5 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white"></div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-gray-900 uppercase">
-                          {entry.status}
+                  <div key={idx} className="relative min-w-0">
+                    <div
+                      className="absolute -left-[13px] top-1.5 z-10 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500 ring-2 ring-white"
+                      aria-hidden
+                    />
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-900">
+                          {entry.status.replace(/_/g, " ")}
                         </span>
-                        <span className="text-[10px] text-gray-400">
+                        <span className="shrink-0 text-[10px] text-gray-500">
                           {format(new Date(entry.at), "HH:mm:ss, MMM d")}
                         </span>
                       </div>
-                      {entry.note && (
-                        <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
+                      {entry.note ? (
+                        <p className="text-xs leading-relaxed text-gray-700 break-words">
                           {entry.note}
                         </p>
-                      )}
-                      {entry.actor && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <User size={8} className="text-gray-400" />
-                          <span className="text-[9px] text-gray-400 font-medium">
+                      ) : null}
+                      {entry.actor ? (
+                        <div className="flex items-center gap-1">
+                          <User size={10} className="shrink-0 text-gray-400" />
+                          <span className="text-[10px] font-medium text-gray-500 break-words">
                             {entry.actor}
                           </span>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 ))}

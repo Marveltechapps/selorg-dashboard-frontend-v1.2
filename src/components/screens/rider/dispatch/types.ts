@@ -47,9 +47,6 @@ export interface AutoAssignRule {
     maxRadiusKm: number;
     maxOrdersPerRider: number;
     preferSameZone: boolean;
-    priorityWeight: number; // 0-10
-    distanceWeight: number; // 0-10
-    etaWeight: number; // 0-10
   };
   createdBy: string;
   updatedAt: string;

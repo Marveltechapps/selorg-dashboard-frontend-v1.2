@@ -33,7 +33,7 @@ export function ExportPnLModal({ open, onClose }: Props) {
           toast.success("P&L Report exported successfully");
           onClose();
       } catch (e) {
-          toast.error("Export failed");
+          toast.error(e instanceof Error ? e.message : 'Export failed');
       } finally {
           setIsExporting(false);
       }
@@ -90,18 +90,20 @@ export function ExportPnLModal({ open, onClose }: Props) {
                  <Label>File Format</Label>
                  <div className="flex gap-4">
                      <Button 
+                        type="button"
                         variant={format === 'pdf' ? 'default' : 'outline'} 
                         className={`flex-1 ${format === 'pdf' ? 'bg-[#212121]' : ''}`}
                         onClick={() => setFormat('pdf')}
                      >
-                         <FileText className="mr-2 h-4 w-4" /> PDF
+                         <FileText className="mr-2 h-4 w-4" /> PDF (HTML)
                      </Button>
                      <Button 
+                        type="button"
                         variant={format === 'xlsx' ? 'default' : 'outline'} 
                         className={`flex-1 ${format === 'xlsx' ? 'bg-[#212121]' : ''}`}
                         onClick={() => setFormat('xlsx')}
                      >
-                         <Table className="mr-2 h-4 w-4" /> Excel
+                         <Table className="mr-2 h-4 w-4" /> Excel (CSV)
                      </Button>
                  </div>
              </div>

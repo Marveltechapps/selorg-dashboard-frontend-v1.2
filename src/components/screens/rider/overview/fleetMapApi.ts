@@ -32,11 +32,29 @@ function unwrapEnvelope<T>(json: unknown): T {
   return json as T;
 }
 
+const DEFAULT_MAP_COORDS = { lat: 13.0827, lng: 80.2707 };
+
 function isValidCoord(lat: number | undefined, lng: number | undefined): boolean {
   if (typeof lat !== 'number' || typeof lng !== 'number') return false;
   if (Number.isNaN(lat) || Number.isNaN(lng)) return false;
   if (lat === 0 && lng === 0) return false;
   return true;
+}
+
+/** Match backend dispatchService.extractCoordinates — deterministic coords from address text. */
+export function coordsFromAddress(address: string): { lat: number; lng: number } {
+  const str = (address || '').trim();
+  if (!str) return { ...DEFAULT_MAP_COORDS };
+  const hash = str.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return {
+    lat: DEFAULT_MAP_COORDS.lat + (hash % 100) / 1000,
+    lng: DEFAULT_MAP_COORDS.lng + (hash % 200) / 1000,
+  };
+}
+
+export function isActiveFleetOrderStatus(status: string): boolean {
+  const s = String(status || '').toLowerCase();
+  return s !== 'delivered' && s !== 'cancelled';
 }
 
 function parseMapLocation(
@@ -79,14 +97,17 @@ function mapApiOrder(o: {
   pickupLocation: { address: string; coordinates: { lat: number; lng: number } };
   dropLocation: { address: string; coordinates: { lat: number; lng: number } };
 }): FleetMapOrder | null {
-  const pickup = parseMapLocation(o.pickupLocation);
-  const drop = parseMapLocation(o.dropLocation);
-  if (!isValidCoord(pickup.lat, pickup.lng) && !isValidCoord(drop.lat, drop.lng)) {
-    return null;
+  let pickup = parseMapLocation(o.pickupLocation);
+  let drop = parseMapLocation(o.dropLocation);
+  if (!isValidCoord(pickup.lat, pickup.lng)) {
+    pickup = { ...coordsFromAddress(pickup.address), address: pickup.address };
+  }
+  if (!isValidCoord(drop.lat, drop.lng)) {
+    drop = { ...coordsFromAddress(drop.address), address: drop.address };
   }
   return {
     id: o.id,
-    status: o.status,
+    status: String(o.status).toLowerCase(),
     riderId: o.riderId ?? undefined,
     pickupLocation: pickup,
     dropLocation: drop,
@@ -118,14 +139,71 @@ export function mergeFleetRiders(
   return Array.from(byId.values());
 }
 
-/** Enrich map orders with customer names from overview order list. */
+/** Build map orders from overview list when dispatch map-data is empty or unavailable. */
+export function buildFleetOrdersFromOverview(overviewOrders: Order[]): FleetMapOrder[] {
+  return overviewOrders
+    .filter((o) => isActiveFleetOrderStatus(o.status))
+    .map((o) => {
+      const dropFromDelivery = o.coordinates;
+      const dropCoords = isValidCoord(dropFromDelivery?.lat, dropFromDelivery?.lng)
+        ? { lat: dropFromDelivery!.lat, lng: dropFromDelivery!.lng }
+        : coordsFromAddress(o.dropLocation);
+      const pickupCoords = coordsFromAddress(o.pickupLocation);
+      return {
+        id: o.id,
+        status: String(o.status).toLowerCase(),
+        riderId: o.riderId,
+        customerName: o.customerName,
+        pickupLocation: { ...pickupCoords, address: o.pickupLocation || '' },
+        dropLocation: { ...dropCoords, address: o.dropLocation || '' },
+      };
+    });
+}
+
+/** Enrich map orders with overview data; fall back to synthetic coords from addresses. */
 export function mergeFleetOrders(fromApi: FleetMapOrder[], overviewOrders: Order[]): FleetMapOrder[] {
-  const nameById = new Map(overviewOrders.map((o) => [o.id, o.customerName]));
-  return fromApi.map((o) => ({
-    ...o,
-    customerName: nameById.get(o.id) ?? o.customerName,
-    riderId: o.riderId ?? overviewOrders.find((x) => x.id === o.id)?.riderId,
-  }));
+  const overviewById = new Map(overviewOrders.map((o) => [o.id, o]));
+
+  if (fromApi.length === 0 && overviewOrders.length > 0) {
+    return buildFleetOrdersFromOverview(overviewOrders);
+  }
+
+  const merged = fromApi.map((o) => {
+    const live = overviewById.get(o.id);
+    const dropCoords = o.dropLocation;
+    const liveDrop = live?.coordinates;
+    const drop =
+      isValidCoord(dropCoords.lat, dropCoords.lng)
+        ? dropCoords
+        : isValidCoord(liveDrop?.lat, liveDrop?.lng)
+          ? { lat: liveDrop!.lat, lng: liveDrop!.lng, address: dropCoords.address || live?.dropLocation || '' }
+          : { ...coordsFromAddress(live?.dropLocation || dropCoords.address), address: dropCoords.address || live?.dropLocation || '' };
+
+    const pickup =
+      isValidCoord(o.pickupLocation.lat, o.pickupLocation.lng)
+        ? o.pickupLocation
+        : {
+            ...coordsFromAddress(live?.pickupLocation || o.pickupLocation.address),
+            address: o.pickupLocation.address || live?.pickupLocation || '',
+          };
+
+    return {
+      ...o,
+      status: String(o.status).toLowerCase(),
+      customerName: live?.customerName ?? o.customerName,
+      riderId: o.riderId ?? live?.riderId,
+      pickupLocation: pickup,
+      dropLocation: drop,
+    };
+  });
+
+  const mergedIds = new Set(merged.map((o) => o.id));
+  for (const live of overviewOrders) {
+    if (!isActiveFleetOrderStatus(live.status) || mergedIds.has(live.id)) continue;
+    merged.push(...buildFleetOrdersFromOverview([live]));
+  }
+
+  return merged;
 }
 
 export async function fetchFleetMapData(): Promise<FleetMapData> {
@@ -168,7 +246,7 @@ export async function fetchFleetMapData(): Promise<FleetMapData> {
     .filter((r): r is FleetMapRider => r != null);
 
   const orders = (data.orders ?? [])
-    .filter((o) => o.status !== 'delivered' && o.status !== 'cancelled')
+    .filter((o) => isActiveFleetOrderStatus(o.status))
     .map(mapApiOrder)
     .filter((o): o is FleetMapOrder => o != null);
 

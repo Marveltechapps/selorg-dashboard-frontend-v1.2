@@ -246,3 +246,43 @@ html {
     display: none !important;
   }
 }
+
+/* Rider dashboard — top bar spans content area (sidebar offset), same pattern as admin */
+.rider-content-area {
+  margin-left: 220px;
+}
+.rider-topbar {
+  left: 220px;
+}
+
+/* Vendor dashboard — align top bar with admin layout (240px sidebar) */
+.vendor-content-area {
+  margin-left: 240px;
+}
+.vendor-topbar {
+  left: 240px;
+}
+
+/* Finance dashboard — responsive sidebar + top bar (same pattern as admin) */
+.finance-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.finance-sidebar-nav.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .finance-sidebar-nav {
+    transform: translateX(0);
+  }
+  .finance-content-area {
+    margin-left: 240px;
+  }
+  .finance-topbar {
+    left: 240px;
+  }
+  .finance-mobile-only {
+    display: none !important;
+  }
+}

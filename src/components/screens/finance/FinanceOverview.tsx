@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  fetchFinanceSummary, 
-  fetchPaymentMethodSplit, 
-  FinanceSummary, 
+  fetchFinanceSummary,
+  fetchPaymentMethodSplit,
+  localFinanceDayIso,
+  FinanceSummary,
   PaymentMethodSplitItem,
-  LiveTransaction 
+  LiveTransaction,
 } from './financeApi';
 import { FinanceSummaryCards } from './FinanceSummaryCards';
 import { PaymentMethodSplitCard } from './PaymentMethodSplitCard';
@@ -17,6 +18,7 @@ import { toast } from 'sonner';
 import { apiRequest } from '@/api/apiClient';
 import websocketService from '@/utils/websocket';
 import { getActiveStoreId, getAuthUser } from '@/contexts/AuthContext';
+import { applyPaymentToSplit } from './paymentMethodBuckets';
 
 export function FinanceOverview() {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
@@ -40,10 +42,10 @@ export function FinanceOverview() {
     setLoading(true);
     setError(null);
     try {
-      const dateStr = new Date().toISOString();
+      const dateStr = localFinanceDayIso();
       const [summaryData, splitData] = await Promise.all([
         fetchFinanceSummary(resolvedEntityId, dateStr),
-        fetchPaymentMethodSplit(resolvedEntityId, dateStr)
+        fetchPaymentMethodSplit(resolvedEntityId, dateStr),
       ]);
       setSummary(summaryData);
       setSplit(splitData ?? []);
@@ -77,14 +79,15 @@ export function FinanceOverview() {
         if (!prev) return prev;
         const amount = data.amount || 0;
         const isFailed = data.status === 'failed';
-        const newReceived = isFailed ? prev.totalReceivedToday : prev.totalReceivedToday + amount;
+        const countsAsReceived = !isFailed && (data.status === 'success' || data.status === 'pending');
+        const newReceived = countsAsReceived ? prev.totalReceivedToday + amount : prev.totalReceivedToday;
         const newFailedCount = isFailed ? prev.failedPaymentsCount + 1 : prev.failedPaymentsCount;
-        const newOrderCount = isFailed ? prev.successfulOrderCount : prev.successfulOrderCount + 1;
+        const newOrderCount = countsAsReceived ? prev.successfulOrderCount + 1 : prev.successfulOrderCount;
         const txnDenom = newFailedCount + newOrderCount;
         return {
           ...prev,
           totalReceivedToday: newReceived,
-          netRevenueToday: isFailed ? prev.netRevenueToday : prev.netRevenueToday + amount,
+          netRevenueToday: countsAsReceived ? prev.netRevenueToday + amount : prev.netRevenueToday,
           failedPaymentsCount: newFailedCount,
           failedPaymentsRatePercent: txnDenom > 0 ? (newFailedCount / txnDenom) * 100 : prev.failedPaymentsRatePercent,
           successfulOrderCount: newOrderCount,
@@ -92,24 +95,14 @@ export function FinanceOverview() {
         };
       });
 
-      setSplit((prev) => {
-        if (!prev.length) return prev;
-        const methodMap: Record<string, string> = {
-          card: 'cards',
-          upi: 'digital_wallets',
-          wallet: 'digital_wallets',
-          cash: 'cod',
-        };
-        const key = methodMap[data.methodType] || 'cod';
-        return prev.map((item) => {
-          if (item.method !== key) return item;
-          return {
-            ...item,
-            amount: item.amount + (data.amount || 0),
-            txnCount: item.txnCount + 1,
-          };
-        });
-      });
+      setSplit((prev) =>
+        applyPaymentToSplit(prev, {
+          methodType: data.methodType,
+          methodDisplay: data.methodDisplay,
+          gateway: data.gateway,
+          amount: data.amount,
+        })
+      );
     };
 
     const handleOrderCreated = (data: any) => {
@@ -235,14 +228,10 @@ export function FinanceOverview() {
             <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
-          <Button 
-            variant="outline" 
-            className="bg-white" 
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsExportOpen(true);
-            }}
+          <Button
+            variant="outline"
+            className="bg-white"
+            onClick={() => setIsExportOpen(true)}
             type="button"
           >
             <Download size={16} className="mr-2" />
@@ -309,9 +298,10 @@ export function FinanceOverview() {
       </div>
 
       {/* Modals & Drawers */}
-      <ExportFinanceReportModal 
-        isOpen={isExportOpen} 
-        onClose={() => setIsExportOpen(false)} 
+      <ExportFinanceReportModal
+        open={isExportOpen}
+        onOpenChange={setIsExportOpen}
+        entityId={resolvedEntityId}
       />
 
       <TransactionDetailsDrawer 

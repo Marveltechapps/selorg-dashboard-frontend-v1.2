@@ -91,7 +91,13 @@ interface ApiMapData {
 function extractApiErrorMessage(error: any, fallback: string): string {
   if (!error) return fallback;
   if (typeof error === 'string') return error;
-  if (typeof error.message === 'string') return error.message;
+  if (Array.isArray(error.details) && error.details.length > 0) {
+    const first = error.details[0];
+    const field = first.param || first.path || first.field;
+    const msg = first.msg || first.message;
+    if (msg) return field ? `${field}: ${msg}` : String(msg);
+  }
+  if (typeof error.message === 'string' && error.message !== 'Validation failed') return error.message;
   if (typeof error.error === 'string') return error.error;
   if (error.error && typeof error.error.message === 'string') return error.error.message;
   return fallback;
@@ -168,7 +174,20 @@ function parseLocation(loc: string | ApiOrderLocation): { lat: number; lng: numb
  */
 function transformOrder(apiOrder: ApiOrder): DispatchOrder {
   const priority = (apiOrder.priority || 'low') as Priority;
-  const status = apiOrder.status === 'pending' ? 'unassigned' : apiOrder.status as OrderStatus;
+  const rawStatus = String(apiOrder.status || '').toLowerCase();
+  const unassignedLike = [
+    'pending',
+    'new',
+    'processing',
+    'ready',
+    'picking',
+    'picked',
+    'packed',
+    'ready_for_dispatch',
+  ];
+  const status = unassignedLike.includes(rawStatus)
+    ? 'unassigned'
+    : (apiOrder.status as OrderStatus);
   
   return {
     id: apiOrder.id,
@@ -358,7 +377,9 @@ export async function assignOrder(orderId: string, riderId: string, overrideSla?
   );
 }
 
-export async function autoAssignOrders(orderIds: string[]): Promise<{ assigned: number; failed: number }> {
+export async function autoAssignOrders(
+  orderIds: string[] = []
+): Promise<{ assigned: number; failed: number; disabled?: boolean; message?: string }> {
   const raw = await apiRequest<unknown>(
     API_ENDPOINTS.dispatch.autoAssign,
     {
@@ -369,7 +390,7 @@ export async function autoAssignOrders(orderIds: string[]): Promise<{ assigned: 
     }
   );
 
-  return unwrapApiPayload<{ assigned: number; failed: number }>(raw);
+  return unwrapApiPayload<{ assigned: number; failed: number; disabled?: boolean; message?: string }>(raw);
 }
 
 export async function fetchAutoAssignRules(): Promise<AutoAssignRule[]> {

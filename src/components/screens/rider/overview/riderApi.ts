@@ -90,7 +90,13 @@ interface ApiListResponse<T> {
 function extractApiErrorMessage(error: any, fallback: string): string {
   if (!error) return fallback;
   if (typeof error === 'string') return error;
-  if (typeof error.message === 'string') return error.message;
+  if (Array.isArray(error.details) && error.details.length > 0) {
+    const first = error.details[0];
+    const field = first.param || first.path || first.field;
+    const msg = first.msg || first.message;
+    if (msg) return field ? `${field}: ${msg}` : String(msg);
+  }
+  if (typeof error.message === 'string' && error.message !== 'Validation failed') return error.message;
   if (typeof error.error === 'string') return error.error;
   if (error.error && typeof error.error.message === 'string') return error.error.message;
   if (error.details && typeof error.details.message === 'string') return error.details.message;
@@ -179,7 +185,14 @@ function transformRider(apiRider: ApiRider): Rider {
         : 'R'),
     status: normalizedStatus as any,
     currentOrderId: apiRider.currentOrderId || undefined,
-    location: apiRider.location || undefined,
+    location: (() => {
+      const loc =
+        apiRider.location ??
+        (apiRider as { currentLocation?: { lat?: number; lng?: number } }).currentLocation;
+      if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return undefined;
+      if (loc.lat === 0 && loc.lng === 0) return undefined;
+      return { lat: loc.lat, lng: loc.lng };
+    })(),
     capacity: apiRider.capacity || { currentLoad: 0, maxLoad: 5 },
     avgEtaMins: apiRider.avgEtaMins ?? 10,
     rating: apiRider.rating ?? 4.5,

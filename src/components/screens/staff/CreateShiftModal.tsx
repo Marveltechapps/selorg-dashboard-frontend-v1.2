@@ -71,8 +71,19 @@ export function CreateShiftModal({ isOpen, onClose, onSuccess, selectedDate }: C
         }));
       } catch {
         if (!cancelled) {
-          setHubNames([]);
-          toast.error("Failed to load hubs from admin");
+          const riderHubs = [
+            ...new Set(
+              riders
+                .map((r) => (r.hub?.trim() ? `${r.hub} Hub` : null))
+                .filter((h): h is string => Boolean(h))
+            ),
+          ];
+          const fallback = riderHubs.length > 0 ? riderHubs : ["Chennai Hub", "Adyar Hub"];
+          setHubNames(fallback);
+          setFormData((prev) => ({
+            ...prev,
+            hub: fallback.includes(prev.hub) ? prev.hub : fallback[0],
+          }));
         }
       } finally {
         if (!cancelled) setHubsLoading(false);

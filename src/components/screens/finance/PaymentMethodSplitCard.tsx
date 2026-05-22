@@ -10,6 +10,10 @@ interface Props {
 }
 
 export function PaymentMethodSplitCard({ data, loading, onMethodClick }: Props) {
+  if (loading) {
+    return <div className="bg-white border border-[#E0E0E0] rounded-xl h-full min-h-[300px] animate-pulse" />;
+  }
+
   if (!data.length) {
     return (
       <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm p-6 h-full">
@@ -19,15 +23,12 @@ export function PaymentMethodSplitCard({ data, loading, onMethodClick }: Props) 
     );
   }
 
-  if (loading) {
-    return <div className="bg-white border border-[#E0E0E0] rounded-xl h-[300px] animate-pulse"></div>;
-  }
-
   const getIcon = (method: string) => {
     switch (method) {
       case 'cards': return <CreditCard size={14} />;
       case 'digital_wallets': return <Wallet size={14} />;
       case 'cod': return <Banknote size={14} />;
+      case 'other': return <HelpCircle size={14} />;
       default: return <HelpCircle size={14} />;
     }
   };
@@ -37,6 +38,7 @@ export function PaymentMethodSplitCard({ data, loading, onMethodClick }: Props) 
       case 'cards': return 'bg-[#14B8A6]'; // Teal
       case 'digital_wallets': return 'bg-[#3B82F6]'; // Blue
       case 'cod': return 'bg-[#F59E0B]'; // Orange
+      case 'other': return 'bg-gray-400';
       default: return 'bg-gray-400';
     }
   };

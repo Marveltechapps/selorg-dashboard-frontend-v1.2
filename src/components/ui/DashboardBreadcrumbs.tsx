@@ -70,9 +70,7 @@ const TAB_LABELS: Record<DashboardId, Record<string, string>> = {
     alerts: 'Alerts & Exceptions',
     analytics: 'Analytics & Reports',
     'rider-shifts': 'Rider Shifts',
-    shifts: 'Staff & Shifts',
     communication: 'Communication Hub',
-    health: 'System Health',
     approvals: 'Task Approvals',
     'training-kit': 'Training & Kit',
     'group-delivery': 'Group Delivery',
@@ -90,34 +88,44 @@ const TAB_LABELS: Record<DashboardId, Record<string, string>> = {
     alerts: 'Alerts & Exceptions',
     analytics: 'Reports & Analytics',
     approvals: 'Task Approvals',
-    monitoring: 'System Monitoring',
-    communication: 'Communication Hub',
     utilities: 'Utilities & Tools',
   },
   vendor: {
     overview: 'Vendor Overview',
     'vendor-list': 'Vendor List',
-    onboarding: 'Onboarding & Approval',
     po: 'Purchase Orders',
     inbound: 'Inbound Operations',
     inventory: 'Inventory Coordination',
     qc: 'QC & Compliance',
     approvals: 'Task Approvals',
     alerts: 'Alerts & Notifications',
-    communication: 'Communication Hub',
     analytics: 'Reports & Analytics',
-    system: 'System Monitoring',
     finance: 'Finance Integration',
     utilities: 'Utilities & Tools',
   },
 };
 
-export function DashboardBreadcrumbs({ dashboard, activeTab }: { dashboard: DashboardId; activeTab: string }) {
+export function DashboardBreadcrumbs({
+  dashboard,
+  activeTab,
+  pageLabel,
+}: {
+  dashboard: DashboardId;
+  activeTab: string;
+  /** Extra trailing segment (e.g. vendor name on detail view). */
+  pageLabel?: string;
+}) {
   const base = `/${dashboard}`;
   const rootLabel = DASHBOARD_ROOT_LABEL[dashboard];
   const currentLabel = TAB_LABELS[dashboard]?.[activeTab] ?? activeTab;
 
-  const crumbs = [{ label: rootLabel, to: `${base}/overview` }, { label: currentLabel }];
+  const crumbs: { label: string; to?: string }[] = [
+    { label: rootLabel, to: `${base}/overview` },
+    { label: currentLabel, to: pageLabel ? `${base}/${activeTab}` : undefined },
+  ];
+  if (pageLabel?.trim()) {
+    crumbs.push({ label: pageLabel.trim() });
+  }
 
   return (
     <nav className="flex flex-wrap items-center gap-2 mb-4 text-sm" aria-label="Breadcrumb">
@@ -130,13 +138,15 @@ export function DashboardBreadcrumbs({ dashboard, activeTab }: { dashboard: Dash
               <span className="text-slate-600 font-medium" aria-current="page">
                 {crumb.label}
               </span>
-            ) : (
+            ) : crumb.to ? (
               <Link
-                to={crumb.to!}
+                to={crumb.to}
                 className="text-slate-500 hover:text-slate-800 font-medium transition-colors"
               >
                 {crumb.label}
               </Link>
+            ) : (
+              <span className="text-slate-500 font-medium">{crumb.label}</span>
             )}
           </React.Fragment>
         );

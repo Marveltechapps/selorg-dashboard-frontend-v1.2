@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GoogleMap, InfoWindow, Marker, Polyline, useJsApiLoader } from '@react-google-maps/api';
 import { Map, Minus, Package, Plus, User } from 'lucide-react';
 import { GOOGLE_MAPS_LOADER_ID } from '../../../../utils/googleMapsLoader';
-import type { FleetMapOrder, FleetMapRider } from './fleetMapApi';
+import { isActiveFleetOrderStatus, type FleetMapOrder, type FleetMapRider } from './fleetMapApi';
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 const DEFAULT_CENTER = { lat: 13.0827, lng: 80.2707 };
@@ -41,21 +41,17 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
   });
 
   const trackableOrders = useMemo(
-    () =>
-      orders.filter(
-        (o) =>
-          o.status !== 'delivered' &&
-          o.status !== 'cancelled' &&
-          (o.status === 'assigned' ||
-            o.status === 'in_transit' ||
-            o.status === 'picked_up' ||
-            o.status === 'pending')
-      ),
+    () => orders.filter((o) => isActiveFleetOrderStatus(o.status)),
     [orders]
   );
 
+  const ridersOnMap = useMemo(
+    () => riders.filter((r) => isValidCoord(r.location.lat, r.location.lng)),
+    [riders]
+  );
+
   const initialCenter = useMemo(() => {
-    const r = riders.find((x) => isValidCoord(x.location.lat, x.location.lng));
+    const r = ridersOnMap[0];
     if (r) return { lat: r.location.lat, lng: r.location.lng };
     const o = trackableOrders.find(
       (x) =>
@@ -69,7 +65,7 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
       return { lat: o.pickupLocation.lat, lng: o.pickupLocation.lng };
     }
     return DEFAULT_CENTER;
-  }, [riders, trackableOrders]);
+  }, [ridersOnMap, trackableOrders]);
 
   const fitMapToData = useCallback(() => {
     const map = mapRef.current;
@@ -84,10 +80,8 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
     };
 
     if (showRiders) {
-      riders.forEach((r) => {
-        if (isValidCoord(r.location.lat, r.location.lng)) {
-          extend(r.location.lat, r.location.lng);
-        }
+      ridersOnMap.forEach((r) => {
+        extend(r.location.lat, r.location.lng);
       });
     }
 
@@ -108,7 +102,7 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
       map.setCenter(DEFAULT_CENTER);
       map.setZoom(11);
     }
-  }, [riders, trackableOrders, showRiders, showOrders]);
+  }, [ridersOnMap, trackableOrders, showRiders, showOrders]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -123,18 +117,17 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
     [fitMapToData]
   );
 
-  const circleIcon = (fillColor: string, strokeColor: string, scale = 7) => {
-    const g = (globalThis as typeof globalThis & { google?: typeof google }).google;
-    if (!g?.maps?.SymbolPath) return undefined;
+  const circleIcon = useCallback((fillColor: string, strokeColor: string, scale = 7): google.maps.Symbol | undefined => {
+    if (!isLoaded || !window.google?.maps?.SymbolPath) return undefined;
     return {
-      path: g.maps.SymbolPath.CIRCLE,
+      path: window.google.maps.SymbolPath.CIRCLE,
       scale,
       fillColor,
       fillOpacity: 1,
       strokeColor,
       strokeWeight: 2,
-    } as google.maps.Symbol;
-  };
+    };
+  }, [isLoaded]);
 
   const riderColor = (status: string) => {
     if (status === 'busy' || status === 'in_transit') return '#F97316';
@@ -156,7 +149,8 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
 
   return (
     <div
-      className={`relative isolate z-0 flex h-full min-h-[320px] flex-col overflow-hidden bg-[#F3F4F6] ${className ?? ''}`}
+      className={`relative flex h-full w-full flex-col overflow-hidden bg-[#F3F4F6] ${className ?? ''}`}
+      style={{ minHeight: 280 }}
     >
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <div className="bg-white/95 backdrop-blur-sm p-1 rounded-lg border border-[#E0E0E0] shadow-sm flex flex-col gap-1">
@@ -228,6 +222,7 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
       )}
 
       {hasMapsKey && isLoaded && (
+        <div className="absolute inset-0">
         <GoogleMap
           mapContainerStyle={mapContainerStyle}
           center={initialCenter}
@@ -264,7 +259,7 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
             })}
 
           {showRiders &&
-            riders.map((rider) => (
+            ridersOnMap.map((rider) => (
               <Marker
                 key={rider.id}
                 position={{ lat: rider.location.lat, lng: rider.location.lng }}
@@ -351,11 +346,18 @@ export function FleetLiveMap({ riders, orders, loading, className }: FleetLiveMa
               );
             })()}
         </GoogleMap>
+        </div>
       )}
 
       {loading && (
         <div className="absolute inset-0 bg-white/40 flex items-center justify-center z-30 pointer-events-none">
           <span className="text-sm text-gray-600 font-medium">Refreshing positions…</span>
+        </div>
+      )}
+
+      {!loading && ridersOnMap.length === 0 && trackableOrders.length === 0 && (
+        <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-[#E0E0E0] bg-white/95 px-4 py-2 text-center text-xs text-[#757575] shadow-sm">
+          No riders with GPS or active orders to plot. Orders need pickup/drop addresses; riders need live location from the app.
         </div>
       )}
     </div>

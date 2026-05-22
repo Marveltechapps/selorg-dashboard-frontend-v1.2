@@ -27,6 +27,15 @@ export interface ReconciliationException {
   suggestedAction?: "investigate" | "resolve" | "write_off" | "retry_match";
 }
 
+export interface ReconciliationRunStats {
+  transactionsChecked?: number;
+  matchedAmount?: number;
+  pendingAmount?: number;
+  mismatchAmount?: number;
+  exceptionsCreated?: number;
+  exceptionsUpdated?: number;
+}
+
 export interface ReconciliationRun {
   id: string;
   startedAt: string;
@@ -34,6 +43,13 @@ export interface ReconciliationRun {
   status: "running" | "success" | "failed";
   period: { from: string; to: string };
   gateways: string[];
+  stats?: ReconciliationRunStats;
+  errorMessage?: string;
+}
+
+export interface GatewayOption {
+  id: string;
+  label: string;
 }
 
 /** Format date as YYYY-MM-DD for backend */
@@ -41,6 +57,13 @@ function toDateString(date: string): string {
   const d = new Date(date);
   return d.toISOString().slice(0, 10);
 }
+
+export const fetchAvailableGateways = async (): Promise<GatewayOption[]> => {
+  const res = await apiRequest<{ success: boolean; data: GatewayOption[] }>(
+    `${FINANCE_RECON}/gateways`
+  );
+  return res.data ?? [];
+};
 
 export const fetchReconSummary = async (date: string): Promise<SettlementSummaryItem[]> => {
   const dateStr = toDateString(date);

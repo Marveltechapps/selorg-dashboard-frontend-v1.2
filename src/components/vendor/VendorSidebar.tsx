@@ -1,16 +1,13 @@
 import React from 'react';
 import { 
   LayoutDashboard, 
-  UserPlus, 
   ShoppingCart, 
   Truck, 
   Package, 
   ClipboardCheck, 
   CheckSquare, 
   AlertTriangle, 
-  MessageSquare, 
   BarChart3, 
-  Activity, 
   CreditCard, 
   Wrench,
   LogOut,
@@ -43,16 +40,13 @@ export function VendorSidebar({ activeTab, setActiveTab, onLogout }: VendorSideb
   const navItems = [
     { id: 'overview', label: 'Vendor Overview', icon: LayoutDashboard },
     { id: 'vendor-list', label: 'Vendor List', icon: Users },
-    { id: 'onboarding', label: 'Onboarding & Approval', icon: UserPlus },
     { id: 'po', label: 'Purchase Orders', icon: ShoppingCart },
     { id: 'inbound', label: 'Inbound Operations', icon: Truck },
     { id: 'inventory', label: 'Inventory Coordination', icon: Package },
     { id: 'qc', label: 'QC & Compliance', icon: ClipboardCheck },
     { id: 'approvals', label: 'Task Approvals', icon: CheckSquare },
     { id: 'alerts', label: 'Alerts & Notifications', icon: AlertTriangle },
-    { id: 'communication', label: 'Communication Hub', icon: MessageSquare },
     { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
-    { id: 'system', label: 'System Monitoring', icon: Activity },
     { id: 'finance', label: 'Finance Integration', icon: CreditCard },
     { id: 'utilities', label: 'Utilities & Tools', icon: Wrench },
   ];

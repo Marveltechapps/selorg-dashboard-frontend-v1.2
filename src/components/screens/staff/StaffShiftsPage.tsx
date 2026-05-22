@@ -22,7 +22,7 @@ interface StaffShiftsPageProps {
 
 export function StaffShiftsPage({ searchQuery = '' }: StaffShiftsPageProps) {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [activeFilter, setActiveFilter] = useState<StaffShiftListFilter>('checked-in');
+  const [activeFilter, setActiveFilter] = useState<StaffShiftListFilter>('all');
   
   // Data State
   const [shifts, setShifts] = useState<Shift[]>([]);

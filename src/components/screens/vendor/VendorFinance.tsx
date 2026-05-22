@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   CreditCard, 
   IndianRupee, 
@@ -41,111 +41,37 @@ import {
   fetchPayablesSummary,
   fetchVendorInvoices,
   fetchVendors,
+  uploadInvoice,
   approveInvoice as approveInvoiceApi,
   markInvoicePaid as markInvoicePaidApi,
   rejectInvoice as rejectInvoiceApi,
+  type Vendor,
 } from '../finance/payablesApi';
-
-function mapPayablesToFinanceSummary(p: {
-  outstandingPayablesAmount?: number;
-  pendingApprovalCount?: number;
-  overdueAmount?: number;
-  overdueVendorsCount?: number;
-}) {
-  const outstanding = Number(p.outstandingPayablesAmount ?? 0);
-  const overdue = Number(p.overdueAmount ?? 0);
-  return {
-    pendingPayouts: outstanding,
-    approvedInvoices: Number(p.pendingApprovalCount ?? 0),
-    disputedAmount: 0,
-    paidThisMonth: 0,
-    avgPaymentCycle: 0,
-    outstandingBalance: outstanding,
-    creditLimit: 0,
-    availableCredit: 0,
-    overdueAmount: overdue,
-    overdueVendorsCount: Number(p.overdueVendorsCount ?? 0),
-  };
-}
-
-// Map payables VendorInvoice to VendorFinance invoice shape
-function mapPayablesInvoiceToFinance(inv: {
-  id: string;
-  vendorId: string;
-  vendorName: string;
-  amount: number;
-  currency: string;
-  invoiceDate: string;
-  dueDate: string;
-  status: string;
-  paymentId?: string;
-  notes?: string;
-}) {
-  return {
-    id: inv.id,
-    vendorId: inv.vendorId,
-    vendorName: inv.vendorName,
-    amount: inv.amount,
-    tax: 0,
-    totalAmount: inv.amount,
-    currency: inv.currency ?? 'INR',
-    issueDate: inv.invoiceDate,
-    dueDate: inv.dueDate,
-    paymentDate: null as string | null,
-    status: inv.status,
-    paymentMethod: 'Bank Transfer',
-    category: 'General',
-    poReference: '',
-    description: inv.notes ?? '',
-    attachments: 0,
-    transactionId: inv.paymentId ? String(inv.paymentId) : String(inv.id),
-  };
-}
-
-type PaymentHistoryEntry = {
-  month: string;
-  paid: number;
-  pending: number;
-  disputed: number;
-};
-
-type PaymentByCategoryEntry = {
-  name: string;
-  value: number;
-  color: string;
-};
-
-type VendorPaymentSummary = {
-  vendorId: string;
-  vendorName: string;
-  totalPaid: number;
-  pendingAmount: number;
-  invoiceCount: number;
-  avgPaymentDays: number;
-  creditRating: string;
-  lastPayment: string;
-};
-
-// Payment history and category data - empty until backend provides endpoints.
-const getEmptyPaymentHistory = (): PaymentHistoryEntry[] => [];
-const getEmptyPaymentByCategory = (): PaymentByCategoryEntry[] => [];
-const getEmptyVendorPayments = (): VendorPaymentSummary[] => [];
-
-function saveInvoicesToStorage(invoices: ReturnType<typeof mapPayablesInvoiceToFinance>[]) {
-  try {
-    localStorage.setItem('selorg_vendor_finance_invoices', JSON.stringify(invoices));
-  } catch {
-    // Local storage may not be available (private mode / restricted environments).
-  }
-}
+import {
+  mapPayablesToFinanceSummary,
+  mapPayablesInvoiceToFinance,
+  buildVendorPaymentSummaries,
+  buildPaymentHistory,
+  buildPaymentByCategory,
+  type FinanceInvoiceRow,
+} from './vendorFinanceAnalytics';
 
 export function VendorFinance() {
   const [summary, setSummary] = useState<ReturnType<typeof mapPayablesToFinanceSummary> | null>(null);
-  const [invoices, setInvoices] = useState<ReturnType<typeof mapPayablesInvoiceToFinance>[]>([]);
+  const [invoices, setInvoices] = useState<FinanceInvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [paymentHistory] = useState(getEmptyPaymentHistory());
-  const [categoryData] = useState(getEmptyPaymentByCategory());
-  const [vendorPayments, setVendorPayments] = useState(getEmptyVendorPayments());
+  const [vendorDirectory, setVendorDirectory] = useState<Vendor[]>([]);
+
+  const paymentHistory = useMemo(() => buildPaymentHistory(invoices), [invoices]);
+  const categoryData = useMemo(() => buildPaymentByCategory(invoices), [invoices]);
+  const vendorPayments = useMemo(
+    () => buildVendorPaymentSummaries(invoices, vendorDirectory.map((v) => ({
+      id: v.id,
+      name: v.name,
+      creditLimit: v.creditLimit,
+    }))),
+    [invoices, vendorDirectory]
+  );
   
   const [selectedView, setSelectedView] = useState<'invoices' | 'payments' | 'vendors' | 'analytics'>('invoices');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -171,56 +97,38 @@ export function VendorFinance() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load from API on mount
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const [summaryRes, invoicesRes, vendorsRes] = await Promise.all([
-          fetchPayablesSummary(),
-          fetchVendorInvoices({ page: 1, pageSize: 100 }),
-          fetchVendors(),
-        ]);
-        if (!mounted) return;
-        setSummary(mapPayablesToFinanceSummary(summaryRes));
-        setInvoices((invoicesRes.data ?? []).map(mapPayablesInvoiceToFinance));
-        setVendorPayments(
-          vendorsRes.map((v) => ({
-            vendorId: v.id,
-            vendorName: v.name,
-            totalPaid: 0,
-            pendingAmount: 0,
-            invoiceCount: 0,
-            avgPaymentDays: 0,
-            creditRating: '-',
-            lastPayment: '-',
-          }))
-        );
-      } catch (e) {
-        console.error('Failed to load vendor finance data', e);
-        toast.error('Failed to load finance data');
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
+  const loadFinanceData = useCallback(async (opts?: { silent?: boolean }) => {
+    try {
+      if (!opts?.silent) setLoading(true);
+      const [summaryRes, invoicesRes, vendorsRes] = await Promise.all([
+        fetchPayablesSummary(),
+        fetchVendorInvoices({ page: 1, pageSize: 500 }),
+        fetchVendors(),
+      ]);
+      const mappedInvoices = (invoicesRes.data ?? []).map(mapPayablesInvoiceToFinance);
+      setSummary(mapPayablesToFinanceSummary(summaryRes, vendorsRes));
+      setInvoices(mappedInvoices);
+      setVendorDirectory(vendorsRes);
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error('Failed to load vendor finance data', e);
+      if (!opts?.silent) toast.error('Failed to load finance data');
+    } finally {
+      if (!opts?.silent) setLoading(false);
+    }
   }, []);
 
-  // Auto-refresh from API
+  useEffect(() => {
+    loadFinanceData();
+  }, [loadFinanceData]);
+
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(async () => {
-      try {
-        const s = await fetchPayablesSummary();
-        setSummary(mapPayablesToFinanceSummary(s));
-        setLastUpdated(new Date());
-      } catch {
-        // ignore
-      }
+    const interval = setInterval(() => {
+      loadFinanceData({ silent: true });
     }, 10000);
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, loadFinanceData]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -228,13 +136,13 @@ export function VendorFinance() {
         return { bg: 'bg-[#DCFCE7]', text: 'text-[#166534]', icon: CheckCircle2 };
       case 'scheduled':
         return { bg: 'bg-[#DBEAFE]', text: 'text-[#1E40AF]', icon: Calendar };
-      case 'processing':
-        return { bg: 'bg-[#FEF3C7]', text: 'text-[#92400E]', icon: Clock };
+      case 'overdue':
+        return { bg: 'bg-[#FEF3C7]', text: 'text-[#92400E]', icon: AlertTriangle };
       case 'approved':
         return { bg: 'bg-[#E0E7FF]', text: 'text-[#4F46E5]', icon: FileCheck };
-      case 'pending':
+      case 'pending_approval':
         return { bg: 'bg-[#F3E8FF]', text: 'text-[#7C3AED]', icon: FileClock };
-      case 'disputed':
+      case 'rejected':
         return { bg: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', icon: FileX };
       default:
         return { bg: 'bg-[#E5E7EB]', text: 'text-[#374151]', icon: FileText };
@@ -246,10 +154,10 @@ export function VendorFinance() {
     approvedInvoices: 0,
     disputedAmount: 0,
     paidThisMonth: 0,
-    avgPaymentCycle: 12,
+    avgPaymentCycle: 0,
     outstandingBalance: 0,
-    creditLimit: 500000,
-    availableCredit: 500000,
+    creditLimit: 0,
+    availableCredit: 0,
     overdueAmount: 0,
     overdueVendorsCount: 0,
   };
@@ -267,6 +175,7 @@ export function VendorFinance() {
     try {
       await approveInvoiceApi(invoiceId);
       setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: 'approved' } : inv));
+      await loadFinanceData({ silent: true });
       toast.success(`Invoice ${invoiceId} approved successfully`);
     } catch (e) {
       toast.error('Failed to approve invoice');
@@ -274,8 +183,9 @@ export function VendorFinance() {
   };
 
   const handleSchedulePayment = (invoiceId: string) => {
-    setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: 'scheduled' } : inv));
-    toast.success(`Payment scheduled for ${invoiceId}`);
+    toast.info(
+      `Invoice ${invoiceId} is scheduled when Finance creates a payment batch in Payables.`
+    );
   };
 
   const handleMarkAsPaid = async (invoiceId: string) => {
@@ -284,6 +194,7 @@ export function VendorFinance() {
       setInvoices(prev => prev.map(inv =>
         inv.id === invoiceId ? { ...inv, status: 'paid', paymentDate: new Date().toISOString().split('T')[0] } : inv
       ));
+      await loadFinanceData({ silent: true });
       toast.success(`Invoice ${invoiceId} marked as paid`);
     } catch (e) {
       toast.error('Failed to mark invoice as paid');
@@ -293,7 +204,8 @@ export function VendorFinance() {
   const handleDispute = async (invoiceId: string) => {
     try {
       await rejectInvoiceApi(invoiceId, 'Disputed');
-      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: 'disputed' } : inv));
+      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: 'rejected' } : inv));
+      await loadFinanceData({ silent: true });
       toast.error(`Invoice ${invoiceId} disputed`);
     } catch (e) {
       toast.error('Failed to dispute invoice');
@@ -316,7 +228,8 @@ export function VendorFinance() {
   const handleCancelInvoice = async (invoiceId: string) => {
     try {
       await rejectInvoiceApi(invoiceId, 'Cancelled');
-      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: 'disputed' } : inv));
+      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: 'rejected' } : inv));
+      await loadFinanceData({ silent: true });
       toast.success(`Invoice ${invoiceId} cancelled`);
     } catch (e) {
       toast.error('Failed to cancel invoice');
@@ -505,8 +418,7 @@ export function VendorFinance() {
     }
   };
   
-  const handleUploadSubmit = () => {
-    // Validate form
+  const handleUploadSubmit = async () => {
     if (!uploadForm.vendorId || uploadForm.vendorId === 'Select vendor...') {
       toast.error('Please select a vendor');
       return;
@@ -519,55 +431,31 @@ export function VendorFinance() {
       toast.error('Please enter a valid amount');
       return;
     }
-    if (!uploadForm.file) {
-      toast.error('Please select a file to upload');
-      return;
-    }
-    
-    // Find vendor name
-    const vendor = vendorPayments.find(vp => vp.vendorId === uploadForm.vendorId);
-    const vendorName = vendor?.vendorName || 'Unknown Vendor';
-    
-    // Create new invoice
-    const newInvoice = {
-      id: uploadForm.invoiceNumber || `INV-${Date.now()}`,
-      vendorId: uploadForm.vendorId,
-      vendorName: vendorName,
-      amount: parseFloat(uploadForm.amount),
-      tax: parseFloat(uploadForm.amount) * 0.1, // 10% tax
-      totalAmount: parseFloat(uploadForm.amount) * 1.1,
-      currency: 'INR',
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
-      paymentDate: null,
-      status: 'pending',
-      paymentMethod: 'Bank Transfer',
-      category: 'Other',
-      poReference: `PO-${Date.now()}`,
-      description: `Uploaded invoice - ${uploadForm.file.name}`,
-      attachments: 1,
-      transactionId: `upload-${Date.now()}`
-    };
-    
-    // Add to invoices and save
-    setInvoices(prev => {
-      const updated = [newInvoice, ...prev];
-      saveInvoicesToStorage(updated);
-      return updated;
-    });
-    
-    toast.success(`Invoice ${newInvoice.id} uploaded successfully`);
-    setShowUploadInvoiceModal(false);
-    
-    // Reset form
-    setUploadForm({
-      vendorId: '',
-      invoiceNumber: '',
-      amount: '',
-      file: null,
-    });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+
+    const vendor = vendorDirectory.find((v) => v.id === uploadForm.vendorId);
+    const amount = parseFloat(uploadForm.amount);
+    const today = new Date().toISOString().split('T')[0];
+    const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    try {
+      const created = await uploadInvoice({
+        vendorId: uploadForm.vendorId,
+        vendorName: vendor?.name,
+        invoiceNumber: uploadForm.invoiceNumber.trim(),
+        invoiceDate: today,
+        dueDate,
+        amount,
+        currency: 'INR',
+      });
+      setInvoices((prev) => [mapPayablesInvoiceToFinance(created), ...prev]);
+      await loadFinanceData({ silent: true });
+      toast.success(`Invoice ${created.invoiceNumber || created.id} submitted for approval`);
+      setShowUploadInvoiceModal(false);
+      setUploadForm({ vendorId: '', invoiceNumber: '', amount: '', file: null });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (e) {
+      console.error('Upload invoice failed', e);
+      toast.error('Failed to upload invoice');
     }
   };
 
@@ -760,11 +648,12 @@ export function VendorFinance() {
             <div className="flex gap-2">
               {[
                 { value: 'all', label: 'All', count: invoices.length },
-                { value: 'pending', label: 'Pending', count: invoices.filter(i => i.status === 'pending').length },
+                { value: 'pending_approval', label: 'Pending', count: invoices.filter(i => i.status === 'pending_approval').length },
                 { value: 'approved', label: 'Approved', count: invoices.filter(i => i.status === 'approved').length },
                 { value: 'scheduled', label: 'Scheduled', count: invoices.filter(i => i.status === 'scheduled').length },
                 { value: 'paid', label: 'Paid', count: invoices.filter(i => i.status === 'paid').length },
-                { value: 'disputed', label: 'Disputed', count: invoices.filter(i => i.status === 'disputed').length }
+                { value: 'overdue', label: 'Overdue', count: invoices.filter(i => i.status === 'overdue').length },
+                { value: 'rejected', label: 'Rejected', count: invoices.filter(i => i.status === 'rejected').length }
               ].map(filter => (
                 <button
                   key={filter.value}
@@ -846,7 +735,7 @@ export function VendorFinance() {
                             </button>
                             
                             {/* Cancel button */}
-                            {invoice.status !== 'paid' && invoice.status !== 'disputed' && (
+                            {invoice.status !== 'paid' && invoice.status !== 'rejected' && (
                               <button
                                 onClick={() => handleCancelInvoice(invoice.id)}
                                 className="p-1.5 hover:bg-[#FEE2E2] rounded text-[#991B1B] transition-colors"
@@ -1113,9 +1002,9 @@ export function VendorFinance() {
                   { status: 'Paid', count: invoices.filter(i => i.status === 'paid').length },
                   { status: 'Scheduled', count: invoices.filter(i => i.status === 'scheduled').length },
                   { status: 'Approved', count: invoices.filter(i => i.status === 'approved').length },
-                  { status: 'Processing', count: invoices.filter(i => i.status === 'processing').length },
-                  { status: 'Pending', count: invoices.filter(i => i.status === 'pending').length },
-                  { status: 'Disputed', count: invoices.filter(i => i.status === 'disputed').length }
+                  { status: 'Overdue', count: invoices.filter(i => i.status === 'overdue').length },
+                  { status: 'Pending', count: invoices.filter(i => i.status === 'pending_approval').length },
+                  { status: 'Rejected', count: invoices.filter(i => i.status === 'rejected').length }
                 ]}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
                   <XAxis dataKey="status" stroke="#757575" style={{ fontSize: '12px' }} />
@@ -1235,7 +1124,7 @@ export function VendorFinance() {
               >
                 <option value="">Select vendor...</option>
                 {vendorPayments.map(vp => (
-                  <option key={vp.vendorId} value={vp.vendorId}>{vp.vendorName}</option>
+                  <option key={vp.id} value={vp.id}>{vp.name}</option>
                 ))}
               </select>
             </div>

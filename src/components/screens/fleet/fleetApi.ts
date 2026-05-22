@@ -57,6 +57,40 @@ import { API_CONFIG } from '../../../config/api';
 import { API_ENDPOINTS } from '../../../config/api';
 import { getAuthToken } from '../../../contexts/AuthContext';
 
+export type FleetFieldErrors = Record<string, string>;
+
+export class FleetApiError extends Error {
+  fieldErrors: FleetFieldErrors;
+
+  constructor(message: string, fieldErrors: FleetFieldErrors = {}) {
+    super(message);
+    this.name = 'FleetApiError';
+    this.fieldErrors = fieldErrors;
+  }
+}
+
+function parseFieldErrors(payload: Record<string, unknown> | null): FleetFieldErrors {
+  const errorObj = payload?.error as { details?: Array<{ field?: string; message?: string }> } | undefined;
+  if (!Array.isArray(errorObj?.details)) return {};
+  return errorObj.details.reduce<FleetFieldErrors>((acc, item) => {
+    if (item?.field && item?.message) acc[item.field] = item.message;
+    return acc;
+  }, {});
+}
+
+function extractApiMessage(payload: Record<string, unknown> | null, fallback: string): string {
+  const fieldErrors = parseFieldErrors(payload);
+  const detailMessages = Object.values(fieldErrors);
+  if (detailMessages.length > 0) return detailMessages.join('. ');
+  return (
+    (typeof payload?.message === 'string' && payload.message) ||
+    (typeof payload?.error === 'string' && payload.error) ||
+    (typeof (payload?.error as { message?: string })?.message === 'string' &&
+      (payload?.error as { message: string }).message) ||
+    fallback
+  );
+}
+
 async function apiRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
   const url = `${API_CONFIG.baseURL}${endpoint}`;
   const response = await fetch(url, {
@@ -68,20 +102,78 @@ async function apiRequest(endpoint: string, options: RequestInit = {}): Promise<
     },
   });
   if (!response.ok) {
-    let payload: any = null;
+    let payload: Record<string, unknown> | null = null;
     try {
       payload = await response.json();
     } catch {
       payload = null;
     }
-    const message =
-      (typeof payload?.message === 'string' && payload.message) ||
-      (typeof payload?.error === 'string' && payload.error) ||
-      (typeof payload?.error?.message === 'string' && payload.error.message) ||
-      `API error: ${response.statusText}`;
-    throw new Error(message);
+    const message = extractApiMessage(payload, `API error: ${response.statusText}`);
+    throw new FleetApiError(message, parseFieldErrors(payload));
   }
   return response.json();
+}
+
+/** Convert YYYY-MM-DD from date input to noon UTC ISO (avoids timezone day-shift). */
+export function dateInputToIso(dateStr: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!match) throw new FleetApiError('Please select a valid scheduled date.', { scheduledDate: 'Invalid date format' });
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (Number.isNaN(date.getTime())) {
+    throw new FleetApiError('Please select a valid scheduled date.', { scheduledDate: 'Invalid date' });
+  }
+  return date.toISOString();
+}
+
+export function todayDateInputValue(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseScheduledDateRaw(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'object' && value !== null && '$date' in value) {
+    const nested = (value as { $date: string }).$date;
+    const d = new Date(nested);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+export function normalizeMaintenanceTask(raw: Record<string, unknown>): MaintenanceTask {
+  const scheduledDate = parseScheduledDateRaw(raw.scheduledDate);
+  return {
+    id: String(raw.id ?? (raw as { _id?: string })._id ?? ''),
+    vehicleId: String(raw.vehicleId ?? raw.vehicleInternalId ?? ''),
+    vehicleInternalId: String(raw.vehicleInternalId ?? ''),
+    vehicleType: (raw.vehicleType as string | null) ?? null,
+    type: (raw.type as MaintenanceType) || 'Scheduled Service',
+    scheduledDate: scheduledDate ?? '',
+    status: (raw.status as MaintenanceStatus) || 'upcoming',
+    workshopName: raw.workshopName as string | undefined,
+    notes: raw.notes as string | undefined,
+    cost: typeof raw.cost === 'number' ? raw.cost : undefined,
+  };
+}
+
+export function formatMaintenanceDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function maintenanceDateSortKey(value: string): number {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? Number.MAX_SAFE_INTEGER : ms;
 }
 
 function normalizeVehicle(v: Record<string, unknown>): Vehicle {
@@ -153,7 +245,9 @@ export async function fetchMaintenanceTasks(): Promise<MaintenanceTask[]> {
   if (data && data.success === false) throw new Error(data.message);
   const tasks = data?.data ?? data ?? [];
   const arr = Array.isArray(tasks) ? tasks : [];
-  return arr.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+  return arr
+    .map((t) => normalizeMaintenanceTask(t as Record<string, unknown>))
+    .sort((a, b) => maintenanceDateSortKey(a.scheduledDate) - maintenanceDateSortKey(b.scheduledDate));
 }
 
 export async function createMaintenanceTask(task: Partial<MaintenanceTask>): Promise<MaintenanceTask> {
@@ -161,9 +255,28 @@ export async function createMaintenanceTask(task: Partial<MaintenanceTask>): Pro
     method: 'POST',
     body: JSON.stringify(task),
   });
-  return (response?.data ?? response) as MaintenanceTask;
+  if (response && response.success === false) {
+    throw new FleetApiError(response.message || 'Failed to schedule maintenance');
+  }
+  const raw = response?.data ?? response;
+  return normalizeMaintenanceTask(
+    (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  );
 }
 
-export async function updateMaintenanceTask(id: string, updates: Partial<MaintenanceTask>): Promise<void> {
-  await apiRequest(`${API_ENDPOINTS.fleet.maintenanceTask(id)}`, { method: 'PUT', body: JSON.stringify(updates) });
+export async function updateMaintenanceTask(
+  id: string,
+  updates: Partial<MaintenanceTask>
+): Promise<MaintenanceTask> {
+  const response = await apiRequest(`${API_ENDPOINTS.fleet.maintenanceTask(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+  if (response && response.success === false) {
+    throw new FleetApiError(response.message || 'Update failed');
+  }
+  const raw = response?.data ?? response;
+  return normalizeMaintenanceTask(
+    (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  );
 }

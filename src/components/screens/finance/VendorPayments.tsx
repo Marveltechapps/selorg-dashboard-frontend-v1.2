@@ -326,15 +326,16 @@ export function VendorPayments() {
         }}
       />
 
-      <UploadInvoiceModal 
+      <UploadInvoiceModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onSuccess={() => {
-            loadInvoices();
-            loadSummary();
-            loadVendors();
+          loadInvoices();
+          loadSummary();
+          loadVendors();
         }}
         vendors={vendors}
+        onRefreshVendors={loadVendors}
       />
 
       <NewPaymentModal 

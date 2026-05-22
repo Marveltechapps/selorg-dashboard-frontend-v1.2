@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RotateCcw, AlertTriangle, CheckCircle2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { apiRequest } from '@/api/apiClient';
-
 import { RefundsSummaryCards } from './RefundsSummaryCards';
 import { RefundQueueTable } from './RefundQueueTable';
 import { RefundDetailsDrawer } from './RefundDetailsDrawer';
@@ -15,9 +13,11 @@ import {
     RefundRequest, 
     RefundsSummary, 
     RefundQueueFilter,
+    WalletTransactionRow,
     fetchRefundsSummary,
     fetchRefundQueue,
-    fetchRefundDetails
+    fetchRefundDetails,
+    fetchWalletTransactions,
 } from './refundsApi';
 
 export function RefundsReturns() {
@@ -39,7 +39,7 @@ export function RefundsReturns() {
 
   // Wallet transactions
   const [activeView, setActiveView] = useState<'refunds' | 'wallet'>('refunds');
-  const [walletTxns, setWalletTxns] = useState<any[]>([]);
+  const [walletTxns, setWalletTxns] = useState<WalletTransactionRow[]>([]);
   const [walletLoading, setWalletLoading] = useState(false);
 
   // Modals / Drawers
@@ -117,8 +117,7 @@ export function RefundsReturns() {
   const loadWalletTransactions = async () => {
     setWalletLoading(true);
     try {
-      const res = await apiRequest<{ success: boolean; data: any[] }>('/finance/wallet-transactions');
-      setWalletTxns(res.data ?? []);
+      setWalletTxns(await fetchWalletTransactions());
     } catch {
       setWalletTxns([]);
     } finally {
@@ -143,6 +142,13 @@ export function RefundsReturns() {
           <p className="text-[#757575] text-sm">Process refund requests, handle chargebacks, and track returns</p>
         </div>
         <div className="flex gap-3">
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2 shadow-sm transition-colors"
+            >
+              <RotateCcw size={16} />
+              Refresh
+            </button>
              <button 
                 onClick={() => setDisputeOpen(true)}
                 className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] flex items-center gap-2 shadow-sm transition-colors"
@@ -198,17 +204,19 @@ export function RefundsReturns() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E0E0E0]">
-                  {walletTxns.map((txn: any) => (
-                    <tr key={txn._id || txn.id} className="hover:bg-[#FAFAFA]">
-                      <td className="px-6 py-4 font-mono text-xs text-[#616161]">{(txn._id || txn.id || '').slice(-8)}</td>
+                  {walletTxns.map((txn) => (
+                    <tr key={txn.id} className="hover:bg-[#FAFAFA]">
+                      <td className="px-6 py-4 font-mono text-xs text-[#616161]">{txn.id.slice(-8)}</td>
                       <td className="px-6 py-4 font-medium text-[#212121]">{txn.customerName || txn.customerId || '—'}</td>
                       <td className="px-6 py-4">
                         <Badge variant="outline" className={`capitalize border-0 font-medium text-xs ${txn.type === 'credit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                          {txn.type || '—'}
+                          {txn.type}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 font-bold text-[#212121]">₹{(txn.amount || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-xs text-[#757575]">{txn.reference || txn.orderId || '—'}</td>
+                      <td className="px-6 py-4 font-bold text-[#212121]">
+                        {txn.type === 'debit' ? '−' : '+'}₹{txn.amount.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-[#757575]">{txn.reference || txn.orderId || txn.source || '—'}</td>
                       <td className="px-6 py-4 text-xs text-[#757575]">{txn.createdAt ? new Date(txn.createdAt).toLocaleString() : '—'}</td>
                     </tr>
                   ))}

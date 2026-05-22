@@ -1,4 +1,5 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { VendorSidebar } from './vendor/VendorSidebar';
 import { VendorTopBar } from './vendor/VendorTopBar';
 import { CardSkeleton } from './ui/ux-components';
@@ -10,9 +11,6 @@ const VendorOverview = React.lazy(() =>
 );
 const VendorList = React.lazy(() =>
   import('./screens/vendor/VendorListComplete').then((m) => ({ default: m.VendorList }))
-);
-const VendorOnboarding = React.lazy(() =>
-  import('./screens/vendor/VendorOnboarding').then((m) => ({ default: m.VendorOnboarding }))
 );
 const PurchaseOrders = React.lazy(() =>
   import('./screens/vendor/PurchaseOrders').then((m) => ({ default: m.PurchaseOrders }))
@@ -32,14 +30,8 @@ const VendorTaskApprovals = React.lazy(() =>
 const VendorAlerts = React.lazy(() =>
   import('./screens/vendor/VendorAlerts').then((m) => ({ default: m.VendorAlerts }))
 );
-const VendorCommunication = React.lazy(() =>
-  import('./screens/vendor/VendorCommunication').then((m) => ({ default: m.VendorCommunication }))
-);
 const ReportsAnalytics = React.lazy(() =>
   import('./screens/vendor/ReportsAnalytics').then((m) => ({ default: m.ReportsAnalytics }))
-);
-const VendorSystemHealth = React.lazy(() =>
-  import('./screens/vendor/VendorSystemHealth').then((m) => ({ default: m.VendorSystemHealth }))
 );
 const VendorFinance = React.lazy(() =>
   import('./screens/vendor/VendorFinance').then((m) => ({ default: m.VendorFinance }))
@@ -50,17 +42,34 @@ const VendorUtilities = React.lazy(() =>
 
 export function VendorManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
+  const location = useLocation();
   const [vendorSearchQuery, setVendorSearchQuery] = React.useState('');
+  const [breadcrumbExtra, setBreadcrumbExtra] = React.useState<string | undefined>();
+
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('q');
+    if (q != null) setVendorSearchQuery(q);
+  }, [location.search]);
+
+  useEffect(() => {
+    if (activeTab !== 'vendor-list') setBreadcrumbExtra(undefined);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'onboarding' || activeTab === 'communication' || activeTab === 'system') {
+      setActiveTab('overview');
+    }
+  }, [activeTab, setActiveTab]);
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
+    <div className="min-h-screen bg-[#fcfcfc] text-[#18181b] font-sans">
       <VendorSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
-      
-      <div className="pl-[240px]">
-        <VendorTopBar searchQuery={vendorSearchQuery} onSearchChange={setVendorSearchQuery} />
-        
-        <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
-          <DashboardBreadcrumbs dashboard="vendor" activeTab={activeTab} />
+
+      <div className="vendor-content-area">
+        <VendorTopBar filterQuery={vendorSearchQuery} onFilterQueryChange={setVendorSearchQuery} />
+
+        <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+          <DashboardBreadcrumbs dashboard="vendor" activeTab={activeTab} pageLabel={breadcrumbExtra} />
           <Suspense
             fallback={
               <div className="p-6">
@@ -69,17 +78,19 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
             }
           >
             {activeTab === 'overview' && <VendorOverview searchQuery={vendorSearchQuery} />}
-            {activeTab === 'vendor-list' && <VendorList onNavigateTab={setActiveTab} />}
-            {activeTab === 'onboarding' && <VendorOnboarding />}
+            {activeTab === 'vendor-list' && (
+              <VendorList
+                onNavigateTab={setActiveTab}
+                onBreadcrumbExtraChange={setBreadcrumbExtra}
+              />
+            )}
             {activeTab === 'po' && <PurchaseOrders />}
             {activeTab === 'inbound' && <InboundOperations />}
             {activeTab === 'inventory' && <InventoryCoordination />}
             {activeTab === 'qc' && <QCCompliance />}
             {activeTab === 'approvals' && <VendorTaskApprovals />}
             {activeTab === 'alerts' && <VendorAlerts />}
-            {activeTab === 'communication' && <VendorCommunication />}
             {activeTab === 'analytics' && <ReportsAnalytics />}
-            {activeTab === 'system' && <VendorSystemHealth />}
             {activeTab === 'finance' && <VendorFinance />}
             {activeTab === 'utilities' && <VendorUtilities />}
           </Suspense>

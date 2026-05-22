@@ -22,7 +22,10 @@ import {
   Mail,
   Bell,
   Printer,
-  Search
+  Search,
+  Plus,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '../../ui/page-header';
@@ -38,6 +41,20 @@ import {
 } from '@/components/ui/dialog';
 
 import vendorManagementApi from '../../../api/vendor/vendorManagement.api';
+import {
+  loadQcComplianceDashboard,
+  reloadQcChecks,
+  deleteQCCheck,
+  deleteAudit,
+  deleteCertificateApi,
+  deleteTemperature,
+  deleteRating,
+  createLabelForTab,
+  type QcOverview,
+  type QcCrudTab,
+} from '../../../api/vendor/vendorQcCompliance.api';
+import { getVendors } from '../../../api/vendor/vendorManagement.api';
+import { QcComplianceCrudModal, type CrudMode } from './QcComplianceCrudModal';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 
 // Types
@@ -69,6 +86,7 @@ interface Audit {
   id: string;
   auditId: string;
   vendor: string;
+  vendorId?: string;
   date: string;
   auditType: AuditType;
   result: string;
@@ -79,6 +97,7 @@ interface Certificate {
   id: string;
   certificateType: string;
   vendor: string;
+  vendorId?: string;
   issuedDate: string;
   expiryDate: string;
   status: CertificateStatus;
@@ -91,6 +110,7 @@ interface TemperatureCompliance {
   shipmentId: string;
   product: string;
   vendor: string;
+  vendorId?: string;
   requirement: string;
   avgTemp: number;
   minTemp: number;
@@ -101,6 +121,7 @@ interface TemperatureCompliance {
 interface VendorRating {
   id: string;
   vendor: string;
+  vendorId?: string;
   overallRating: number;
   qcPassRate: number;
   complianceScore: number;
@@ -129,192 +150,124 @@ export function QCCompliance() {
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
 
   const [loadingChecks, setLoadingChecks] = useState(false);
+  const [qcOverview, setQcOverview] = useState<QcOverview | null>(null);
+  const [vendorOptions, setVendorOptions] = useState<{ id: string; name: string }[]>([]);
+  const [crudOpen, setCrudOpen] = useState(false);
+  const [crudMode, setCrudMode] = useState<CrudMode>('create');
+  const [crudEditItem, setCrudEditItem] = useState<Record<string, unknown> | null>(null);
   const [qcDataRefreshToken, setQcDataRefreshToken] = useState(0);
 
   useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
     setQcDataRefreshToken((t) => t + 1);
   });
 
+  const refreshQcDashboard = React.useCallback(async () => {
+    try {
+      setLoadingChecks(true);
+      const bundle = await loadQcComplianceDashboard();
+      setQcOverview(bundle.overview);
+      setChecks(bundle.checks);
+      setAudits(bundle.audits);
+      setCertificates(bundle.certificates);
+      setTemps(bundle.temperatures);
+      setRatings(bundle.ratings);
+    } catch (err: unknown) {
+      console.error('Failed to load QC compliance data', err);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to load QC compliance data';
+      if (
+        errorMsg.includes('Authentication') ||
+        errorMsg.includes('token') ||
+        errorMsg.includes('Access denied') ||
+        errorMsg.includes('403')
+      ) {
+        toast.error('Authentication failed. Please log in again.');
+      } else {
+        toast.error(errorMsg);
+      }
+    } finally {
+      setLoadingChecks(false);
+    }
+  }, []);
+
   useEffect(() => {
-    let mounted = true;
+    refreshQcDashboard();
+  }, [refreshQcDashboard, qcDataRefreshToken]);
+
+  useEffect(() => {
     (async () => {
       try {
-        setLoadingChecks(true);
-        const rawVendorId = '';
-        const useVendorScope = rawVendorId && isValidMongoId(rawVendorId);
-
-        const resp = useVendorScope
-          ? await vendorManagementApi.listVendorQCChecks(rawVendorId!)
-          : await vendorManagementApi.listQCChecks({ page: 1, perPage: 25 });
-        if (!mounted) return;
-        let items: any[] = [];
-        if (Array.isArray(resp)) {
-          items = resp;
-        } else if (resp?.data && Array.isArray(resp.data)) {
-          items = resp.data;
-        } else if (resp?.items && Array.isArray(resp.items)) {
-          items = resp.items;
-        } else if (resp?.pagination && resp?.data) {
-          items = Array.isArray(resp.data) ? resp.data : [];
-        }
-        const transformedChecks: QCCheck[] = items.map((item: any) => {
-          const status =
-            item.status === 'approved' || item.status === 'passed'
-              ? 'Approved'
-              : item.status === 'rejected' || item.status === 'failed'
-                ? 'Rejected'
-                : item.status === 'appealed'
-                  ? 'Appealed'
-                  : 'Pending';
-
-          return {
-            id: item._id?.toString() || item.id,
-            checkId: item.checkId || item.id || `QC-${(item._id?.toString() || '').substring(0, 8)}`,
-            batchId: item.batchId || 'N/A',
-            product: item.product || 'Unknown',
-            vendor: item.vendor || item.vendorId || 'Unknown',
-            checkType: item.checkType || 'Visual',
-            result:
-              item.result ||
-              (item.status === 'approved' || item.status === 'passed'
-                ? 'Pass'
-                : item.status === 'rejected' || item.status === 'failed'
-                  ? 'Fail'
-                  : 'Pending'),
-            inspector: item.inspector || item.inspectorId || 'N/A',
-            date: item.date || item.createdAt,
-            actualReading: item.actualReading,
-            requirement: item.requirement,
-            severity: item.severity,
-            status: status as QCCheck['status'],
-            stage: (item.stage || 'Review') as QCCheck['stage'],
-          };
-        });
-        setChecks(transformedChecks);
-
-        if (useVendorScope && rawVendorId) {
-          try {
-            const certResp = await vendorManagementApi.listVendorCertificates(rawVendorId);
-            const certs = Array.isArray(certResp) ? certResp : (certResp?.items ?? certResp?.data ?? []);
-            if (mounted) {
-              const transformedCerts = (certs ?? []).map((c: any) => ({
-                id: c._id?.toString() || c.id,
-                certificateType: c.type || c.certificateType || 'Unknown',
-                vendor: c.vendor || c.vendorName || c.vendorId || 'Unknown',
-                issuedDate: c.issuedAt ? new Date(c.issuedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A',
-                expiryDate: c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A',
-                status: c.status === 'valid' ? 'Valid' : c.status === 'expired' ? 'Expired' : c.status === 'pending_renewal' ? 'Pending Renewal' : c.status === 'expiring_soon' ? 'Expiring Soon' : 'Valid',
-                daysToExpiry: c.expiresAt ? Math.ceil((new Date(c.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
-                licenseNumber: c.licenseNumber || c.metadata?.licenseNumber,
-              }));
-              setCertificates(transformedCerts);
-            }
-          } catch (e) {
-            console.warn('Failed to load certificates', e);
-            if (mounted) setCertificates([]);
-          }
-          
-          try {
-            const auditsResp = await vendorManagementApi.getAudits({ vendorId: rawVendorId });
-            const auditsData = Array.isArray(auditsResp?.data) ? auditsResp.data : (Array.isArray(auditsResp) ? auditsResp : []);
-            if (mounted) {
-              const transformedAudits = (auditsData ?? []).map((a: any) => ({
-                id: a._id?.toString() || a.id,
-                auditId: a.auditId || a.id,
-                vendor: a.vendor || a.vendorName || a.vendorId || 'N/A',
-                date: a.date || new Date(a.createdAt || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
-                auditType: a.auditType || 'Routine',
-                result: a.result || 'Pending',
-                score: a.score || 0,
-              }));
-              setAudits(transformedAudits);
-            }
-          } catch (e) {
-            console.warn('Failed to load audits', e);
-            if (mounted) setAudits([]);
-          }
-          
-          try {
-            const tempResp = await vendorManagementApi.getTemperatureCompliance({ vendorId: rawVendorId });
-            const tempData = Array.isArray(tempResp?.data) ? tempResp.data : (Array.isArray(tempResp) ? tempResp : []);
-            if (mounted) {
-              const transformedTemps = (tempData ?? []).map((t: any) => ({
-                id: t._id?.toString() || t.id,
-                shipmentId: t.shipmentId || 'N/A',
-                product: t.product || t.productName || 'Unknown',
-                vendor: t.vendor || t.vendorName || t.vendorId || 'Unknown',
-                requirement: t.requirement || 'N/A',
-                avgTemp: t.avgTemp ?? 0,
-                minTemp: t.minTemp ?? 0,
-                maxTemp: t.maxTemp ?? 0,
-                compliant: t.compliant !== undefined ? t.compliant : true,
-              }));
-              setTemps(transformedTemps);
-            }
-          } catch (e) {
-            console.warn('Failed to load temperature compliance', e);
-            if (mounted) setTemps([]);
-          }
-          
-          try {
-            const ratingsResp = await vendorManagementApi.getVendorRatings(rawVendorId);
-            const ratingsData = Array.isArray(ratingsResp?.data) ? ratingsResp.data : (Array.isArray(ratingsResp) ? ratingsResp : []);
-            if (mounted) {
-              const transformedRatings = (ratingsData ?? []).map((r: any) => ({
-                id: r._id?.toString() || r.id || r.vendorId || 'unknown',
-                vendor: r.vendor || r.vendorName || r.vendorId || 'Unknown',
-                overallRating: r.overallRating ?? 0,
-                qcPassRate: r.qcPassRate ?? 0,
-                complianceScore: r.complianceScore ?? 0,
-                auditScore: r.auditScore ?? 0,
-                trend: r.trend || 'stable',
-              }));
-              setRatings(transformedRatings);
-            }
-          } catch (e) {
-            console.warn('Failed to load vendor ratings', e);
-            if (mounted) setRatings([]);
-          }
-        } else {
-          setCertificates([]);
-          setAudits([]);
-          setTemps([]);
-          try {
-            const ratingsResp = await vendorManagementApi.getVendorRatings();
-            const ratingsData = Array.isArray(ratingsResp?.data) ? ratingsResp.data : (Array.isArray(ratingsResp) ? ratingsResp : []);
-            if (mounted) {
-              const transformedRatings = (ratingsData ?? []).map((r: any) => ({
-                id: r._id?.toString() || r.id || r.vendorId || 'unknown',
-                vendor: r.vendor || r.vendorName || r.vendorId || 'Unknown',
-                overallRating: r.overallRating ?? 0,
-                qcPassRate: r.qcPassRate ?? 0,
-                complianceScore: r.complianceScore ?? 0,
-                auditScore: r.auditScore ?? 0,
-                trend: r.trend || 'stable',
-              }));
-              setRatings(transformedRatings);
-            }
-          } catch (e) {
-            if (mounted) setRatings([]);
-          }
-        }
-      } catch (err: any) {
-        console.error('Failed to load QC checks', err);
-        const errorMsg = err.message || 'Failed to load QC checks';
-        // Show user-friendly error message
-        if (errorMsg.includes('Authentication') || errorMsg.includes('token') || errorMsg.includes('Access denied') || errorMsg.includes('403')) {
-          toast.error('Authentication failed. Please log in again.');
-        } else {
-          toast.error(errorMsg);
-        }
-      } finally {
-        setLoadingChecks(false);
+        const res = await getVendors({ page: 1, pageSize: 100 });
+        const raw = res as Record<string, unknown>;
+        const items = (raw.data ?? raw.items ?? raw.vendors ?? raw) as unknown[];
+        const arr = Array.isArray(items) ? items : [];
+        setVendorOptions(
+          arr.map((v) => {
+            const row = v as Record<string, unknown>;
+            return {
+              id: String(row._id ?? row.id ?? ''),
+              name: String(row.name ?? row.vendorName ?? row.code ?? 'Vendor'),
+            };
+          }).filter((v) => v.id)
+        );
+      } catch {
+        setVendorOptions([]);
       }
     })();
-    return () => {
-      mounted = false;
-    };
-  }, [qcDataRefreshToken]);
+  }, []);
+
+  const openCreate = () => {
+    setCrudMode('create');
+    setCrudEditItem(null);
+    setCrudOpen(true);
+  };
+
+  const openEdit = (item: Record<string, unknown>) => {
+    setCrudMode('edit');
+    setCrudEditItem(item);
+    setCrudOpen(true);
+  };
+
+  const handleDeleteRecord = async (
+    kind: QcCrudTab,
+    id: string,
+    vendorId?: string
+  ) => {
+    if (!window.confirm('Delete this record? This cannot be undone.')) return;
+    try {
+      if (kind === 'qc') await deleteQCCheck(id);
+      else if (kind === 'audits') await deleteAudit(id);
+      else if (kind === 'certs') await deleteCertificateApi(id);
+      else if (kind === 'temp') await deleteTemperature(id);
+      else if (kind === 'ratings' && vendorId) await deleteRating(vendorId);
+      toast.success('Deleted');
+      refreshQcDashboard();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
+    }
+  };
+
+  const crudRowActions = (kind: QcCrudTab, item: Record<string, unknown>, id: string) => (
+    <>
+      <button
+        type="button"
+        onClick={() => openEdit(item)}
+        className="p-1.5 border border-[#E0E0E0] rounded hover:bg-[#F5F5F5]"
+        title="Edit"
+      >
+        <Pencil className="w-4 h-4 text-[#4F46E5]" />
+      </button>
+      <button
+        type="button"
+        onClick={() => handleDeleteRecord(kind, kind === 'ratings' ? String(item.vendorId || id) : id, item.vendorId as string | undefined)}
+        className="p-1.5 border border-[#FEE2E2] rounded hover:bg-[#FEF2F2]"
+        title="Delete"
+      >
+        <Trash2 className="w-4 h-4 text-[#EF4444]" />
+      </button>
+    </>
+  );
+
+
 
   const setLoadingFor = (id: string, val: boolean) =>
     setLoadingIds(prev => ({ ...prev, [id]: val }));
@@ -345,58 +298,9 @@ export function QCCompliance() {
       toast.success('Check approved');
       // remove any existing alerts for this check (acknowledge)
       setAlerts(prev => prev.filter(a => a.checkId !== id));
-      // Reload checks to get updated data
-      const rawVendorId = '';
-      const useVendorScope = rawVendorId && isValidMongoId(rawVendorId);
-      const resp = useVendorScope
-        ? await vendorManagementApi.listVendorQCChecks(rawVendorId)
-        : await vendorManagementApi.listQCChecks({ page: 1, perPage: 25 });
-      // Handle different response structures
-      let items: any[] = [];
-      if (Array.isArray(resp)) {
-        items = resp;
-      } else if (resp.data && Array.isArray(resp.data)) {
-        items = resp.data;
-      } else if (resp.items && Array.isArray(resp.items)) {
-        items = resp.items;
-      } else if (resp.pagination && resp.data) {
-        items = Array.isArray(resp.data) ? resp.data : [];
-      }
-      // Transform items to match QCCheck interface
-      const transformedChecks: QCCheck[] = items.map((item: any) => {
-        const status =
-          item.status === 'approved' || item.status === 'passed'
-            ? 'Approved'
-            : item.status === 'rejected' || item.status === 'failed'
-              ? 'Rejected'
-              : item.status === 'appealed'
-                ? 'Appealed'
-                : 'Pending';
-
-        return {
-          id: item._id?.toString() || item.id,
-          checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
-          batchId: item.batchId || 'N/A',
-          product: item.product || 'Unknown',
-          vendor: item.vendor || item.vendorId || 'Unknown',
-          checkType: item.checkType || 'Visual',
-          result:
-            item.result ||
-            (item.status === 'approved' || item.status === 'passed'
-              ? 'Pass'
-              : item.status === 'rejected' || item.status === 'failed'
-                ? 'Fail'
-                : 'Pending'),
-          inspector: item.inspector || item.inspectorId || 'N/A',
-          date: item.date || item.createdAt,
-          actualReading: item.actualReading,
-          requirement: item.requirement,
-          severity: item.severity,
-          status: status as QCCheck['status'],
-          stage: (item.stage || 'Review') as QCCheck['stage'],
-        };
-      });
-      setChecks(transformedChecks);
+      const updated = await reloadQcChecks();
+      setChecks(updated);
+      refreshQcDashboard();
     } catch (err) {
       // rollback
       setChecks(prev => prev.map(c => (c.id === id && previous ? previous : c)));
@@ -435,58 +339,9 @@ export function QCCompliance() {
         { id: alertId, checkId: id, message: `Check ${id} rejected — action required`, type: 'critical', acknowledged: false, ts: Date.now() },
         ...prev,
       ]);
-      // Reload checks to get updated data
-      const rawVendorId = '';
-      const useVendorScope = rawVendorId && isValidMongoId(rawVendorId);
-      const resp = useVendorScope
-        ? await vendorManagementApi.listVendorQCChecks(rawVendorId)
-        : await vendorManagementApi.listQCChecks({ page: 1, perPage: 25 });
-      // Handle different response structures
-      let items: any[] = [];
-      if (Array.isArray(resp)) {
-        items = resp;
-      } else if (resp.data && Array.isArray(resp.data)) {
-        items = resp.data;
-      } else if (resp.items && Array.isArray(resp.items)) {
-        items = resp.items;
-      } else if (resp.pagination && resp.data) {
-        items = Array.isArray(resp.data) ? resp.data : [];
-      }
-      // Transform items to match QCCheck interface
-      const transformedChecks: QCCheck[] = items.map((item: any) => {
-        const status =
-          item.status === 'approved' || item.status === 'passed'
-            ? 'Approved'
-            : item.status === 'rejected' || item.status === 'failed'
-              ? 'Rejected'
-              : item.status === 'appealed'
-                ? 'Appealed'
-                : 'Pending';
-
-        return {
-          id: item._id?.toString() || item.id,
-          checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
-          batchId: item.batchId || 'N/A',
-          product: item.product || 'Unknown',
-          vendor: item.vendor || item.vendorId || 'Unknown',
-          checkType: item.checkType || 'Visual',
-          result:
-            item.result ||
-            (item.status === 'approved' || item.status === 'passed'
-              ? 'Pass'
-              : item.status === 'rejected' || item.status === 'failed'
-                ? 'Fail'
-                : 'Pending'),
-          inspector: item.inspector || item.inspectorId || 'N/A',
-          date: item.date || item.createdAt,
-          actualReading: item.actualReading,
-          requirement: item.requirement,
-          severity: item.severity,
-          status: status as QCCheck['status'],
-          stage: (item.stage || 'Review') as QCCheck['stage'],
-        };
-      });
-      setChecks(transformedChecks);
+      const updated = await reloadQcChecks();
+      setChecks(updated);
+      refreshQcDashboard();
     } catch (err) {
       setChecks(prev => prev.map(c => (c.id === id && previous ? previous : c)));
       toast.error('Failed to reject check');
@@ -521,58 +376,9 @@ export function QCCompliance() {
       // add informational alert
       const alertId = `alert-appeal-${id}-${Date.now()}`;
       setAlerts(prev => [{ id: alertId, checkId: id, message: `Appeal submitted for ${id}`, type: 'info', acknowledged: false, ts: Date.now() }, ...prev]);
-      // Reload checks to get updated data
-      const rawVendorId = '';
-      const useVendorScope = rawVendorId && isValidMongoId(rawVendorId);
-      const resp = useVendorScope
-        ? await vendorManagementApi.listVendorQCChecks(rawVendorId)
-        : await vendorManagementApi.listQCChecks({ page: 1, perPage: 25 });
-      // Handle different response structures
-      let items: any[] = [];
-      if (Array.isArray(resp)) {
-        items = resp;
-      } else if (resp.data && Array.isArray(resp.data)) {
-        items = resp.data;
-      } else if (resp.items && Array.isArray(resp.items)) {
-        items = resp.items;
-      } else if (resp.pagination && resp.data) {
-        items = Array.isArray(resp.data) ? resp.data : [];
-      }
-      // Transform items to match QCCheck interface
-      const transformedChecks: QCCheck[] = items.map((item: any) => {
-        const status =
-          item.status === 'approved' || item.status === 'passed'
-            ? 'Approved'
-            : item.status === 'rejected' || item.status === 'failed'
-              ? 'Rejected'
-              : item.status === 'appealed'
-                ? 'Appealed'
-                : 'Pending';
-
-        return {
-          id: item._id?.toString() || item.id,
-          checkId: item.checkId || item.id || `QC-${item._id?.toString().substring(0, 8)}`,
-          batchId: item.batchId || 'N/A',
-          product: item.product || 'Unknown',
-          vendor: item.vendor || item.vendorId || 'Unknown',
-          checkType: item.checkType || 'Visual',
-          result:
-            item.result ||
-            (item.status === 'approved' || item.status === 'passed'
-              ? 'Pass'
-              : item.status === 'rejected' || item.status === 'failed'
-                ? 'Fail'
-                : 'Pending'),
-          inspector: item.inspector || item.inspectorId || 'N/A',
-          date: item.date || item.createdAt,
-          actualReading: item.actualReading,
-          requirement: item.requirement,
-          severity: item.severity,
-          status: status as QCCheck['status'],
-          stage: (item.stage || 'Review') as QCCheck['stage'],
-        };
-      });
-      setChecks(transformedChecks);
+      const updated = await reloadQcChecks();
+      setChecks(updated);
+      refreshQcDashboard();
     } catch (err) {
       setChecks(prev => prev.map(c => (c.id === id && previous ? previous : c)));
       toast.error('Failed to submit appeal');
@@ -1256,6 +1062,26 @@ export function QCCompliance() {
       <PageHeader
         title="QC & Compliance"
         subtitle="Inbound quality checks, audit logs, and safety certificates"
+        actions={
+          <button
+            type="button"
+            onClick={openCreate}
+            className="flex items-center gap-2 px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-md hover:bg-[#4338CA] transition-all duration-200"
+          >
+            <Plus className="w-4 h-4" />
+            Create {createLabelForTab(activeTab)}
+          </button>
+        }
+      />
+
+      <QcComplianceCrudModal
+        open={crudOpen}
+        onOpenChange={setCrudOpen}
+        tab={activeTab}
+        mode={crudMode}
+        editItem={crudEditItem}
+        vendors={vendorOptions}
+        onSaved={refreshQcDashboard}
       />
 
       {/* Three-Metric Dashboard */}
@@ -1269,14 +1095,14 @@ export function QCCompliance() {
             <Clipboard className="w-6 h-6 text-[#0EA5E9]" />
           </div>
           <div className="mb-2">
-            <p className="text-[28px] font-bold text-[#1F2937]">42</p>
+            <p className="text-[28px] font-bold text-[#1F2937]">{qcOverview?.batchesCheckedToday ?? checks.length}</p>
             <p className="text-xs text-[#6B7280]">Batches</p>
             <p className="text-[10px] text-[#9CA3AF]">QC Checks Today</p>
           </div>
           <div className="text-xs text-[#6B7280] space-y-1">
-            <div>Passed: <span className="font-bold text-[#10B981]">40</span> (95.2%)</div>
-            <div>Failed: <span className="font-bold text-[#EF4444]">2</span> (4.8%)</div>
-            <div>Pending: <span className="font-bold text-[#1F2937]">0</span></div>
+            <div>Passed: <span className="font-bold text-[#10B981]">{qcOverview?.passedToday ?? checks.filter((c) => c.result === 'Pass').length}</span>{qcOverview ? ` (${qcOverview.passRateToday}%)` : ''}</div>
+            <div>Failed: <span className="font-bold text-[#EF4444]">{qcOverview?.failedToday ?? checks.filter((c) => c.result === 'Fail').length}</span></div>
+            <div>Pending: <span className="font-bold text-[#1F2937]">{qcOverview?.pendingToday ?? checks.filter((c) => c.result === 'Pending').length}</span></div>
           </div>
         </div>
 
@@ -1289,14 +1115,14 @@ export function QCCompliance() {
             <CheckCircle className="w-6 h-6 text-[#10B981]" />
           </div>
           <div className="mb-2">
-            <p className="text-[28px] font-bold text-[#1F2937]">96%</p>
+            <p className="text-[28px] font-bold text-[#1F2937]">{qcOverview?.last7Days?.passRate ?? 0}%</p>
             <p className="text-xs text-[#6B7280]">Last 7 days</p>
             <p className="text-[10px] text-[#9CA3AF]">Pass Rate</p>
           </div>
           <div className="text-xs text-[#6B7280] space-y-1">
-            <div>Total checks: <span className="font-bold text-[#1F2937]">287</span></div>
-            <div>Passed: <span className="font-bold text-[#10B981]">275</span></div>
-            <div>Failed: <span className="font-bold text-[#EF4444]">12</span> (requires action)</div>
+            <div>Total checks: <span className="font-bold text-[#1F2937]">{qcOverview?.last7Days?.total ?? checks.length}</span></div>
+            <div>Passed: <span className="font-bold text-[#10B981]">{qcOverview?.last7Days?.passed ?? 0}</span></div>
+            <div>Failed: <span className="font-bold text-[#EF4444]">{qcOverview?.last7Days?.failed ?? 0}</span> (requires action)</div>
             <div>Pass target: <span className="font-bold text-[#10B981]">&gt;95% ✓</span></div>
           </div>
         </div>
@@ -1310,14 +1136,14 @@ export function QCCompliance() {
             <AlertTriangle className="w-6 h-6 text-[#EF4444] animate-pulse" />
           </div>
           <div className="mb-2">
-            <p className="text-[28px] font-bold text-[#1F2937]">2</p>
+            <p className="text-[28px] font-bold text-[#1F2937]">{qcOverview?.failuresRequiringAction ?? checks.filter((c) => c.result === 'Fail').length}</p>
             <p className="text-xs text-[#6B7280]">Requires Action</p>
             <p className="text-[10px] text-[#9CA3AF]">Failures</p>
           </div>
           <div className="text-xs text-[#6B7280] space-y-1">
-            <div>Critical failures: <span className="font-bold text-[#EF4444]">1</span></div>
-            <div>Major failures: <span className="font-bold text-[#F59E0B]">1</span></div>
-            <div>Vendor: <span className="font-bold text-[#1F2937]">Dairy Delights</span></div>
+            <div>Critical failures: <span className="font-bold text-[#EF4444]">{qcOverview?.criticalFailures ?? 0}</span></div>
+            <div>Major failures: <span className="font-bold text-[#F59E0B]">{qcOverview?.majorFailures ?? 0}</span></div>
+            <div>Open audits: <span className="font-bold text-[#1F2937]">{audits.length}</span></div>
             <div>Status: <span className="font-bold text-[#F59E0B]">Pending Review</span></div>
           </div>
         </div>
@@ -1353,6 +1179,9 @@ export function QCCompliance() {
           <h2 className="text-lg font-bold text-[#1F2937]">Recent QC Checks</h2>
         </div>
         <div className="overflow-x-auto">
+          {loadingChecks && checks.length === 0 ? (
+            <p className="px-6 py-8 text-sm text-[#6B7280] text-center">Loading QC checks…</p>
+          ) : null}
           <table className="w-full text-sm text-left">
             <thead className="bg-[#F5F7FA] text-[#6B7280] font-medium border-b border-[#E5E7EB]">
               <tr>
@@ -1538,6 +1367,7 @@ export function QCCompliance() {
                             )}
                           </div>
                           {/* Alert button removed per design - not used */}
+                          {crudRowActions('qc', check as unknown as Record<string, unknown>, check.id)}
                           <button className="p-1.5 border border-[#E0E0E0] rounded hover:bg-[#F5F5F5]">
                             <MoreVertical className="w-4 h-4 text-[#757575]" />
                           </button>
@@ -1637,7 +1467,6 @@ export function QCCompliance() {
                               try {
                                 await scheduleAudit(audit.id);
                               } catch (err: any) {
-                                // Error is already handled in scheduleAudit function
                                 console.error('Schedule audit error:', err);
                               }
                             }}
@@ -1646,6 +1475,7 @@ export function QCCompliance() {
                             {loadingIds[audit.id] ? 'Scheduling...' : 'Schedule'}
                           </button>
                         )}
+                        {crudRowActions('audits', { ...audit, vendorId: (audit as { vendorId?: string }).vendorId }, audit.id)}
                       </div>
                     </td>
                   </tr>
@@ -1753,6 +1583,7 @@ export function QCCompliance() {
                               {loadingIds[cert.id] ? 'Scheduling...' : 'Renew'}
                             </button>
                           )}
+                          {crudRowActions('certs', cert as unknown as Record<string, unknown>, cert.id)}
                         </div>
                       </td>
                     </tr>
@@ -1826,6 +1657,7 @@ export function QCCompliance() {
                       >
                         {temp.compliant ? 'Details' : 'Report'}
                       </button>
+                      {crudRowActions('temp', temp as unknown as Record<string, unknown>, temp.id)}
                     </td>
                   </tr>
                 ))}
@@ -1941,6 +1773,7 @@ export function QCCompliance() {
                             {loadingIds[`alert-${rating.vendor}`] ? 'Sending...' : 'Alert'}
                           </button>
                         )}
+                        {crudRowActions('ratings', { ...rating, vendorId: (rating as { vendorId?: string }).vendorId || rating.id }, rating.id)}
                       </div>
                     </td>
                   </tr>

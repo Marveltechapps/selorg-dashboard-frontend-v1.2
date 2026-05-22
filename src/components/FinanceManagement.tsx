@@ -13,8 +13,6 @@ import { BillingInvoicing } from './screens/finance/BillingInvoicing';
 import { FinanceAlerts } from './screens/finance/FinanceAlerts';
 import { FinanceAnalytics } from './screens/finance/FinanceAnalytics';
 import { TaskApprovals } from './screens/finance/TaskApprovals';
-import { SystemMonitoring } from './screens/finance/SystemMonitoring';
-import { CommunicationHub } from './screens/finance/CommunicationHub';
 import { UtilitiesTools } from './screens/finance/UtilitiesTools';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
@@ -22,6 +20,7 @@ import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
   const [analyticsView, setAnalyticsView] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Listen for navigation events from child components
   useEffect(() => {
@@ -41,14 +40,26 @@ export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
     };
   }, [setActiveTab]);
 
+  useEffect(() => {
+    if (activeTab === 'monitoring' || activeTab === 'communication') {
+      setActiveTab('overview');
+    }
+  }, [activeTab, setActiveTab]);
+
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
-      <FinanceSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
-      
-      <div className="pl-[240px]">
-        <FinanceTopBar />
-        
-        <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+      <FinanceSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onLogout={onLogout}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+      />
+
+      <div className="finance-content-area">
+        <FinanceTopBar onMenuClick={() => setSidebarOpen(true)} />
+
+        <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
           <DashboardBreadcrumbs dashboard="finance" activeTab={activeTab} />
             {activeTab === 'overview' && <FinanceOverview />}
             {activeTab === 'customer-payments' && <CustomerPayments />}
@@ -62,8 +73,6 @@ export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'alerts' && <FinanceAlerts />}
             {activeTab === 'analytics' && <FinanceAnalytics initialView={analyticsView} />}
             {activeTab === 'approvals' && <TaskApprovals />}
-            {activeTab === 'monitoring' && <SystemMonitoring />}
-            {activeTab === 'communication' && <CommunicationHub />}
             {activeTab === 'utilities' && <UtilitiesTools />}
         </main>
       </div>

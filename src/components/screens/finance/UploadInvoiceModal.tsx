@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../../ui/dialog";
-import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
-import { Label } from "../../ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select";
+import React, { useEffect, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../../ui/dialog';
+import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
+import { Label } from '../../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
+import { DIALOG_SELECT_CONTENT_CLASS } from '../../ui/dialogSelect';
 import { UploadCloud, Loader2, FileText } from 'lucide-react';
 import { uploadInvoice, Vendor } from './payablesApi';
 import { toast } from 'sonner';
@@ -13,20 +14,32 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
   vendors: Vendor[];
+  onRefreshVendors?: () => void | Promise<void>;
 }
 
-export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props) {
+const EMPTY_FORM = {
+  vendorId: '',
+  invoiceNumber: '',
+  invoiceDate: '',
+  dueDate: '',
+  amount: '',
+};
+
+export function UploadInvoiceModal({ open, onClose, onSuccess, vendors, onRefreshVendors }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [formData, setFormData] = useState({
-      vendorId: '',
-      invoiceNumber: '',
-      invoiceDate: '',
-      dueDate: '',
-      amount: '',
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData(EMPTY_FORM);
+    setSelectedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    void onRefreshVendors?.();
+  }, [open, onRefreshVendors]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -104,7 +117,7 @@ export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props)
           });
           toast.success("Invoice uploaded successfully");
           // Reset form
-          setFormData({ vendorId: '', invoiceNumber: '', invoiceDate: '', dueDate: '', amount: '' });
+          setFormData(EMPTY_FORM);
           setSelectedFile(null);
           setFilePreview(null);
           if (fileInputRef.current) {
@@ -121,7 +134,7 @@ export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props)
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] overflow-visible">
         <DialogHeader>
           <DialogTitle>Upload Vendor Invoice</DialogTitle>
           <DialogDescription>
@@ -133,19 +146,28 @@ export function UploadInvoiceModal({ open, onClose, onSuccess, vendors }: Props)
             <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-2">
                     <Label htmlFor="vendor">Vendor</Label>
-                    <Select 
-                        value={formData.vendorId} 
-                        onValueChange={(val) => setFormData({...formData, vendorId: val})}
-                        disabled={vendors.length === 0}
+                    <Select
+                      value={formData.vendorId || undefined}
+                      onValueChange={(val) => setFormData({ ...formData, vendorId: val })}
+                      disabled={vendors.length === 0}
+                      modal={false}
                     >
-                        <SelectTrigger>
-                            <SelectValue placeholder={vendors.length === 0 ? "No vendors available" : "Select vendor"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {vendors.map(v => (
-                                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                            ))}
-                        </SelectContent>
+                      <SelectTrigger type="button" className="w-full h-10">
+                        <SelectValue
+                          placeholder={vendors.length === 0 ? 'No vendors available' : 'Select vendor'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent
+                        position="popper"
+                        sideOffset={4}
+                        className={DIALOG_SELECT_CONTENT_CLASS}
+                      >
+                        {vendors.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                     {vendors.length === 0 && (
                       <p className="text-xs text-amber-600">

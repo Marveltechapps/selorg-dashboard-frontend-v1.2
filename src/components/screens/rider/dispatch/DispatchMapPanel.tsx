@@ -139,6 +139,140 @@ export function DispatchMapPanel({ orders, riders, loading }: DispatchMapPanelPr
     } as google.maps.Symbol;
   };
 
+  const routePolylines = useMemo(() => {
+    if (!showOrders) return [];
+    return orders
+      .filter(
+        (o) =>
+          (o.status === "assigned" || o.status === "in_transit") &&
+          isValidCoord(o.pickupLocation.lat, o.pickupLocation.lng) &&
+          isValidCoord(o.dropLocation.lat, o.dropLocation.lng)
+      )
+      .map((order) => {
+        const isSelected = selectedOrder === order.id;
+        return (
+          <Polyline
+            key={`route-${order.id}`}
+            path={[
+              { lat: order.pickupLocation.lat, lng: order.pickupLocation.lng },
+              { lat: order.dropLocation.lat, lng: order.dropLocation.lng },
+            ]}
+            options={{
+              strokeColor: isSelected ? "#EA580C" : "#94A3B8",
+              strokeOpacity: isSelected ? 0.95 : 0.75,
+              strokeWeight: isSelected ? 4 : 2,
+              geodesic: true,
+            }}
+          />
+        );
+      });
+  }, [orders, showOrders, selectedOrder]);
+
+  const riderMarkers = useMemo(() => {
+    if (!showRiders) return [];
+    return riders
+      .filter((rider) => isValidCoord(rider.currentLocation.lat, rider.currentLocation.lng))
+      .map((rider) => {
+        const isSelected = selectedRider === rider.id;
+        const fill =
+          rider.status === "online"
+            ? "#22C55E"
+            : rider.status === "busy"
+              ? "#3B82F6"
+              : rider.status === "idle"
+                ? "#A855F7"
+                : "#9CA3AF";
+        return (
+          <Marker
+            key={`rider-${rider.id}`}
+            position={{ lat: rider.currentLocation.lat, lng: rider.currentLocation.lng }}
+            icon={circleIcon(fill, "#FFFFFF", isSelected ? 9 : 7)}
+            onClick={() => {
+              setSelectedRider(rider.id === selectedRider ? null : rider.id);
+              setSelectedOrder(null);
+            }}
+          >
+            {selectedRider === rider.id && (
+              <InfoWindow onCloseClick={() => setSelectedRider(null)}>
+                <div className="text-xs max-w-[200px]">
+                  <p className="font-bold">{rider.name}</p>
+                  <p className="text-gray-600">
+                    {rider.status} · {rider.activeOrdersCount} active
+                  </p>
+                </div>
+              </InfoWindow>
+            )}
+          </Marker>
+        );
+      });
+  }, [riders, showRiders, selectedRider]);
+
+  const orderMarkers = useMemo(() => {
+    if (!showOrders) return [];
+    const markers: React.ReactNode[] = [];
+    orders
+      .filter((o) => o.status !== "delivered")
+      .forEach((order) => {
+        const pOk = isValidCoord(order.pickupLocation.lat, order.pickupLocation.lng);
+        const dOk = isValidCoord(order.dropLocation.lat, order.dropLocation.lng);
+        const isSelected = selectedOrder === order.id;
+        if (pOk) {
+          markers.push(
+            <Marker
+              key={`pickup-${order.id}`}
+              position={{ lat: order.pickupLocation.lat, lng: order.pickupLocation.lng }}
+              label={{ text: "P", color: "#111827", fontSize: "10px", fontWeight: "bold" }}
+              icon={circleIcon("#FFFFFF", isSelected ? "#EA580C" : "#6B7280", 6)}
+              onClick={() => {
+                setSelectedOrder(order.id === selectedOrder ? null : order.id);
+                setSelectedRider(null);
+              }}
+            />
+          );
+        }
+        if (dOk) {
+          markers.push(
+            <Marker
+              key={`drop-${order.id}`}
+              position={{ lat: order.dropLocation.lat, lng: order.dropLocation.lng }}
+              label={{ text: "D", color: "#FFFFFF", fontSize: "10px", fontWeight: "bold" }}
+              icon={circleIcon("#F97316", "#FFFFFF", 7)}
+              onClick={() => {
+                setSelectedOrder(order.id === selectedOrder ? null : order.id);
+                setSelectedRider(null);
+              }}
+            />
+          );
+        }
+      });
+    return markers;
+  }, [orders, showOrders, selectedOrder]);
+
+  const selectedOrderInfo = useMemo(() => {
+    if (!showOrders || !selectedOrder) return null;
+    const order = orders.find((o) => o.id === selectedOrder);
+    if (!order || order.status === "delivered") return null;
+    const pos = isValidCoord(order.dropLocation.lat, order.dropLocation.lng)
+      ? { lat: order.dropLocation.lat, lng: order.dropLocation.lng }
+      : isValidCoord(order.pickupLocation.lat, order.pickupLocation.lng)
+        ? { lat: order.pickupLocation.lat, lng: order.pickupLocation.lng }
+        : null;
+    if (!pos) return null;
+    return (
+      <InfoWindow key={`info-${order.id}`} position={pos} onCloseClick={() => setSelectedOrder(null)}>
+        <div className="text-xs max-w-[240px]">
+          <p className="font-bold">{order.id}</p>
+          <p className="mt-1 text-gray-600">
+            <span className="font-semibold">Pickup:</span> {order.pickupLocation.address || "—"}
+          </p>
+          <p className="mt-1 text-gray-600">
+            <span className="font-semibold">Drop:</span> {order.dropLocation.address || "—"}
+          </p>
+        </div>
+      </InfoWindow>
+    );
+  }, [orders, showOrders, selectedOrder]);
+
   return (
     <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm relative h-[600px] flex flex-col">
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
@@ -229,131 +363,10 @@ export function DispatchMapPanel({ orders, riders, loading }: DispatchMapPanelPr
               styles: [{ featureType: "poi", stylers: [{ visibility: "off" }] }],
             }}
           >
-            {showOrders &&
-              orders
-                .filter((o) => o.status === "assigned" || o.status === "in_transit")
-                .map((order) => {
-                  if (
-                    !isValidCoord(order.pickupLocation.lat, order.pickupLocation.lng) ||
-                    !isValidCoord(order.dropLocation.lat, order.dropLocation.lng)
-                  ) {
-                    return null;
-                  }
-                  const isSelected = selectedOrder === order.id;
-                  return (
-                    <Polyline
-                      key={`line-${order.id}`}
-                      path={[
-                        { lat: order.pickupLocation.lat, lng: order.pickupLocation.lng },
-                        { lat: order.dropLocation.lat, lng: order.dropLocation.lng },
-                      ]}
-                      options={{
-                        strokeColor: isSelected ? "#EA580C" : "#94A3B8",
-                        strokeOpacity: isSelected ? 0.95 : 0.75,
-                        strokeWeight: isSelected ? 4 : 2,
-                        geodesic: true,
-                      }}
-                    />
-                  );
-                })}
-
-            {showRiders &&
-              riders.map((rider) => {
-                if (!isValidCoord(rider.currentLocation.lat, rider.currentLocation.lng)) return null;
-                const isSelected = selectedRider === rider.id;
-                const fill =
-                  rider.status === "online"
-                    ? "#22C55E"
-                    : rider.status === "busy"
-                      ? "#3B82F6"
-                      : rider.status === "idle"
-                        ? "#A855F7"
-                        : "#9CA3AF";
-                return (
-                  <Marker
-                    key={rider.id}
-                    position={{ lat: rider.currentLocation.lat, lng: rider.currentLocation.lng }}
-                    icon={circleIcon(fill, "#FFFFFF", isSelected ? 9 : 7)}
-                    onClick={() => {
-                      setSelectedRider(rider.id === selectedRider ? null : rider.id);
-                      setSelectedOrder(null);
-                    }}
-                  >
-                    {selectedRider === rider.id && (
-                      <InfoWindow onCloseClick={() => setSelectedRider(null)}>
-                        <div className="text-xs max-w-[200px]">
-                          <p className="font-bold">{rider.name}</p>
-                          <p className="text-gray-600">
-                            {rider.status} · {rider.activeOrdersCount} active
-                          </p>
-                        </div>
-                      </InfoWindow>
-                    )}
-                  </Marker>
-                );
-              })}
-
-            {showOrders &&
-              orders.map((order) => {
-                if (order.status === "delivered") return null;
-                const pOk = isValidCoord(order.pickupLocation.lat, order.pickupLocation.lng);
-                const dOk = isValidCoord(order.dropLocation.lat, order.dropLocation.lng);
-                if (!pOk && !dOk) return null;
-                const isSelected = selectedOrder === order.id;
-
-                return (
-                  <React.Fragment key={order.id}>
-                    {pOk && (
-                      <Marker
-                        position={{ lat: order.pickupLocation.lat, lng: order.pickupLocation.lng }}
-                        label={{ text: "P", color: "#111827", fontSize: "10px", fontWeight: "bold" }}
-                        icon={circleIcon("#FFFFFF", isSelected ? "#EA580C" : "#6B7280", 6)}
-                        onClick={() => {
-                          setSelectedOrder(order.id === selectedOrder ? null : order.id);
-                          setSelectedRider(null);
-                        }}
-                      />
-                    )}
-                    {dOk && (
-                      <Marker
-                        position={{ lat: order.dropLocation.lat, lng: order.dropLocation.lng }}
-                        label={{ text: "D", color: "#FFFFFF", fontSize: "10px", fontWeight: "bold" }}
-                        icon={circleIcon("#F97316", "#FFFFFF", 7)}
-                        onClick={() => {
-                          setSelectedOrder(order.id === selectedOrder ? null : order.id);
-                          setSelectedRider(null);
-                        }}
-                      />
-                    )}
-                  </React.Fragment>
-                );
-              })}
-
-            {showOrders &&
-              selectedOrder &&
-              (() => {
-                const order = orders.find((o) => o.id === selectedOrder);
-                if (!order || order.status === "delivered") return null;
-                const pos = isValidCoord(order.dropLocation.lat, order.dropLocation.lng)
-                  ? { lat: order.dropLocation.lat, lng: order.dropLocation.lng }
-                  : isValidCoord(order.pickupLocation.lat, order.pickupLocation.lng)
-                    ? { lat: order.pickupLocation.lat, lng: order.pickupLocation.lng }
-                    : null;
-                if (!pos) return null;
-                return (
-                  <InfoWindow position={pos} onCloseClick={() => setSelectedOrder(null)}>
-                    <div className="text-xs max-w-[240px]">
-                      <p className="font-bold">{order.id}</p>
-                      <p className="mt-1 text-gray-600">
-                        <span className="font-semibold">Pickup:</span> {order.pickupLocation.address || "—"}
-                      </p>
-                      <p className="mt-1 text-gray-600">
-                        <span className="font-semibold">Drop:</span> {order.dropLocation.address || "—"}
-                      </p>
-                    </div>
-                  </InfoWindow>
-                );
-              })()}
+            {routePolylines}
+            {riderMarkers}
+            {orderMarkers}
+            {selectedOrderInfo}
           </GoogleMap>
         )}
 

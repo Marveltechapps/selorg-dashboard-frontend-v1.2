@@ -1,325 +1,229 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../config/api';
 import { getAuthToken } from '../../contexts/AuthContext';
+import {
+  extractList,
+  mapAgingAlertFromApi,
+  mapAgingInventoryFromApi,
+  mapKpiFromApi,
+  mapStockItemFromApi,
+  mapStockoutFromApi,
+  type AgingAlert,
+  type AgingInventory,
+  type InventoryKPI,
+  type StockItem,
+  type Stockout,
+} from './vendorInventoryMappers';
 
-/**
- * Vendor Inventory API
- */
+function headers(): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${getAuthToken() || ''}`,
+  };
+}
+
+async function parseError(res: Response, fallback: string): Promise<never> {
+  let message = fallback;
+  try {
+    const body = await res.json();
+    message = String(body?.message ?? body?.error ?? message);
+  } catch {
+    /* ignore */
+  }
+  throw new Error(message);
+}
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { ...init, headers: { ...headers(), ...init?.headers } });
+  if (!res.ok) await parseError(res, `Request failed (${res.status})`);
+  return res.json() as Promise<T>;
+}
+
+export interface VendorInventoryBundle {
+  vendorName: string;
+  stock: StockItem[];
+  agingAlerts: AgingAlert[];
+  agingInventory: AgingInventory[];
+  stockouts: Stockout[];
+  kpis: InventoryKPI[];
+}
+
+export async function loadVendorInventory(vendorId: string): Promise<VendorInventoryBundle> {
+  const [stockResp, alertsResp, stockoutsResp, agingResp, kpisResp] = await Promise.all([
+    requestJson<Record<string, unknown>>(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.stock(vendorId)}?limit=200`),
+    requestJson<Record<string, unknown>>(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.agingAlerts(vendorId)}`),
+    requestJson<Record<string, unknown>>(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.stockouts(vendorId)}`),
+    requestJson<Record<string, unknown>>(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.agingInventory(vendorId)}?daysThreshold=30`),
+    requestJson<{ kpis?: unknown[]; vendorName?: string }>(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.kpis(vendorId)}`),
+  ]);
+
+  const vendorName = String(
+    stockResp.vendorName ?? alertsResp.vendorName ?? stockoutsResp.vendorName ?? 'Vendor'
+  );
+
+  return {
+    vendorName,
+    stock: extractList<Record<string, unknown>>(stockResp).map((r) => mapStockItemFromApi(r)),
+    agingAlerts: extractList<Record<string, unknown>>(alertsResp).map((r) =>
+      mapAgingAlertFromApi(r, vendorName)
+    ),
+    stockouts: extractList<Record<string, unknown>>(stockoutsResp).map((r) =>
+      mapStockoutFromApi(r, vendorName)
+    ),
+    agingInventory: extractList<Record<string, unknown>>(agingResp).map(mapAgingInventoryFromApi),
+    kpis: Array.isArray(kpisResp.kpis)
+      ? kpisResp.kpis.map((k) => mapKpiFromApi(k as Record<string, unknown>))
+      : [],
+  };
+}
+
+
+export type SupplyPerformanceTone = 'good' | 'warning' | 'critical' | 'neutral';
+
+export interface SupplyPerformanceItem {
+  id: string;
+  label: string;
+  value: string;
+  group: string;
+  tone?: SupplyPerformanceTone;
+}
+
+export interface SupplyPerformancePayload {
+  vendorId: string;
+  vendorName: string;
+  generatedAt: string;
+  deliveryTimelinessPct: number | null;
+  slaCompliancePct: number | null;
+  hub: Record<string, unknown>;
+  items: SupplyPerformanceItem[];
+  kpis?: unknown[];
+}
+
+export async function loadSupplyPerformance(vendorId: string): Promise<SupplyPerformancePayload> {
+  return requestJson<SupplyPerformancePayload>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.supplyPerformance(vendorId)}`
+  );
+}
+
+export async function getKPIs(vendorId: string) {
+  const data = await requestJson<{ kpis: unknown[] }>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.kpis(vendorId)}`
+  );
+  return { kpis: (data.kpis || []).map((k) => mapKpiFromApi(k as Record<string, unknown>)) };
+}
+
+export async function listVendorStock(vendorId: string): Promise<StockItem[]> {
+  const data = await requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.stock(vendorId)}?limit=200`
+  );
+  return extractList<Record<string, unknown>>(data).map(mapStockItemFromApi);
+}
+
+export async function getHubAgingAlerts(): Promise<{ items: AgingAlert[]; total: number }> {
+  const data = await requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.hubAgingAlerts}`
+  );
+  const vendorName = String(data.vendorName ?? 'Hub');
+  const items = extractList<Record<string, unknown>>(data).map((r) => mapAgingAlertFromApi(r, vendorName));
+  return { total: Number(data.total ?? items.length), items };
+}
+
+export async function getAgingAlerts(vendorId: string, vendorName?: string): Promise<AgingAlert[]> {
+  const data = await requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.agingAlerts(vendorId)}`
+  );
+  const name = vendorName || String(data.vendorName ?? 'Vendor');
+  return extractList<Record<string, unknown>>(data).map((r) => mapAgingAlertFromApi(r, name));
+}
+
+export async function getStockouts(vendorId: string, vendorName?: string): Promise<Stockout[]> {
+  const data = await requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.stockouts(vendorId)}`
+  );
+  const name = vendorName || String(data.vendorName ?? 'Vendor');
+  return extractList<Record<string, unknown>>(data).map((r) => mapStockoutFromApi(r, name));
+}
+
+export async function getAgingInventory(vendorId: string, daysThreshold = 30): Promise<AgingInventory[]> {
+  const data = await requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.agingInventory(vendorId)}?daysThreshold=${daysThreshold}`
+  );
+  return extractList<Record<string, unknown>>(data).map(mapAgingInventoryFromApi);
+}
+
+export async function triggerInventorySync(vendorId: string) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.sync(vendorId)}`,
+    { method: 'POST', body: JSON.stringify({}) }
+  );
+}
+
+export async function reconcileInventory(vendorId: string, body: { items: Array<{ sku: string; expectedQty: number; reportedQty: number; notes?: string }> }) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.reconcile(vendorId)}`,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+}
+
+export async function acknowledgeAlert(vendorId: string, alertId: string, body?: { note?: string }) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.ackAlert(vendorId, alertId)}`,
+    { method: 'POST', body: JSON.stringify(body || {}) }
+  );
+}
+
+export async function bulkReorder(vendorId: string, payload?: { stockoutIds?: string[] }) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.bulkReorder(vendorId)}`,
+    { method: 'POST', body: JSON.stringify(payload || {}) }
+  );
+}
+
+export async function alertAllVendors(vendorId: string, payload?: { message?: string }) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.alertAll(vendorId)}`,
+    { method: 'POST', body: JSON.stringify(payload || {}) }
+  );
+}
+
+export async function initiateReturn(
+  vendorId: string,
+  itemId: string,
+  body?: { reason?: string }
+) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.returnInventory(vendorId, itemId)}`,
+    { method: 'POST', body: JSON.stringify(body || {}) }
+  );
+}
+
+export async function initiateLiquidation(
+  vendorId: string,
+  itemId: string,
+  body?: { discountPercent?: number }
+) {
+  return requestJson<Record<string, unknown>>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.liquidateInventory(vendorId, itemId)}`,
+    { method: 'POST', body: JSON.stringify(body || { discountPercent: 30 }) }
+  );
+}
+
 export const vendorInventoryApi = {
-  /**
-   * Get inventory summary for vendor
-   */
-  async getInventorySummary(vendorId: string) {
-    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.summary(vendorId)}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch inventory summary');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Get stock for vendor
-   */
-  async getStock(vendorId: string) {
-    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.stock(vendorId)}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch stock');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Sync inventory
-   */
-  async syncInventory(vendorId: string) {
-    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.sync(vendorId)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to sync inventory');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Reconcile inventory
-   */
-  async reconcileInventory(vendorId: string, payload?: unknown) {
-    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.reconcile(vendorId)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-      body: payload !== undefined ? JSON.stringify(payload) : undefined,
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to reconcile inventory');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Get aging alerts
-   */
-  async getAgingAlerts(vendorId: string) {
-    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.agingAlerts(vendorId)}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch aging alerts');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Acknowledge alert
-   */
-  async acknowledgeAlert(vendorId: string, alertId: string) {
-    const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.ackAlert(vendorId, alertId)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to acknowledge alert');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * List vendor stock (alias for getStock)
-   */
-  async listVendorStock(vendorId: string) {
-    return this.getStock(vendorId);
-  },
-
-  /**
-   * Trigger inventory sync
-   */
-  async triggerInventorySync(vendorId: string) {
-    return this.syncInventory(vendorId);
-  },
-
-  /**
-   * Get global vendor alerts (aggregated across vendors)
-   */
-  async getGlobalAlerts(filters?: { status?: string; type?: string; page?: number; limit?: number }) {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
-      });
-    }
-    const url = `${API_CONFIG.baseURL}/shared/alerts${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch global alerts');
-    }
-
-    const data = await response.json();
-    return {
-      items: Array.isArray(data) ? data : (data.items ?? data.data ?? data.alerts ?? []),
-      ...data,
-    };
-  },
-
-  /**
-   * Get job status (calls backend bulk-import status endpoint when available)
-   */
-  async getJobStatus(jobId: string) {
-    try {
-      const response = await fetch(`${API_CONFIG.baseURL}/vendor/inbound/bulk-import/${jobId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken() || ''}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        return { status: data.status ?? 'completed', progress: data.progress ?? 100 };
-      }
-    } catch {
-      // Fallback when endpoint not available
-    }
-    return { status: 'completed', progress: 100 };
-  },
-
-  /**
-   * Get stockouts
-   */
-  async getStockouts(vendorId: string, filters?: any) {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
-      });
-    }
-
-    const url = `${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/stockouts${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch stockouts');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Get aging inventory
-   */
-  async getAgingInventory(vendorId: string, filters?: any) {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
-      });
-    }
-
-    const url = `${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/aging-inventory${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch aging inventory');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Get KPIs
-   */
-  async getKPIs(vendorId: string, filters?: any) {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
-      });
-    }
-
-    const url = `${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/kpis${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch KPIs');
-    }
-
-    return response.json();
-  },
-
-  async bulkReorder(vendorId: string, payload?: { stockoutIds?: string[] }) {
-    const response = await fetch(`${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/stockouts/bulk-reorder`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-      body: JSON.stringify(payload || {}),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to bulk reorder stockouts');
-    }
-    return response.json();
-  },
-
-  async alertAllVendors(vendorId: string, payload?: { message?: string }) {
-    const response = await fetch(`${API_CONFIG.baseURL}/vendor/inventory/${vendorId}/stockouts/alert-all`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getAuthToken() || ''}`,
-      },
-      body: JSON.stringify(payload || {}),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to alert vendors for stockouts');
-    }
-    return response.json();
-  },
+  loadSupplyPerformance,
+  loadVendorInventory,
+  getKPIs,
+  listVendorStock,
+  getStock: listVendorStock,
+  getHubAgingAlerts,
+  getAgingAlerts,
+  getStockouts,
+  getAgingInventory,
+  triggerInventorySync,
+  reconcileInventory,
+  acknowledgeAlert,
+  bulkReorder,
+  alertAllVendors,
+  initiateReturn,
+  initiateLiquidation,
 };
-
-// Named exports for direct imports
-export const getInventorySummary = vendorInventoryApi.getInventorySummary.bind(vendorInventoryApi);
-export const getStock = vendorInventoryApi.getStock.bind(vendorInventoryApi);
-export const listVendorStock = vendorInventoryApi.listVendorStock.bind(vendorInventoryApi);
-export const syncInventory = vendorInventoryApi.syncInventory.bind(vendorInventoryApi);
-export const triggerInventorySync = vendorInventoryApi.triggerInventorySync.bind(vendorInventoryApi);
-export const reconcileInventory = vendorInventoryApi.reconcileInventory.bind(vendorInventoryApi);
-export const getAgingAlerts = vendorInventoryApi.getAgingAlerts.bind(vendorInventoryApi);
-export const acknowledgeAlert = vendorInventoryApi.acknowledgeAlert.bind(vendorInventoryApi);
-export const getJobStatus = vendorInventoryApi.getJobStatus.bind(vendorInventoryApi);
-export const getKPIs = vendorInventoryApi.getKPIs.bind(vendorInventoryApi);
-export const getStockouts = vendorInventoryApi.getStockouts.bind(vendorInventoryApi);
-export const getAgingInventory = vendorInventoryApi.getAgingInventory.bind(vendorInventoryApi);
-export const bulkReorder = vendorInventoryApi.bulkReorder.bind(vendorInventoryApi);
-export const alertAllVendors = vendorInventoryApi.alertAllVendors.bind(vendorInventoryApi);
 
 export default vendorInventoryApi;

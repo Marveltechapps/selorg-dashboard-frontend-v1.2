@@ -12,6 +12,13 @@ import { PageHeader } from '../../ui/page-header';
 import { Search, RefreshCw, AlertTriangle, CheckCircle2, Phone, UserCheck, XCircle, CalendarClock, Bike } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface AttemptLog {
+  attempt?: number;
+  timestamp?: string;
+  outcome?: string;
+  notes?: string;
+}
+
 interface Escalation {
   _id: string;
   orderId: string;
@@ -19,15 +26,32 @@ interface Escalation {
   riderId?: string;
   riderName?: string;
   issueType: string;
+  issueTypeLabel?: string;
   targetTeam: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
   description: string;
   customerName?: string;
   customerPhone?: string;
-  attemptLogs?: any[];
+  attemptLogs?: AttemptLog[];
   resolutionNotes?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+function formatIssueLabel(esc: Escalation): string {
+  if (esc.issueTypeLabel) return esc.issueTypeLabel;
+  if (!esc.issueType) return '—';
+  return esc.issueType
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function formatCreatedAt(value: string | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
 }
 
 export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQuery?: string }) {
@@ -54,21 +78,7 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
       const res = await apiRequest<{ success: boolean; data: Escalation[] }>(
         `/shared/escalations/by-team/rider_ops?${params}`
       );
-      const rows = res.data ?? [];
-      setEscalations(
-        rows.map((e) => {
-          const row = e as Escalation & { type?: string; description?: string };
-          const orderFromDesc =
-            typeof row.description === 'string'
-              ? row.description.match(/ORD-[\d-]+/)?.[0]
-              : undefined;
-          return {
-            ...row,
-            issueType: row.issueType || row.type || '',
-            orderId: row.orderId || orderFromDesc || '',
-          };
-        })
-      );
+      setEscalations((res.data ?? []) as Escalation[]);
     } catch {
       setEscalations([]);
     } finally {
@@ -81,7 +91,13 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
   const filtered = escalations.filter(e => {
     const q = (searchQuery || externalSearch || '').toLowerCase();
     if (!q) return true;
-    return (e.orderId || '').toLowerCase().includes(q) || (e.riderId || '').toLowerCase().includes(q) || (e.customerName || '').toLowerCase().includes(q);
+    return (
+      (e.orderId || '').toLowerCase().includes(q) ||
+      (e.riderId || '').toLowerCase().includes(q) ||
+      (e.riderName || '').toLowerCase().includes(q) ||
+      (e.customerName || '').toLowerCase().includes(q) ||
+      formatIssueLabel(e).toLowerCase().includes(q)
+    );
   });
 
   const handleViewEscalation = (esc: Escalation) => {
@@ -190,11 +206,22 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
             ) : filtered.map(esc => (
               <TableRow key={esc._id} className="cursor-pointer hover:bg-[#FAFAFA]" onClick={() => handleViewEscalation(esc)}>
                 <TableCell className="font-mono font-medium">{esc.orderId || '—'}</TableCell>
-                <TableCell className="text-sm">{esc.riderName || esc.riderId || '—'}</TableCell>
-                <TableCell className="capitalize text-sm">{(esc.issueType || '—').replace(/_/g, ' ')}</TableCell>
-                <TableCell className="text-sm">{esc.attemptLogs?.length || 0}</TableCell>
-                <TableCell><Badge variant="outline" className={`capitalize border-0 ${getStatusBadge(esc.status)}`}>{esc.status.replace('_', ' ')}</Badge></TableCell>
-                <TableCell className="text-xs text-[#757575]">{new Date(esc.createdAt).toLocaleString()}</TableCell>
+                <TableCell className="text-sm">
+                  {esc.riderName ? (
+                    <span>
+                      {esc.riderName}
+                      {esc.riderId && esc.riderId.startsWith('RIDER') ? (
+                        <span className="block text-xs text-[#757575] font-mono">{esc.riderId}</span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    esc.riderId || '—'
+                  )}
+                </TableCell>
+                <TableCell className="text-sm">{formatIssueLabel(esc)}</TableCell>
+                <TableCell className="text-sm">{esc.attemptLogs?.length ?? 0}</TableCell>
+                <TableCell><Badge variant="outline" className={`capitalize border-0 ${getStatusBadge(esc.status)}`}>{esc.status.replace(/_/g, ' ')}</Badge></TableCell>
+                <TableCell className="text-xs text-[#757575]">{formatCreatedAt(esc.createdAt)}</TableCell>
                 <TableCell className="text-right"><Button size="sm" variant="ghost"><AlertTriangle size={14} /></Button></TableCell>
               </TableRow>
             ))}
@@ -216,7 +243,7 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
                 <div className="flex justify-between"><span className="text-gray-500">Status</span><Badge variant="outline" className={`capitalize border-0 ${getStatusBadge(selectedEscalation.status)}`}>{selectedEscalation.status.replace('_', ' ')}</Badge></div>
                 <div className="flex justify-between"><span className="text-gray-500">Rider</span><span className="font-medium">{selectedEscalation.riderName || selectedEscalation.riderId || '—'}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-medium">{selectedEscalation.customerName || '—'}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Issue</span><span className="font-medium capitalize">{(selectedEscalation.issueType || '').replace(/_/g, ' ')}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Issue</span><span className="font-medium">{formatIssueLabel(selectedEscalation)}</span></div>
               </div>
 
               <div>
@@ -229,10 +256,16 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
                 <div>
                   <h4 className="text-sm font-semibold mb-2">Delivery Attempts ({selectedEscalation.attemptLogs.length})</h4>
                   <div className="space-y-2">
-                    {selectedEscalation.attemptLogs.map((log: any, idx: number) => (
+                    {selectedEscalation.attemptLogs.map((log, idx) => (
                       <div key={idx} className="text-sm p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex justify-between"><span className="font-medium">Attempt {idx + 1}</span><span className="text-xs text-gray-500">{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</span></div>
-                        <p className="text-gray-600 mt-1">{log.outcome || log.notes || '—'}</p>
+                        <div className="flex justify-between">
+                          <span className="font-medium">Attempt {log.attempt ?? idx + 1}</span>
+                          <span className="text-xs text-gray-500">
+                            {log.timestamp ? formatCreatedAt(String(log.timestamp)) : ''}
+                          </span>
+                        </div>
+                        <p className="text-gray-600 mt-1 capitalize">{log.outcome || '—'}</p>
+                        {log.notes ? <p className="text-gray-500 text-xs mt-1">{log.notes}</p> : null}
                       </div>
                     ))}
                   </div>
@@ -272,7 +305,15 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Reassign Rider</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div><label className="text-sm font-medium">New Rider ID</label><Input value={newRiderId} onChange={e => setNewRiderId(e.target.value)} placeholder="Enter rider ID" /></div>
+            <div>
+              <label className="text-sm font-medium">New Rider ID</label>
+              <Input
+                value={newRiderId}
+                onChange={e => setNewRiderId(e.target.value)}
+                placeholder="e.g. RIDER-1001"
+              />
+              <p className="text-xs text-[#757575] mt-1">Use the rider code from Fleet / HR (e.g. RIDER-1001).</p>
+            </div>
             <DialogFooter><Button variant="outline" onClick={() => setReassignOpen(false)}>Cancel</Button><Button onClick={handleReassign}>Reassign</Button></DialogFooter>
           </div>
         </DialogContent>

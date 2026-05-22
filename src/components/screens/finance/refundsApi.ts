@@ -2,21 +2,50 @@ import { apiRequest } from '@/api/apiClient';
 
 const FINANCE_REFUNDS = '/finance/refunds';
 
+export type RefundReasonCode =
+  | 'item_damaged'
+  | 'expired'
+  | 'late_delivery'
+  | 'wrong_item'
+  | 'customer_cancelled'
+  | 'item_not_available'
+  | 'quality_issue'
+  | 'partial_delivery'
+  | 'other';
+
 export interface RefundRequest {
   id: string;
   orderId: string;
+  orderIdRaw?: string;
+  orderNumber?: string;
   customerId: string;
   customerName: string;
   customerEmail: string;
-  reasonCode: "item_damaged" | "expired" | "late_delivery" | "wrong_item" | "customer_cancelled" | "other";
+  reasonCode: RefundReasonCode;
   reasonText: string;
   amount: number;
   currency: string;
   requestedAt: string;
-  status: "pending" | "approved" | "rejected" | "processed" | "escalated";
-  channel: "customer_support" | "self_service" | "ops_adjustment";
+  status: 'pending' | 'approved' | 'rejected' | 'processed' | 'completed' | 'escalated';
+  channel: 'customer_support' | 'self_service' | 'ops_adjustment' | 'auto_missing_item';
+  refundMethod?: 'original_payment' | 'wallet' | 'bank_transfer' | 'manual';
   paymentId?: string;
+  transactionId?: string;
   notes?: string;
+  timeline?: Array<{ status: string; timestamp: string; note?: string; actor?: string }>;
+}
+
+export interface WalletTransactionRow {
+  id: string;
+  customerId: string;
+  customerName: string;
+  type: 'credit' | 'debit';
+  amount: number;
+  source: string;
+  reference?: string;
+  orderId?: string;
+  description?: string;
+  createdAt: string;
 }
 
 export interface ChargebackCase {
@@ -62,6 +91,7 @@ function buildRefundQueueParams(filter: RefundQueueFilter): Record<string, strin
   if (filter.reason && filter.reason !== 'all') params.reason = filter.reason;
   if (filter.dateFrom) params.dateFrom = filter.dateFrom;
   if (filter.dateTo) params.dateTo = filter.dateTo;
+  if (filter.query?.trim()) params.query = filter.query.trim();
   return params;
 }
 
@@ -111,15 +141,26 @@ export const rejectRefund = async (id: string, reason: string): Promise<RefundRe
   return res.data;
 };
 
-export const markRefundCompleted = async (id: string): Promise<RefundRequest> => {
+export const markRefundCompleted = async (
+  id: string,
+  transactionId?: string,
+  notes?: string
+): Promise<RefundRequest> => {
   const res = await apiRequest<{ success: boolean; data: RefundRequest }>(
-    `${FINANCE_REFUNDS}/${id}/complete`,
+    `${FINANCE_REFUNDS}/${id}/mark-completed`,
     {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'processed' }),
+      method: 'POST',
+      body: JSON.stringify({ transactionId, notes }),
     }
   );
   return res.data;
+};
+
+export const fetchWalletTransactions = async (): Promise<WalletTransactionRow[]> => {
+  const res = await apiRequest<{ success: boolean; data: WalletTransactionRow[] }>(
+    '/finance/wallet-transactions'
+  );
+  return res.data ?? [];
 };
 
 export const fetchChargebacks = async (): Promise<ChargebackCase[]> => {

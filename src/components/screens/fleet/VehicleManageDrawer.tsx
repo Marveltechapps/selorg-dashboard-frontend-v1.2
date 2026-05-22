@@ -1,6 +1,14 @@
 import React, { useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Vehicle, VehicleStatus, PoolType, MaintenanceType } from "./fleetApi";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Vehicle,
+  VehicleStatus,
+  PoolType,
+  MaintenanceType,
+  FleetApiError,
+  dateInputToIso,
+  todayDateInputValue,
+} from "./fleetApi";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,6 +43,13 @@ export function VehicleManageDrawer({
   const [maintType, setMaintType] = useState<MaintenanceType>("Scheduled Service");
   const [maintDate, setMaintDate] = useState("");
   const [maintNotes, setMaintNotes] = useState("");
+  const [serviceErrors, setServiceErrors] = useState<{ scheduledDate?: string; type?: string; general?: string }>({});
+
+  const tomorrowDateInputValue = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  };
 
   // Sync state when vehicle opens
   React.useEffect(() => {
@@ -43,8 +58,9 @@ export function VehicleManageDrawer({
       setPool(vehicle.pool);
       // Convert empty string to "unassign" for Select component
       setRiderName(vehicle.assignedRiderName || "unassign");
-      setMaintDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]); // tomorrow
+      setMaintDate(tomorrowDateInputValue());
       setMaintNotes("");
+      setServiceErrors({});
     }
   }, [vehicle, isOpen]);
 
@@ -85,31 +101,57 @@ export function VehicleManageDrawer({
 
   const handleScheduleService = async () => {
     if (!vehicle) return;
-    if (!maintDate) {
-      toast.error("Please select a scheduled date");
+
+    const errors: { scheduledDate?: string; type?: string; general?: string } = {};
+    if (!maintDate.trim()) {
+      errors.scheduledDate = "Scheduled date is required";
+    } else if (maintDate < todayDateInputValue()) {
+      errors.scheduledDate = "Scheduled date cannot be in the past";
+    }
+    if (!["Scheduled Service", "Breakdown", "Inspection"].includes(maintType)) {
+      errors.type = "Select a valid maintenance type";
+    }
+    if (Object.keys(errors).length > 0) {
+      setServiceErrors(errors);
       return;
     }
+    setServiceErrors({});
+
     setLoading(true);
     try {
+      const scheduledDate = dateInputToIso(maintDate);
       await onScheduleMaintenance({
         vehicleId: vehicle.vehicleId,
         vehicleInternalId: vehicle.id,
         type: maintType,
-        scheduledDate: new Date(maintDate).toISOString(),
-        notes: maintNotes || undefined
+        scheduledDate,
+        notes: maintNotes.trim() || undefined,
       });
       toast.success("Maintenance scheduled successfully");
-      // Optionally auto-update status if breakdown
       if (maintType === "Breakdown") {
-        await onUpdate(vehicle.id, { status: "maintenance" });
+        try {
+          await onUpdate(vehicle.id, { status: "maintenance" });
+        } catch (statusErr) {
+          const msg = statusErr instanceof Error ? statusErr.message : "Could not update vehicle status";
+          toast.warning(`Service scheduled, but status was not set to maintenance: ${msg}`);
+        }
       }
-      // Reset form
-      setMaintDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+      setMaintDate(tomorrowDateInputValue());
       setMaintNotes("");
       onClose();
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : "Failed to schedule service";
-      toast.error(errorMessage);
+      if (e instanceof FleetApiError) {
+        setServiceErrors({
+          scheduledDate: e.fieldErrors.scheduledDate,
+          type: e.fieldErrors.type,
+          general: e.fieldErrors.vehicleId || e.message,
+        });
+        toast.error(e.message);
+      } else {
+        const errorMessage = e instanceof Error ? e.message : "Failed to schedule service";
+        setServiceErrors({ general: errorMessage });
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -117,8 +159,8 @@ export function VehicleManageDrawer({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] z-[100] overflow-y-auto">
-        <SheetHeader>
+      <SheetContent className="w-[400px] sm:w-[540px] z-[100] overflow-y-auto px-6 pb-6 pt-6">
+        <SheetHeader className="pb-6 p-0">
           <SheetTitle>Manage {vehicle?.vehicleId ?? 'Vehicle'}</SheetTitle>
           <SheetDescription>Update status, pool, assignment, or schedule service.</SheetDescription>
         </SheetHeader>
@@ -199,10 +241,21 @@ export function VehicleManageDrawer({
 
           {/* SERVICE TAB */}
           <TabsContent value="service" className="space-y-4 py-4">
+             {serviceErrors.general && (
+               <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2" role="alert">
+                 {serviceErrors.general}
+               </p>
+             )}
              <div className="space-y-2">
-               <Label>Maintenance Type</Label>
-               <Select value={maintType} onValueChange={(v: MaintenanceType) => setMaintType(v)}>
-                 <SelectTrigger>
+               <Label htmlFor="maint-type">Maintenance Type</Label>
+               <Select
+                 value={maintType}
+                 onValueChange={(v: MaintenanceType) => {
+                   setMaintType(v);
+                   setServiceErrors((prev) => ({ ...prev, type: undefined }));
+                 }}
+               >
+                 <SelectTrigger id="maint-type" aria-invalid={!!serviceErrors.type}>
                    <SelectValue />
                  </SelectTrigger>
                  <SelectContent>
@@ -211,27 +264,40 @@ export function VehicleManageDrawer({
                    <SelectItem value="Inspection">Inspection</SelectItem>
                  </SelectContent>
                </Select>
+               {serviceErrors.type && (
+                 <p className="text-xs text-red-600">{serviceErrors.type}</p>
+               )}
              </div>
 
              <div className="space-y-2">
-               <Label>Scheduled Date</Label>
-               <Input 
-                 type="date" 
-                 value={maintDate} 
-                 onChange={(e) => setMaintDate(e.target.value)} 
+               <Label htmlFor="maint-date">Scheduled Date</Label>
+               <Input
+                 id="maint-date"
+                 type="date"
+                 min={todayDateInputValue()}
+                 value={maintDate}
+                 aria-invalid={!!serviceErrors.scheduledDate}
+                 onChange={(e) => {
+                   setMaintDate(e.target.value);
+                   setServiceErrors((prev) => ({ ...prev, scheduledDate: undefined }));
+                 }}
                />
+               {serviceErrors.scheduledDate && (
+                 <p className="text-xs text-red-600">{serviceErrors.scheduledDate}</p>
+               )}
              </div>
 
              <div className="space-y-2">
-               <Label>Notes</Label>
-               <Textarea 
-                 placeholder="Describe issue or service required..." 
+               <Label htmlFor="maint-notes">Notes</Label>
+               <Textarea
+                 id="maint-notes"
+                 placeholder="Describe issue or service required..."
                  value={maintNotes}
                  onChange={(e) => setMaintNotes(e.target.value)}
                />
              </div>
 
-             <Button onClick={handleScheduleService} disabled={loading} className="w-full mt-4 bg-orange-600 hover:bg-orange-700">
+             <Button type="button" onClick={handleScheduleService} disabled={loading} className="w-full mt-4 bg-orange-600 hover:bg-orange-700">
                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                Schedule Maintenance
              </Button>

@@ -32,7 +32,6 @@ import {
   fetchTopCustomers,
   fetchFinancialSummary,
   fetchHourlySales,
-  STORAGE_KEYS,
   SalesOverview,
   SalesData,
   ProductPerformance,
@@ -43,9 +42,8 @@ import {
   FinancialSummary,
   HourlySales,
 } from './reportsApi';
+import { VendorAnalyticsExportModal } from './VendorAnalyticsExportModal';
 import { toast } from 'sonner';
-import { exportToCSV } from '../../../utils/csvExport';
-import { exportToPDF } from '../../../utils/pdfExport';
 import {
   BarChart3,
   TrendingUp,
@@ -83,6 +81,7 @@ export function ReportsAnalytics() {
   
   // Product performance filter state
   const [productSortBy, setProductSortBy] = useState<string>('revenue');
+  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -142,208 +141,6 @@ export function ReportsAnalytics() {
       setHourlySales([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleExport = async (reportType: string, format: 'csv' | 'pdf') => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-      
-      if (format === 'csv') {
-        const csvData: (string | number)[][] = [
-          ['Vendor Reports & Analytics', `Date: ${today}`, `Time: ${timestamp}`],
-          ['Date Range', dateRange],
-          [''],
-          
-          // Sales Overview
-          ['=== SALES OVERVIEW ==='],
-          ...(salesOverview ? [
-            ['Total Revenue', formatCurrency(salesOverview.totalRevenue)],
-            ['Revenue Growth', `${formatPercentage(salesOverview.revenueGrowth)}`],
-            ['Total Orders', salesOverview.totalOrders],
-            ['Orders Growth', `${formatPercentage(salesOverview.ordersGrowth)}`],
-            ['Avg Order Value', formatCurrency(salesOverview.avgOrderValue)],
-            ['Avg Order Growth', `${formatPercentage(salesOverview.avgOrderGrowth)}`],
-            ['Total Products', salesOverview.totalProducts],
-            ['Products Growth', `${formatPercentage(salesOverview.productsGrowth)}`],
-          ] : [['No sales overview data']]),
-          [''],
-          
-          // Sales Data (Revenue Trend)
-          ['=== REVENUE TREND ==='],
-          ['Date', 'Revenue', 'Orders', 'Customers'],
-          ...salesData.map(d => [
-            new Date(d.date).toLocaleDateString('en-US'),
-            d.revenue,
-            d.orders,
-            d.customers,
-          ]),
-          [''],
-          
-          // Product Performance
-          ['=== PRODUCT PERFORMANCE ==='],
-          ['Product ID', 'Product Name', 'Category', 'Units Sold', 'Revenue', 'Stock', 'Growth Rate'],
-          ...productPerformance.map(p => [
-            p.id,
-            p.name,
-            p.category,
-            p.unitsSold,
-            p.revenue,
-            p.stock,
-            `${formatPercentage(p.growthRate)}`,
-          ]),
-          [''],
-          
-          // Order Analytics
-          ['=== ORDER ANALYTICS ==='],
-          ['Status', 'Count', 'Percentage'],
-          ...orderAnalytics.map(o => [
-            o.status,
-            o.count,
-            `${o.percentage.toFixed(1)}%`,
-          ]),
-          [''],
-          
-          // Customer Insights
-          ['=== CUSTOMER INSIGHTS ==='],
-          ['Metric', 'Value', 'Change'],
-          ...customerInsights.map(c => [
-            c.metric,
-            c.metric.includes('Rate') || c.metric.includes('Avg') ? c.value.toFixed(1) : c.value,
-            `${formatPercentage(c.change)}`,
-          ]),
-          [''],
-          
-          // Revenue by Category
-          ['=== REVENUE BY CATEGORY ==='],
-          ['Category', 'Revenue', 'Percentage'],
-          ...revenueByCategory.map(r => [
-            r.category,
-            r.revenue,
-            `${r.percentage.toFixed(1)}%`,
-          ]),
-          [''],
-          
-          // Top Customers
-          ['=== TOP CUSTOMERS ==='],
-          ['Customer ID', 'Name', 'Email', 'Orders', 'Total Spent', 'Avg Order Value'],
-          ...topCustomers.map(t => [
-            t.id,
-            t.name,
-            t.email,
-            t.orders,
-            t.totalSpent,
-            t.avgOrderValue,
-          ]),
-          [''],
-          
-          // Financial Summary
-          ['=== FINANCIAL SUMMARY ==='],
-          ...(financialSummary ? [
-            ['Gross Revenue', formatCurrency(financialSummary.grossRevenue)],
-            ['Platform Fee', formatCurrency(financialSummary.platformFee)],
-            ['Delivery Charges', formatCurrency(financialSummary.deliveryCharges)],
-            ['Refunds', formatCurrency(financialSummary.refunds)],
-            ['Net Revenue', formatCurrency(financialSummary.netRevenue)],
-            ['Profit Margin', `${financialSummary.profitMargin.toFixed(1)}%`],
-          ] : [['No financial summary data']]),
-          [''],
-          
-          // Hourly Sales
-          ['=== HOURLY SALES PATTERN ==='],
-          ['Hour', 'Orders', 'Revenue'],
-          ...hourlySales.map(h => [
-            h.hour,
-            h.orders,
-            h.revenue,
-          ]),
-        ];
-        exportToCSV(csvData, `vendor-reports-complete-${today}-${timestamp.replace(/:/g, '-')}`);
-      } else {
-        const htmlContent = `
-          <html>
-            <head>
-              <title>Vendor Reports & Analytics</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                h1 { color: #4F46E5; }
-                h2 { color: #1F2937; margin-top: 30px; }
-                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                th { background-color: #4F46E5; color: white; }
-                tr:nth-child(even) { background-color: #f2f2f2; }
-              </style>
-            </head>
-            <body>
-              <h1>Vendor Reports & Analytics</h1>
-              <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
-              <p><strong>Date Range:</strong> ${dateRange}</p>
-              
-              <h2>Sales Overview</h2>
-              ${salesOverview ? `
-                <table>
-                  <tr><th>Metric</th><th>Value</th></tr>
-                  <tr><td>Total Revenue</td><td>${formatCurrency(salesOverview.totalRevenue)}</td></tr>
-                  <tr><td>Revenue Growth</td><td>${formatPercentage(salesOverview.revenueGrowth)}</td></tr>
-                  <tr><td>Total Orders</td><td>${salesOverview.totalOrders}</td></tr>
-                  <tr><td>Orders Growth</td><td>${formatPercentage(salesOverview.ordersGrowth)}</td></tr>
-                  <tr><td>Avg Order Value</td><td>${formatCurrency(salesOverview.avgOrderValue)}</td></tr>
-                  <tr><td>Total Products</td><td>${salesOverview.totalProducts}</td></tr>
-                </table>
-              ` : '<p>No sales overview data</p>'}
-              
-              <h2>Product Performance</h2>
-              <table>
-                <tr>
-                  <th>Product</th><th>Category</th><th>Units Sold</th><th>Revenue</th><th>Stock</th><th>Growth</th>
-                </tr>
-                ${productPerformance.map(p => `
-                  <tr>
-                    <td>${p.name}</td><td>${p.category}</td><td>${p.unitsSold}</td>
-                    <td>${formatCurrency(p.revenue)}</td><td>${p.stock}</td><td>${formatPercentage(p.growthRate)}</td>
-                  </tr>
-                `).join('')}
-              </table>
-              
-              <h2>Order Analytics</h2>
-              <table>
-                <tr><th>Status</th><th>Count</th><th>Percentage</th></tr>
-                ${orderAnalytics.map(o => `
-                  <tr><td>${o.status}</td><td>${o.count}</td><td>${o.percentage.toFixed(1)}%</td></tr>
-                `).join('')}
-              </table>
-              
-              <h2>Top Customers</h2>
-              <table>
-                <tr><th>Name</th><th>Email</th><th>Orders</th><th>Total Spent</th><th>Avg Order</th></tr>
-                ${topCustomers.map(t => `
-                  <tr>
-                    <td>${t.name}</td><td>${t.email}</td><td>${t.orders}</td>
-                    <td>${formatCurrency(t.totalSpent)}</td><td>${formatCurrency(t.avgOrderValue)}</td>
-                  </tr>
-                `).join('')}
-              </table>
-              
-              ${financialSummary ? `
-                <h2>Financial Summary</h2>
-                <table>
-                  <tr><th>Metric</th><th>Value</th></tr>
-                  <tr><td>Gross Revenue</td><td>${formatCurrency(financialSummary.grossRevenue)}</td></tr>
-                  <tr><td>Platform Fee</td><td>${formatCurrency(financialSummary.platformFee)}</td></tr>
-                  <tr><td>Net Revenue</td><td>${formatCurrency(financialSummary.netRevenue)}</td></tr>
-                  <tr><td>Profit Margin</td><td>${financialSummary.profitMargin.toFixed(1)}%</td></tr>
-                </table>
-              ` : ''}
-            </body>
-          </html>
-        `;
-        exportToPDF(htmlContent, `vendor-reports-complete-${today}`);
-      }
-      toast.success(`Complete report exported as ${format.toUpperCase()}`);
-    } catch (error) {
-      toast.error('Failed to export report');
-      console.error('Export error:', error);
     }
   };
 
@@ -496,8 +293,13 @@ export function ReportsAnalytics() {
           >
             <RefreshCw size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-          <Button size="sm" onClick={() => handleExport('complete', 'csv')} className="bg-[#4F46E5] hover:bg-[#4338CA] text-white">
-            <Download size={14} className="mr-1.5" /> Export All Data
+          <Button
+            size="sm"
+            onClick={() => setExportOpen(true)}
+            className="bg-[#4F46E5] hover:bg-[#4338CA] text-white"
+            disabled={loading}
+          >
+            <Download size={14} className="mr-1.5" /> Export
           </Button>
         </div>
       </div>
@@ -1093,6 +895,13 @@ export function ReportsAnalytics() {
           )}
         </TabsContent>
       </Tabs>
+
+      <VendorAnalyticsExportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        defaultDateRange={dateRange}
+        activeTab={activeTab}
+      />
     </div>
   );
 }

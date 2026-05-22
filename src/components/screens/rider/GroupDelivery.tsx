@@ -1,11 +1,37 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { GoogleMap, Marker, useJsApiLoader, InfoWindow, Polyline } from '@react-google-maps/api';
 import { PageHeader } from '../../ui/page-header';
-import { RefreshCw, MapPin, Package, Layers, Info, AlertCircle, Users, Save, Trash2, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  RefreshCw,
+  AlertCircle,
+  Users,
+  Save,
+  Map as MapIcon,
+  Plus,
+  Minus,
+} from 'lucide-react';
 import { api } from './overview/riderApi';
-import { Order, Rider } from './overview/types';
+import { Rider } from './overview/types';
 import { toast } from 'sonner';
 import { GOOGLE_MAPS_LOADER_ID } from '../../../utils/googleMapsLoader';
+import { AssignGroupRiderModal } from './AssignGroupRiderModal';
+import {
+  saveClustersToBackend,
+  assignClusterToRider,
+  listClustersFromBackend,
+  fetchGroupedOrders,
+  fetchGroupDeliveryFilterOptions,
+  updateClusterOrdersOnBackend,
+} from './groupDeliveryApi';
+import type { Cluster, GroupDeliveryFilterOptions, GroupDeliveryOrder } from './groupDeliveryTypes';
+import { GROUP_CLUSTER_COLORS } from './groupDeliveryTypes';
+import { defaultMapCenter, moveOrdersToCluster } from './groupDeliveryUtils';
+import { GroupDeliveryClusterColumn } from './GroupDeliveryClusterColumn';
+import { GroupDeliveryOrdersColumn } from './GroupDeliveryOrdersColumn';
+import { GroupDeliveryMetricsPanel } from './GroupDeliveryMetricsPanel';
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -14,30 +40,7 @@ const containerStyle: React.CSSProperties = {
   height: '100%',
 };
 
-const defaultCenter = { lat: 13.0827, lng: 80.2707 }; // Chennai
-
-interface Cluster {
-  id: string;
-  clusterId?: string; // Backend ID
-  orders: Order[];
-  center: { lat: number; lng: number };
-  color: string;
-  status?: 'active' | 'assigned' | 'completed' | 'cancelled';
-  isSaved?: boolean;
-}
-
-const CLUSTER_COLORS = [
-  '#F97316', // Orange
-  '#3B82F6', // Blue
-  '#10B981', // Green
-  '#8B5CF6', // Purple
-  '#EF4444', // Red
-  '#EC4899', // Pink
-  '#F59E0B', // Amber
-  '#06B6D4', // Cyan
-  '#6366F1', // Indigo
-  '#14B8A6', // Teal
-];
+const defaultCenter = defaultMapCenter;
 
 // Fallback coordinate generation based on address hash (consistent but unique per address)
 const generateFallbackCoords = (address: string) => {
@@ -78,7 +81,7 @@ function dropAddressString(order: any): string {
 }
 
 /** Merge saved-cluster order payloads with geocoded list orders so map markers always get coordinates when possible. */
-function enrichOrderForMap(raw: any, processedById: Map<string, Order>): Order {
+function enrichOrderForMap(raw: any, processedById: Map<string, GroupDeliveryOrder>): GroupDeliveryOrder {
   const merged = raw?.id ? processedById.get(raw.id) : undefined;
   const drop =
     dropAddressString(raw) ||
@@ -95,7 +98,11 @@ function enrichOrderForMap(raw: any, processedById: Map<string, Order>): Order {
 
   return {
     id: raw.id || merged?.id || '',
-    status: (raw.status || merged?.status || 'pending') as Order['status'],
+    status: (raw.status || merged?.status || 'pending') as GroupDeliveryOrder['status'],
+    zone: raw.zone ?? merged?.zone,
+    distanceKm: raw.distanceKm ?? merged?.distanceKm,
+    riderEarning: raw.riderEarning ?? merged?.riderEarning,
+    priority: raw.priority ?? merged?.priority,
     slaDeadline:
       typeof merged?.slaDeadline === 'string'
         ? merged.slaDeadline
@@ -113,7 +120,7 @@ function enrichOrderForMap(raw: any, processedById: Map<string, Order>): Order {
   };
 }
 
-function normalizeSavedClusterApi(c: any, processedById: Map<string, Order>): Cluster {
+function normalizeSavedClusterApi(c: any, processedById: Map<string, GroupDeliveryOrder>): Cluster {
   const orders = (c.orders || []).map((raw: any) => enrichOrderForMap(raw, processedById));
   let center = c.center as { lat: number; lng: number } | undefined;
   const withCoords = orders.filter((o) => o.coordinates);
@@ -143,28 +150,72 @@ function normalizeSavedClusterApi(c: any, processedById: Map<string, Order>): Cl
 
 function unwrapClustersResponse(data: unknown): any[] {
   if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object' && Array.isArray((data as any).data)) {
-    return (data as any).data;
+  if (data && typeof data === 'object') {
+    const payload = data as { data?: unknown };
+    if (Array.isArray(payload.data)) return payload.data;
   }
   return [];
 }
 
+function mapApiOrderToOrder(raw: any): GroupDeliveryOrder {
+  const drop =
+    typeof raw?.dropLocation === 'string'
+      ? raw.dropLocation
+      : raw?.dropLocation?.address ||
+        raw?.delivery_address ||
+        (typeof raw?.delivery?.address === 'string' ? raw.delivery.address : '');
+  let coordinates = raw?.coordinates ?? coordsFromRawOrder(raw);
+  if (!coordinates && drop) {
+    coordinates = generateFallbackCoords(drop);
+  }
+  return {
+    id: raw.id || '',
+    status: (raw.status || 'pending') as GroupDeliveryOrder['status'],
+    slaDeadline: raw.slaDeadline
+      ? new Date(raw.slaDeadline).toISOString()
+      : new Date().toISOString(),
+    pickupLocation: raw.pickupLocation || '',
+    dropLocation: drop,
+    customerName: raw.customerName || 'Customer',
+    items: Array.isArray(raw.items) ? raw.items : [],
+    timeline: Array.isArray(raw.timeline) ? raw.timeline : [],
+    riderId: raw.riderId,
+    etaMinutes: raw.etaMinutes,
+    coordinates,
+    zone: raw.zone ?? null,
+    distanceKm: raw.distanceKm,
+    riderEarning: raw.riderEarning,
+    priority: raw.priority,
+  };
+}
+
 export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<GroupDeliveryOrder[]>([]);
   const [riders, setRiders] = useState<Rider[]>([]);
   const [loading, setLoading] = useState(true);
   const [clusters, setClusters] = useState<Cluster[]>([]);
-  const [unclusteredOrders, setUnclusteredOrders] = useState<Order[]>([]);
+  const [unclusteredOrders, setUnclusteredOrders] = useState<GroupDeliveryOrder[]>([]);
   const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [distanceThreshold, setDistanceThreshold] = useState(2); // 2km
+  const [selectedOrder, setSelectedOrder] = useState<GroupDeliveryOrder | null>(null);
+  const [distanceThreshold, setDistanceThreshold] = useState(2);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [zoneFilter, setZoneFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [filterOptions, setFilterOptions] = useState<GroupDeliveryFilterOptions>({
+    zones: [],
+    statuses: [],
+  });
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [geocodingProgress, setGeocodingProgress] = useState(0);
   const [useFallback, setUseFallback] = useState(false);
-  const [showRiderSelector, setShowRiderSelector] = useState(false);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [clustering, setClustering] = useState(false);
 
   const geocodeCache = useRef<Record<string, { lat: number; lng: number }>>({});
-  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const mapWrapRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const pageReadyRef = useRef(false);
 
   const hasMapsKey = Boolean(GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY.trim().length > 0);
   const { isLoaded } = useJsApiLoader({
@@ -194,162 +245,227 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
     }
   };
 
-  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const R = 6371; // Radius of the earth in km
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLng = (lng2 - lng1) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) *
-        Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const d = R * c; // Distance in km
-    return d;
-  };
-
-  const performClustering = useCallback((allOrders: Order[]) => {
-    // Filter orders with valid coordinates and status is a "live" deliverable status
-    const liveStatuses = [
-      'pending', 'assigned', 'delayed', 'picked_up', 'in_transit',
-      'new', 'processing', 'ready', 'picking', 'picked', 'packed', 'ready_for_dispatch',
-      'assigned', 'picked'
-    ];
-    
-    const validOrders = allOrders.filter(
-      (o) => o.coordinates && o.status && liveStatuses.includes(String(o.status).toLowerCase())
-    );
-
-    if (validOrders.length === 0) {
-      setClusters([]);
-      setUnclusteredOrders(allOrders);
-      return;
+  const ordersById = useMemo(() => {
+    const map = new Map<string, GroupDeliveryOrder>();
+    for (const o of orders) map.set(o.id, o);
+    for (const o of unclusteredOrders) map.set(o.id, o);
+    for (const c of clusters) {
+      for (const o of c.orders) map.set(o.id, o);
     }
+    return map;
+  }, [orders, unclusteredOrders, clusters]);
 
-    let unassigned = [...validOrders];
-    // Sort by coordinates to ensure grouping is deterministic
-    unassigned.sort((a, b) => (a.coordinates!.lat - b.coordinates!.lat) || (a.coordinates!.lng - b.coordinates!.lng));
-
-    const newClusters: Cluster[] = [];
-    let clusterIdCounter = 1;
-
-    while (unassigned.length > 0) {
-      const seed = unassigned.shift()!;
-      const clusterOrders = [seed];
-      
-      // Find neighbors within threshold, up to max 10 orders
-      // For orders at the EXACT same location, they will always be neighbors (dist = 0)
-      for (let i = 0; i < unassigned.length && clusterOrders.length < 10; i++) {
-        const other = unassigned[i];
-        const dist = calculateDistance(
-          seed.coordinates!.lat,
-          seed.coordinates!.lng,
-          other.coordinates!.lat,
-          other.coordinates!.lng
-        );
-        
-        if (dist <= distanceThreshold) {
-          clusterOrders.push(other);
-          unassigned.splice(i, 1);
-          i--;
-        }
-      }
-
-      // Requirement: 2 to 10 orders per cluster
-      if (clusterOrders.length >= 2) {
-        const avgLat = clusterOrders.reduce((sum, o) => sum + o.coordinates!.lat, 0) / clusterOrders.length;
-        const avgLng = clusterOrders.reduce((sum, o) => sum + o.coordinates!.lng, 0) / clusterOrders.length;
-        
-        newClusters.push({
-          id: `draft-${clusterIdCounter++}`,
-          orders: clusterOrders,
-          center: { lat: avgLat, lng: avgLng },
-          color: CLUSTER_COLORS[(newClusters.length) % CLUSTER_COLORS.length],
-          isSaved: false,
-        });
-      }
+  const displayPoolOrders = useMemo(() => {
+    let list = unclusteredOrders;
+    const q = (orderSearch || searchQuery).trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (o) =>
+          o.id.toLowerCase().includes(q) ||
+          (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+          String(o.dropLocation).toLowerCase().includes(q)
+      );
     }
+    if (zoneFilter !== 'all') {
+      list = list.filter((o) => o.zone === zoneFilter);
+    }
+    if (statusFilter !== 'all') {
+      list = list.filter((o) => String(o.status).toLowerCase() === statusFilter.toLowerCase());
+    }
+    return list;
+  }, [unclusteredOrders, orderSearch, searchQuery, zoneFilter, statusFilter]);
 
-    setClusters(newClusters);
-    
-    const clusteredOrderIds = new Set(newClusters.flatMap(c => c.orders.map(o => o.id)));
-    setUnclusteredOrders(allOrders.filter(o => !clusteredOrderIds.has(o.id)));
-  }, [distanceThreshold]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    setGeocodingProgress(0);
-    setUseFallback(false);
-    try {
-      const [ordersData, ridersData, savedClustersData] = await Promise.all([
-        api.getOrders(),
-        api.getRiders(),
-        api.getClusters({ status: 'active' }),
-      ]);
-      
-      const liveOrders = ordersData.filter(o => {
-        const status = o.status?.toLowerCase();
-        return status !== 'delivered' && status !== 'cancelled' && status !== 'returned' && status !== 'rto';
-      });
-      
-      // Geocode missing addresses
-      const processedOrders: Order[] = [];
+  const enrichOrdersForMap = useCallback(
+    async (rawOrders: GroupDeliveryOrder[]): Promise<GroupDeliveryOrder[]> => {
+      const enriched: GroupDeliveryOrder[] = [];
       let failCount = 0;
-
-      for (let i = 0; i < liveOrders.length; i++) {
-        const order = liveOrders[i];
-        setGeocodingProgress(Math.round(((i + 1) / liveOrders.length) * 100));
-        
+      for (let i = 0; i < rawOrders.length; i++) {
+        const order = rawOrders[i];
+        setGeocodingProgress(
+          rawOrders.length > 0 ? Math.round(((i + 1) / rawOrders.length) * 100) : 0
+        );
         if (order.coordinates) {
-          processedOrders.push(order);
+          enriched.push(order);
           continue;
         }
-
-        const address = order.dropLocation || order.pickupLocation;
+        const address =
+          typeof order.dropLocation === 'string'
+            ? order.dropLocation
+            : order.pickupLocation;
         if (!address) {
-          processedOrders.push(order);
+          enriched.push(order);
           continue;
         }
-
         let coords = await geocodeAddress(address);
         if (!coords) {
           coords = generateFallbackCoords(address);
           failCount++;
         }
-        
-        processedOrders.push({ ...order, coordinates: coords });
+        enriched.push({ ...order, coordinates: coords });
       }
+      if (failCount > 0) setUseFallback(true);
+      return enriched;
+    },
+    []
+  );
 
-      if (failCount > 0) {
-        setUseFallback(true);
-      }
-      
-      setOrders(processedOrders);
-      setRiders(ridersData);
+  const regenerateDraftGroups = useCallback(
+    async (options?: { silent?: boolean }) => {
+      setClustering(true);
+      setUseFallback(false);
+      try {
+        const [grouped, savedClustersData] = await Promise.all([
+          fetchGroupedOrders(distanceThreshold, {
+            zone: zoneFilter,
+            status: statusFilter,
+            search: orderSearch,
+          }),
+          listClustersFromBackend({ status: 'active' }),
+        ]);
 
-      const savedList = unwrapClustersResponse(savedClustersData);
-      const processedById = new Map(processedOrders.map((o) => [o.id, o]));
-
-      // If we have saved clusters, use them first
-      if (savedList.length > 0) {
-        const mappedClusters: Cluster[] = savedList.map((c: any) =>
-          normalizeSavedClusterApi(c, processedById)
+        const savedList = unwrapClustersResponse(savedClustersData);
+        const ordersToEnrich = [
+          ...grouped.clusters.flatMap((c) => c.orders),
+          ...grouped.unclustered,
+          ...savedList.flatMap((c: any) => c.orders || []),
+        ].map(mapApiOrderToOrder);
+        const uniqueToEnrich = Array.from(
+          new Map(ordersToEnrich.filter((o) => o.id).map((o) => [o.id, o])).values()
         );
 
-        setClusters(mappedClusters);
-        
-        const clusteredOrderIds = new Set(mappedClusters.flatMap(c => c.orders.map(o => o.id)));
-        setUnclusteredOrders(processedOrders.filter(o => !clusteredOrderIds.has(o.id)));
-      } else {
-        performClustering(processedOrders);
+        const enrichedDraft = await enrichOrdersForMap(uniqueToEnrich);
+        const enrichedById = new Map(enrichedDraft.map((o) => [o.id, o]));
+
+        const savedClusters: Cluster[] = savedList.map((c: any) =>
+          normalizeSavedClusterApi(c, enrichedById)
+        );
+
+        const draftClusters: Cluster[] = grouped.clusters.map((c, idx) => {
+          const orders = c.orders
+            .map((o) => enrichedById.get(mapApiOrderToOrder(o).id) || mapApiOrderToOrder(o))
+            .filter((o) => o.id);
+          const withCoords = orders.filter((o) => o.coordinates);
+          const center =
+            c.center && withCoords.length === 0
+              ? c.center
+              : withCoords.length > 0
+                ? {
+                    lat: withCoords.reduce((s, o) => s + o.coordinates!.lat, 0) / withCoords.length,
+                    lng: withCoords.reduce((s, o) => s + o.coordinates!.lng, 0) / withCoords.length,
+                  }
+                : c.center || defaultCenter;
+          return {
+            id: c.id || `draft-${idx + 1}`,
+            orders,
+            center,
+            color: c.color || GROUP_CLUSTER_COLORS[idx % GROUP_CLUSTER_COLORS.length],
+            isSaved: false,
+          };
+        });
+
+        const unclustered = grouped.unclustered
+          .map((o) => enrichedById.get(mapApiOrderToOrder(o).id) || mapApiOrderToOrder(o))
+          .filter((o) => o.id);
+
+        setClusters([...savedClusters, ...draftClusters]);
+        setUnclusteredOrders(unclustered);
+
+        const allOrders = [
+          ...savedClusters.flatMap((c) => c.orders),
+          ...draftClusters.flatMap((c) => c.orders),
+          ...unclustered,
+        ];
+        const uniqueOrders = Array.from(
+          new Map(allOrders.filter((o) => o.id).map((o) => [o.id, o])).values()
+        );
+        setOrders(uniqueOrders);
+
+        if (!options?.silent) {
+          toast.success(
+            `Formed ${draftClusters.length} draft group(s) within ${grouped.radiusKm} km` +
+              (savedClusters.length > 0 ? ` · ${savedClusters.length} saved` : '')
+          );
+        }
+      } catch (error) {
+        console.error('Failed to form groups:', error);
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to form groups from orders'
+        );
+      } finally {
+        setClustering(false);
+        setGeocodingProgress(0);
       }
+    },
+    [distanceThreshold, enrichOrdersForMap, zoneFilter, statusFilter, orderSearch]
+  );
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [ridersData, opts] = await Promise.all([
+        api.getRiders(),
+        fetchGroupDeliveryFilterOptions(),
+      ]);
+      setRiders(ridersData);
+      setFilterOptions(opts);
+      await regenerateDraftGroups({ silent: true });
     } catch (error) {
       console.error('Failed to fetch data:', error);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
+      pageReadyRef.current = true;
     }
+  };
+
+  const handleDropOrders = async (orderIds: string[], targetClusterId: string | 'new') => {
+    const { clusters: nextClusters, unclustered: nextUnclustered, createdClusterId } =
+      moveOrdersToCluster(clusters, unclusteredOrders, orderIds, targetClusterId, ordersById);
+
+    setClusters(nextClusters);
+    setUnclusteredOrders(nextUnclustered);
+    setSelectedOrderIds(new Set());
+
+    const target =
+      nextClusters.find((c) => c.id === (createdClusterId || targetClusterId)) || null;
+    if (target) setSelectedCluster(target);
+
+    const savedTarget = nextClusters.find(
+      (c) =>
+        (c.id === targetClusterId || c.id === createdClusterId) && c.isSaved && c.clusterId
+    );
+    if (savedTarget?.clusterId) {
+      try {
+        await updateClusterOrdersOnBackend(
+          savedTarget.clusterId,
+          savedTarget.orders.map((o) => o.id)
+        );
+        toast.success('Group updated on server');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to sync group');
+        await fetchData();
+      }
+    } else {
+      toast.success(`Added ${orderIds.length} order(s) to group`);
+    }
+  };
+
+  const handleToggleSelectOrder = (orderId: string, multi?: boolean) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (multi) {
+        if (next.has(orderId)) next.delete(orderId);
+        else next.add(orderId);
+      } else {
+        if (next.size === 1 && next.has(orderId)) {
+          next.clear();
+        } else {
+          next.clear();
+          next.add(orderId);
+        }
+      }
+      return next;
+    });
   };
 
   const saveAllClusters = async () => {
@@ -361,7 +477,16 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
 
     setSaving(true);
     try {
-      await api.saveClusters(unsavedClusters);
+      await saveClustersToBackend(
+        unsavedClusters.map((c) => ({
+          id: c.id,
+          clusterId: c.clusterId,
+          orders: c.orders,
+          center: c.center,
+          color: c.color,
+          radiusKm: distanceThreshold,
+        }))
+      );
       toast.success(`Successfully saved ${unsavedClusters.length} clusters to backend`);
       await fetchData(); // Reload to get IDs and synced state
     } catch (error) {
@@ -390,22 +515,73 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
     }
   };
 
-  const assignClusterToRider = async (cluster: Cluster, riderId: string) => {
-    if (!cluster.isSaved || !cluster.clusterId) {
-      toast.error('Please save the cluster before assigning');
+  const saveSingleCluster = async (cluster: Cluster) => {
+    if (cluster.isSaved) {
+      toast.info('Group is already saved');
       return;
     }
-
     setSaving(true);
     try {
-      await api.assignCluster(cluster.clusterId, riderId);
-      toast.success(`Assigned group to rider`);
-      setShowRiderSelector(false);
+      await saveClustersToBackend([
+        {
+          id: cluster.id,
+          clusterId: cluster.clusterId,
+          orders: cluster.orders,
+          center: cluster.center,
+          color: cluster.color,
+          radiusKm: distanceThreshold,
+        },
+      ]);
+      toast.success('Group saved');
+      await fetchData();
+      setSelectedCluster(null);
+    } catch (error) {
+      console.error('Failed to save cluster:', error);
+      toast.error('Failed to save group');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const ensureClusterSaved = async (cluster: Cluster): Promise<string> => {
+    if (cluster.isSaved && cluster.clusterId) return cluster.clusterId;
+    const saved = await saveClustersToBackend([
+      {
+        id: cluster.id,
+        clusterId: cluster.clusterId,
+        orders: cluster.orders,
+        center: cluster.center,
+        color: cluster.color,
+        radiusKm: distanceThreshold,
+      },
+    ]);
+    const clusterId = saved[0]?.clusterId;
+    if (!clusterId) throw new Error('Could not save group before assignment');
+    return clusterId;
+  };
+
+  const handleAssignGroupConfirm = async (riderId: string, overrideSla: boolean) => {
+    if (!selectedCluster) return;
+    setSaving(true);
+    try {
+      const clusterId = await ensureClusterSaved(selectedCluster);
+      const result = await assignClusterToRider(clusterId, riderId, overrideSla);
+      if (result.failedCount > 0) {
+        toast.warning(
+          `Assigned ${result.assignedCount} of ${result.totalOrders} orders to ${result.riderName || riderId}`,
+          { description: result.failed?.[0]?.message }
+        );
+      } else {
+        toast.success(
+          `Assigned ${result.assignedCount} orders to ${result.riderName || riderId}`
+        );
+      }
+      setAssignModalOpen(false);
       setSelectedCluster(null);
       await fetchData();
     } catch (error) {
       console.error('Failed to assign cluster:', error);
-      toast.error('Failed to assign group');
+      toast.error(error instanceof Error ? error.message : 'Failed to assign group');
     } finally {
       setSaving(false);
     }
@@ -416,35 +592,121 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
   }, []);
 
   useEffect(() => {
-    if (orders.length > 0 && clusters.length === 0) {
-      performClustering(orders);
-    }
-  }, [distanceThreshold, performClustering]);
+    if (!pageReadyRef.current || loading) return;
+    void regenerateDraftGroups();
+  }, [distanceThreshold]);
 
   useEffect(() => {
-    if (!hasMapsKey || !isLoaded || !mapInstance || clusters.length === 0) return;
+    if (!pageReadyRef.current) return;
+    const t = window.setTimeout(() => {
+      void regenerateDraftGroups({ silent: true });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [zoneFilter, statusFilter, orderSearch]);
+
+  const filteredClusters = useMemo(() => {
+    if (!searchQuery.trim()) return clusters;
+    const q = searchQuery.trim().toLowerCase();
+    return clusters.filter(
+      (c) =>
+        c.id.toLowerCase().includes(q) ||
+        (c.clusterId && c.clusterId.toLowerCase().includes(q)) ||
+        c.orders.some(
+          (o) =>
+            o.id.toLowerCase().includes(q) ||
+            (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+            String(o.dropLocation).toLowerCase().includes(q)
+        )
+    );
+  }, [clusters, searchQuery]);
+
+  const fitMapToData = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps) return;
 
     const bounds = new google.maps.LatLngBounds();
     let hasPoint = false;
-    const ordersToFrame = selectedCluster
-      ? selectedCluster.orders
-      : clusters.flatMap((c) => c.orders);
-    for (const o of ordersToFrame) {
-      if (o.coordinates) {
-        bounds.extend(o.coordinates);
-        hasPoint = true;
-      }
-    }
-    if (!hasPoint) return;
-    const listener = google.maps.event.addListenerOnce(mapInstance, 'bounds_changed', () => {
-      const z = mapInstance.getZoom();
-      if (z != null && z > 16) mapInstance.setZoom(16);
-    });
-    mapInstance.fitBounds(bounds, 64);
-    return () => {
-      google.maps.event.removeListener(listener);
+
+    const extendOrder = (o: GroupDeliveryOrder) => {
+      if (!o.coordinates) return;
+      bounds.extend(o.coordinates);
+      hasPoint = true;
     };
-  }, [hasMapsKey, isLoaded, mapInstance, selectedCluster, clusters]);
+
+    if (selectedCluster) {
+      selectedCluster.orders.forEach(extendOrder);
+    } else {
+      filteredClusters.forEach((c) => c.orders.forEach(extendOrder));
+      unclusteredOrders.forEach(extendOrder);
+    }
+
+    if (hasPoint) {
+      map.fitBounds(bounds, 56);
+      const listener = google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
+        const z = map.getZoom();
+        if (z != null && z > 16) map.setZoom(16);
+        google.maps.event.removeListener(listener);
+      });
+    } else {
+      map.setCenter(defaultCenter);
+      map.setZoom(12);
+    }
+  }, [filteredClusters, unclusteredOrders, selectedCluster]);
+
+  const onMapLoad = useCallback(
+    (map: google.maps.Map) => {
+      mapRef.current = map;
+      requestAnimationFrame(() => {
+        google.maps.event.trigger(map, 'resize');
+        fitMapToData();
+      });
+    },
+    [fitMapToData]
+  );
+
+  useEffect(() => {
+    if (!hasMapsKey || !isLoaded) return;
+    fitMapToData();
+  }, [hasMapsKey, isLoaded, fitMapToData]);
+
+  useEffect(() => {
+    const el = mapWrapRef.current;
+    if (!el || !isLoaded) return;
+    const ro = new ResizeObserver(() => {
+      if (mapRef.current) {
+        google.maps.event.trigger(mapRef.current, 'resize');
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isLoaded, selectedCluster]);
+
+  const handleZoomIn = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setZoom(Math.min((map.getZoom() ?? 12) + 1, 20));
+  };
+
+  const handleZoomOut = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setZoom(Math.max((map.getZoom() ?? 12) - 1, 4));
+  };
+
+  const circleIcon = useCallback(
+    (fillColor: string, scale = 7): google.maps.Symbol | undefined => {
+      if (!isLoaded || !window.google?.maps?.SymbolPath) return undefined;
+      return {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale,
+        fillColor,
+        fillOpacity: 1,
+        strokeColor: '#FFFFFF',
+        strokeWeight: 2,
+      };
+    },
+    [isLoaded]
+  );
 
   if (!hasMapsKey) {
     // Don’t block the entire screen behind an infinite map loader spinner.
@@ -458,7 +720,7 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
             <div className="flex items-center gap-3">
               <button
                 onClick={saveAllClusters}
-                disabled={loading || saving || !clusters.some(c => !c.isSaved)}
+                disabled={loading || saving || clustering || !clusters.some((c) => !c.isSaved)}
                 className="px-4 py-2 bg-[#F97316] text-white font-medium rounded-lg hover:bg-[#EA580C] disabled:opacity-50 flex items-center gap-2"
               >
                 <Save size={16} />
@@ -466,10 +728,10 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
               </button>
               <button
                 onClick={fetchData}
-                disabled={loading}
+                disabled={loading || clustering}
                 className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2"
               >
-                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                <RefreshCw size={16} className={loading || clustering ? 'animate-spin' : ''} />
                 Refresh
               </button>
             </div>
@@ -484,109 +746,66 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
           </span>
         </div>
 
-        {/* Fallback: list-only mode */}
-        <div className="flex-1 flex gap-6 overflow-hidden">
-          <div className="w-1/3 flex flex-col gap-4 overflow-hidden">
-            <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm flex flex-col overflow-hidden h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-[#212121] flex items-center gap-2">
-                  <Layers size={18} className="text-[#F97316]" />
-                  Groups ({clusters.length})
-                </h3>
-                <select
-                  className="text-xs border border-[#E0E0E0] rounded p-1"
-                  value={distanceThreshold}
-                  onChange={(e) => setDistanceThreshold(Number(e.target.value))}
-                >
-                  <option value={0.1}>0.1 km</option>
-                  <option value={0.5}>0.5 km</option>
-                  <option value={1}>1 km</option>
-                  <option value={2}>2 km</option>
-                  <option value={5}>5 km</option>
-                </select>
-              </div>
-
-              <div className="space-y-3 overflow-y-auto pr-2 flex-1">
-                {clusters.map((cluster) => (
-                  <div
-                    key={cluster.id}
-                    onClick={() => {
-                      setSelectedCluster(cluster);
-                      setSelectedOrder(null);
-                    }}
-                    className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                      selectedCluster?.id === cluster.id
-                        ? 'border-[#F97316] bg-[#FFF7ED]'
-                        : 'border-[#E0E0E0] hover:border-[#F97316]'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cluster.color }} />
-                        <span className="font-bold text-sm">
-                          Group {cluster.id.startsWith('draft') ? '(Draft)' : `#${cluster.id.slice(-4).toUpperCase()}`}
-                        </span>
-                        {cluster.isSaved && <CheckCircle2 size={14} className="text-green-500" />}
+        <DndProvider backend={HTML5Backend}>
+          <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
+            <div className="w-[26%] min-w-[220px] flex flex-col min-h-0">
+              <GroupDeliveryClusterColumn
+                clusters={filteredClusters}
+                selectedClusterId={selectedCluster?.id ?? null}
+                distanceThreshold={distanceThreshold}
+                clustering={clustering}
+                loading={loading}
+                onSelectCluster={(c) => {
+                  setSelectedCluster(c);
+                  setSelectedOrder(null);
+                }}
+                onDeleteCluster={deleteCluster}
+                onDistanceChange={setDistanceThreshold}
+                onDropOrders={(ids, target) => void handleDropOrders(ids, target)}
+              />
+            </div>
+            <div className="w-[26%] min-w-[220px] flex flex-col min-h-0">
+              <GroupDeliveryOrdersColumn
+                orders={displayPoolOrders}
+                filterOptions={filterOptions}
+                search={orderSearch}
+                zoneFilter={zoneFilter}
+                statusFilter={statusFilter}
+                selectedOrderIds={selectedOrderIds}
+                loading={loading || clustering}
+                onSearchChange={setOrderSearch}
+                onZoneChange={setZoneFilter}
+                onStatusChange={setStatusFilter}
+                onToggleSelect={handleToggleSelectOrder}
+                onSelectAll={() => setSelectedOrderIds(new Set(displayPoolOrders.map((o) => o.id)))}
+                onClearSelection={() => setSelectedOrderIds(new Set())}
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 overflow-hidden">
+              <GroupDeliveryMetricsPanel cluster={selectedCluster} />
+              <div className="flex-1 bg-white border border-[#E0E0E0] rounded-xl p-6 shadow-sm overflow-auto text-sm text-gray-600">
+                Map view requires Google Maps API key.
+                {selectedCluster && (
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {selectedCluster.orders.map((order) => (
+                      <div key={order.id} className="p-2 border rounded bg-gray-50 text-xs">
+                        <div className="font-bold">{order.id}</div>
+                        <div className="text-gray-500 truncate">{order.customerName}</div>
                       </div>
-                      <span className="text-xs font-bold px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
-                        {cluster.orders.length} orders
-                      </span>
-                    </div>
-                    <div className="text-xs text-[#757575] space-y-1">
-                      <div className="flex items-center gap-1">
-                        <Package size={12} className="shrink-0" />
-                        <span className="truncate">{cluster.orders.map(o => String(o.id).replace('ORD-', '')).join(', ')}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <MapPin size={12} className="shrink-0" />
-                        <span className="truncate text-[10px]">
-                          {typeof (cluster.orders[0] as any)?.dropLocation === 'string'
-                            ? (cluster.orders[0] as any).dropLocation
-                            : String((cluster.orders[0] as any)?.dropLocation?.address ?? '')}
-                        </span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
-
-          <div className="flex-1 bg-white border border-[#E0E0E0] rounded-xl p-6 shadow-sm overflow-auto">
-            <div className="text-sm text-gray-600">
-              Map view is unavailable without a Google Maps API key.
-            </div>
-            {selectedCluster && (
-              <div className="mt-4">
-                <div className="font-bold text-[#212121] mb-2">
-                  Selected group: {selectedCluster.id.startsWith('draft') ? 'Draft' : `#${selectedCluster.id.slice(-4).toUpperCase()}`}
-                </div>
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                  {selectedCluster.orders.map((order) => (
-                    <div key={order.id} className="p-3 border border-gray-100 rounded bg-gray-50">
-                      <div className="font-bold text-xs">{order.id}</div>
-                      <div className="text-[11px] text-gray-600 truncate">{order.customerName}</div>
-                      <div className="text-[10px] text-gray-400 truncate">{order.dropLocation}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        </DndProvider>
       </div>
     );
   }
 
-  if (!isLoaded) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-        <RefreshCw className="animate-spin text-[#F97316]" size={48} />
-      </div>
-    );
-  }
-
-  const mapCenter = selectedCluster?.center || (clusters.length > 0 ? clusters[0].center : defaultCenter);
+  const mapCenter =
+    selectedCluster?.center ||
+    (filteredClusters.length > 0 ? filteredClusters[0].center : defaultCenter);
 
   const getJitteredCoords = (lat: number, lng: number, index: number, total: number) => {
     if (total <= 1) return { lat, lng };
@@ -613,7 +832,7 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
             )}
             <button
               onClick={saveAllClusters}
-              disabled={loading || saving || !clusters.some(c => !c.isSaved)}
+              disabled={loading || saving || clustering || !clusters.some((c) => !c.isSaved)}
               className="px-4 py-2 bg-[#F97316] text-white font-medium rounded-lg hover:bg-[#EA580C] disabled:opacity-50 flex items-center gap-2"
             >
               <Save size={16} />
@@ -621,10 +840,10 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
             </button>
             <button
               onClick={fetchData}
-              disabled={loading}
+              disabled={loading || clustering}
               className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2"
             >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={16} className={loading || clustering ? 'animate-spin' : ''} />
               Refresh
             </button>
           </div>
@@ -638,258 +857,301 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
         </div>
       )}
 
-      <div className="flex-1 flex gap-6 overflow-hidden">
-        {/* Left: Cluster List */}
-        <div className="w-1/3 flex flex-col gap-4 overflow-hidden">
-          <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm flex flex-col overflow-hidden h-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-[#212121] flex items-center gap-2">
-                <Layers size={18} className="text-[#F97316]" />
-                Groups ({clusters.length})
-              </h3>
-              <div className="flex items-center gap-2">
-                <select 
-                  className="text-xs border border-[#E0E0E0] rounded p-1"
-                  value={distanceThreshold}
-                  onChange={(e) => setDistanceThreshold(Number(e.target.value))}
+      <DndProvider backend={HTML5Backend}>
+        <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
+          <div className="w-[24%] min-w-[200px] flex flex-col min-h-0">
+            <GroupDeliveryClusterColumn
+              clusters={filteredClusters}
+              selectedClusterId={selectedCluster?.id ?? null}
+              distanceThreshold={distanceThreshold}
+              clustering={clustering}
+              loading={loading}
+              onSelectCluster={(c) => {
+                setSelectedCluster(c);
+                setSelectedOrder(null);
+              }}
+              onDeleteCluster={deleteCluster}
+              onDistanceChange={setDistanceThreshold}
+              onDropOrders={(ids, target) => void handleDropOrders(ids, target)}
+            />
+          </div>
+          <div className="w-[24%] min-w-[200px] flex flex-col min-h-0">
+            <GroupDeliveryOrdersColumn
+              orders={displayPoolOrders}
+              filterOptions={filterOptions}
+              search={orderSearch}
+              zoneFilter={zoneFilter}
+              statusFilter={statusFilter}
+              selectedOrderIds={selectedOrderIds}
+              loading={loading || clustering}
+              onSearchChange={setOrderSearch}
+              onZoneChange={setZoneFilter}
+              onStatusChange={setStatusFilter}
+              onToggleSelect={handleToggleSelectOrder}
+              onSelectAll={() => setSelectedOrderIds(new Set(displayPoolOrders.map((o) => o.id)))}
+              onClearSelection={() => setSelectedOrderIds(new Set())}
+            />
+          </div>
+
+        <div className="flex-1 flex flex-col gap-3 overflow-hidden min-h-0 min-w-0">
+          <GroupDeliveryMetricsPanel cluster={selectedCluster} />
+          <div
+            ref={mapWrapRef}
+            className={`flex-1 min-h-[420px] bg-[#F3F4F6] border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm relative ${
+              selectedCluster ? 'max-h-[55%]' : ''
+            }`}
+          >
+            {!hasMapsKey && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-[#616161] bg-[#F3F4F6]">
+                <MapIcon size={40} className="text-gray-400" />
+                <p>
+                  Set <span className="font-mono text-xs">VITE_GOOGLE_MAPS_API_KEY</span> to load the delivery map.
+                </p>
+              </div>
+            )}
+
+            {hasMapsKey && !isLoaded && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#F3F4F6]">
+                <RefreshCw className="animate-spin text-[#F97316]" size={32} />
+              </div>
+            )}
+
+            {loading && hasMapsKey && isLoaded && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/40 pointer-events-none">
+                <span className="text-sm text-gray-600 font-medium">Updating map…</span>
+              </div>
+            )}
+
+            {hasMapsKey && isLoaded && (
+              <div className="absolute inset-0">
+                <GoogleMap
+                  mapContainerStyle={containerStyle}
+                  center={mapCenter}
+                  zoom={12}
+                  onLoad={onMapLoad}
+                  onUnmount={() => {
+                    mapRef.current = null;
+                  }}
+                  options={{
+                    mapTypeControl: false,
+                    streetViewControl: false,
+                    fullscreenControl: true,
+                    styles: [{ featureType: 'poi', stylers: [{ visibility: 'off' }] }],
+                  }}
                 >
-                  <option value={0.1}>0.1 km</option>
-                  <option value={0.5}>0.5 km</option>
-                  <option value={1}>1 km</option>
-                  <option value={2}>2 km</option>
-                  <option value={5}>5 km</option>
-                </select>
+                  {filteredClusters.map((cluster) => (
+                    <React.Fragment key={cluster.id}>
+                      {cluster.orders
+                        .filter((o) => !!o.coordinates)
+                        .map((order, idx, arr) => {
+                          const jittered = getJitteredCoords(
+                            order.coordinates!.lat,
+                            order.coordinates!.lng,
+                            idx,
+                            arr.length
+                          );
+                          return (
+                            <Marker
+                              key={`${cluster.id}-${order.id}`}
+                              position={jittered}
+                              icon={circleIcon(
+                                cluster.color,
+                                selectedCluster?.id === cluster.id ? 9 : 6
+                              )}
+                              onClick={() => {
+                                setSelectedOrder(order);
+                                setSelectedCluster(cluster);
+                              }}
+                            />
+                          );
+                        })}
+                      {selectedCluster?.id === cluster.id && (
+                        <Polyline
+                          path={cluster.orders
+                            .filter((o) => !!o.coordinates)
+                            .map((o) => ({
+                              lat: o.coordinates!.lat,
+                              lng: o.coordinates!.lng,
+                            }))}
+                          options={{
+                            strokeColor: cluster.color,
+                            strokeOpacity: 0.6,
+                            strokeWeight: 3,
+                            geodesic: true,
+                          }}
+                        />
+                      )}
+                    </React.Fragment>
+                  ))}
+
+                  {!selectedCluster &&
+                    unclusteredOrders
+                      .filter((o) => o.coordinates)
+                      .map((order) => (
+                        <Marker
+                          key={`unclustered-${order.id}`}
+                          position={order.coordinates!}
+                          icon={circleIcon('#9CA3AF', 5)}
+                          onClick={() => setSelectedOrder(order)}
+                        />
+                      ))}
+
+                  {selectedOrder?.coordinates && (
+                    <InfoWindow
+                      position={selectedOrder.coordinates}
+                      onCloseClick={() => setSelectedOrder(null)}
+                    >
+                      <div className="p-2 min-w-[180px]">
+                        <div className="font-bold text-sm mb-1">{selectedOrder.id}</div>
+                        <div className="text-xs text-gray-600 mb-2">{selectedOrder.customerName}</div>
+                        <div className="text-[10px] text-gray-500 mb-2 leading-tight">
+                          {selectedOrder.dropLocation}
+                        </div>
+                        <div className="text-[10px] font-bold text-orange-600 uppercase">
+                          {selectedOrder.status}
+                        </div>
+                      </div>
+                    </InfoWindow>
+                  )}
+                </GoogleMap>
+              </div>
+            )}
+
+            <div className="absolute top-3 left-3 z-10 pointer-events-none">
+              <div className="bg-white/95 backdrop-blur-sm rounded-lg border border-[#E0E0E0] shadow-sm px-3 py-2 text-xs text-[#616161]">
+                <div className="font-semibold text-[#212121] mb-1">Map legend</div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#F97316]" />
+                  Grouped drops
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#9CA3AF]" />
+                  Unclustered
+                </div>
+                <div className="mt-1 text-[10px] text-[#757575]">
+                  {filteredClusters.length} groups · {unclusteredOrders.length} unclustered
+                </div>
               </div>
             </div>
 
-            <div className="space-y-3 overflow-y-auto pr-2 flex-1">
-              {clusters.map((cluster) => (
-                <div
-                  key={cluster.id}
-                  onClick={() => {
-                    setSelectedCluster(cluster);
-                    setSelectedOrder(null);
-                  }}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedCluster?.id === cluster.id
-                      ? 'border-[#F97316] bg-[#FFF7ED]'
-                      : 'border-[#E0E0E0] hover:border-[#F97316]'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: cluster.color }}
-                      />
-                      <span className="font-bold text-sm">
-                        Group {cluster.id.startsWith('draft') ? '(Draft)' : `#${cluster.id.slice(-4).toUpperCase()}`}
-                      </span>
-                      {cluster.isSaved && (
-                        <CheckCircle2 size={14} className="text-green-500" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
-                        {cluster.orders.length} orders
-                      </span>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteCluster(cluster);
-                        }}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="text-xs text-[#757575] space-y-1">
-                    <div className="flex items-center gap-1">
-                      <Package size={12} className="shrink-0" />
-                      <span className="truncate">{cluster.orders.map(o => o.id.replace('ORD-', '')).join(', ')}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <MapPin size={12} className="shrink-0" />
-                      <span className="truncate text-[10px]">{cluster.orders[0].dropLocation}</span>
-                    </div>
-                  </div>
+            {hasMapsKey && isLoaded && (
+              <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
+                <div className="bg-white/95 backdrop-blur-sm p-1 rounded-lg border border-[#E0E0E0] shadow-sm flex flex-col">
+                  <button
+                    type="button"
+                    className="p-2 hover:bg-gray-100 rounded text-gray-600"
+                    onClick={handleZoomIn}
+                    title="Zoom in"
+                  >
+                    <Plus size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    className="p-2 hover:bg-gray-100 rounded text-gray-600"
+                    onClick={handleZoomOut}
+                    title="Zoom out"
+                  >
+                    <Minus size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    className="p-2 hover:bg-gray-100 rounded text-gray-600 text-[10px] font-bold"
+                    onClick={fitMapToData}
+                    title="Fit all markers"
+                  >
+                    FIT
+                  </button>
                 </div>
-              ))}
-              
-              {unclusteredOrders.length > 0 && (
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <Info size={12} />
-                    Unclustered Orders ({unclusteredOrders.length})
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {unclusteredOrders.slice(0, 20).map(order => (
-                      <div key={order.id} className="p-2 border border-gray-50 rounded bg-gray-50 text-[10px] text-gray-500 truncate">
-                        {order.id}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Map & Detail Overlay */}
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
-          <div className="flex-1 bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm relative min-h-0">
-            <GoogleMap
-              mapContainerStyle={containerStyle}
-              center={mapCenter}
-              zoom={14}
-              onLoad={(map) => setMapInstance(map)}
-              onUnmount={() => setMapInstance(null)}
-              options={{
-                disableDefaultUI: false,
-                styles: [{ featureType: 'poi', stylers: [{ visibility: 'off' }] }],
-              }}
-            >
-              {clusters.map((cluster) => (
-                <React.Fragment key={cluster.id}>
-                  {cluster.orders.filter(o => !!o.coordinates).map((order, idx, arr) => {
-                    const jittered = getJitteredCoords(
-                      order.coordinates!.lat,
-                      order.coordinates!.lng,
-                      idx,
-                      arr.length
-                    );
-                    return (
-                      <Marker
-                        key={`${cluster.id}-${order.id}`}
-                        position={jittered}
-                        icon={
-                          (globalThis as any)?.google?.maps?.SymbolPath?.CIRCLE
-                            ? {
-                                path: (globalThis as any).google.maps.SymbolPath.CIRCLE,
-                                scale: selectedCluster?.id === cluster.id ? 9 : 6,
-                                fillColor: cluster.color,
-                                fillOpacity: 1,
-                                strokeColor: '#FFFFFF',
-                                strokeWeight: 2,
-                              }
-                            : undefined
-                        }
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setSelectedCluster(cluster);
-                        }}
-                      />
-                    );
-                  })}
-                  {selectedCluster?.id === cluster.id && (
-                    <Polyline
-                      path={cluster.orders.filter(o => !!o.coordinates).map(o => ({ lat: o.coordinates!.lat, lng: o.coordinates!.lng }))}
-                      options={{
-                        strokeColor: cluster.color,
-                        strokeOpacity: 0.5,
-                        strokeWeight: 2,
-                        geodesic: true,
-                      }}
-                    />
-                  )}
-                </React.Fragment>
-              ))}
-
-              {selectedOrder?.coordinates && (
-                <InfoWindow
-                  position={selectedOrder.coordinates}
-                  onCloseClick={() => setSelectedOrder(null)}
-                >
-                  <div className="p-2 min-w-[180px]">
-                    <div className="font-bold text-sm mb-1">{selectedOrder.id}</div>
-                    <div className="text-xs text-gray-600 mb-2">{selectedOrder.customerName}</div>
-                    <div className="text-[10px] text-gray-500 mb-2 leading-tight">{selectedOrder.dropLocation}</div>
-                    <div className="text-[10px] font-bold text-orange-600 uppercase">{selectedOrder.status}</div>
-                  </div>
-                </InfoWindow>
-              )}
-            </GoogleMap>
+              </div>
+            )}
           </div>
 
           {selectedCluster && (
-            <div className="h-1/2 bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
-              <div className="flex justify-between items-center mb-4">
+            <div className="shrink-0 min-h-[220px] max-h-[min(42vh,380px)] bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm flex flex-col overflow-hidden">
+              <div className="flex justify-between items-center mb-3 shrink-0">
                 <h4 className="font-bold text-sm flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedCluster.color }} />
-                  Group Details - {selectedCluster.id.startsWith('draft') ? 'Draft' : `#${selectedCluster.id.slice(-4).toUpperCase()}`} ({selectedCluster.orders.length} Orders)
+                  Group Details —{' '}
+                  {selectedCluster.id.startsWith('draft')
+                    ? 'Draft'
+                    : `#${(selectedCluster.clusterId || selectedCluster.id).slice(-4).toUpperCase()}`}{' '}
+                  ({selectedCluster.orders.length} orders)
                 </h4>
-                <button onClick={() => { setSelectedCluster(null); setShowRiderSelector(false); }} className="text-gray-400 hover:text-gray-600">Close</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCluster(null);
+                    setAssignModalOpen(false);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-sm"
+                >
+                  Close
+                </button>
               </div>
-              
-              {!showRiderSelector ? (
-                <>
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto pr-2 pb-2 flex-1">
-                    {selectedCluster.orders.map((order) => (
-                      <div 
-                        key={order.id}
-                        onClick={() => setSelectedOrder(order)}
-                        className={`p-2.5 border rounded transition-all cursor-pointer ${
-                          selectedOrder?.id === order.id ? 'border-[#F97316] bg-orange-50' : 'border-gray-100 bg-gray-50 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-bold text-[11px] mb-1">{order.id}</div>
-                        <div className="text-[10px] text-gray-600 font-medium truncate">{order.customerName}</div>
-                        <div className="text-[9px] text-gray-400 truncate">{order.dropLocation}</div>
-                      </div>
-                    ))}
+
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto pr-2 pb-2 flex-1 min-h-0">
+                {selectedCluster.orders.map((order) => (
+                  <div
+                    key={order.id}
+                    onClick={() => setSelectedOrder(order)}
+                    className={`p-2.5 border rounded transition-all cursor-pointer ${
+                      selectedOrder?.id === order.id
+                        ? 'border-[#F97316] bg-orange-50'
+                        : 'border-gray-100 bg-gray-50 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-bold text-[11px] mb-1">{order.id}</div>
+                    <div className="text-[10px] text-gray-600 font-medium truncate">
+                      {order.customerName}
+                    </div>
+                    <div className="text-[9px] text-gray-400 truncate">{order.dropLocation}</div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end gap-3">
-                    {!selectedCluster.isSaved && (
-                      <button 
-                        onClick={() => saveAllClusters()}
-                        className="px-4 py-2 border border-[#F97316] text-[#F97316] rounded-lg text-xs font-bold hover:bg-orange-50 flex items-center gap-2"
-                      >
-                        <Save size={14} />
-                        Save Group
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => setShowRiderSelector(true)}
-                      className="px-6 py-2 bg-[#F97316] text-white rounded-lg font-bold text-xs hover:bg-[#EA580C] shadow-sm flex items-center gap-2"
-                    >
-                      <Users size={14} />
-                      Assign Group to Rider
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-500">Select Available Rider</span>
-                    <button onClick={() => setShowRiderSelector(false)} className="text-xs text-[#F97316] font-bold">Back to details</button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                    {riders.filter(r => r.status !== 'offline').map(rider => (
-                      <div 
-                        key={rider.id}
-                        onClick={() => assignClusterToRider(selectedCluster, rider.id)}
-                        className="p-3 border border-gray-100 rounded-lg hover:border-[#F97316] cursor-pointer flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-orange-100 text-[#F97316] flex items-center justify-center font-bold text-xs">
-                            {rider.avatarInitials}
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold">{rider.name}</div>
-                            <div className="text-[10px] text-gray-400">{rider.status} • {rider.capacity.currentLoad}/{rider.capacity.maxLoad} orders</div>
-                          </div>
-                        </div>
-                        <button className="text-[10px] font-bold text-[#F97316]">Select</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                ))}
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+                {!selectedCluster.isSaved && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void saveSingleCluster(selectedCluster)}
+                    disabled={saving || clustering}
+                    className="border-[#F97316] text-[#F97316] hover:bg-orange-50"
+                  >
+                    <Save size={14} className="mr-1" />
+                    Save group
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  className="bg-[#F97316] hover:bg-[#EA580C] text-white"
+                  disabled={saving || selectedCluster.orders.length === 0}
+                  onClick={() => setAssignModalOpen(true)}
+                >
+                  <Users size={14} className="mr-1" />
+                  Assign to rider
+                </Button>
+              </div>
             </div>
           )}
+
+          <AssignGroupRiderModal
+            open={assignModalOpen && !!selectedCluster}
+            onClose={() => setAssignModalOpen(false)}
+            orderIds={selectedCluster?.orders.map((o) => o.id) ?? []}
+            groupLabel={
+              selectedCluster
+                ? selectedCluster.id.startsWith('draft')
+                  ? 'draft group'
+                  : `group ${selectedCluster.clusterId || selectedCluster.id}`
+                : 'group'
+            }
+            onConfirm={handleAssignGroupConfirm}
+            saving={saving}
+          />
         </div>
-      </div>
+        </div>
+      </DndProvider>
     </div>
   );
 }

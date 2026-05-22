@@ -45,6 +45,13 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
+function unwrapData<T>(payload: unknown): T {
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return (payload as { data: T }).data;
+  }
+  return payload as T;
+}
+
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_CONFIG.baseURL}${endpoint}`;
   const response = await fetch(url, {
@@ -65,8 +72,11 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
 
 export const fetchShiftSummary = async (date: string): Promise<ShiftSummary> => {
   const params = new URLSearchParams({ date });
-  const data = await apiRequest<ShiftSummary>(`${API_ENDPOINTS.staff.summary}?${params}`);
-  return data;
+  const raw = await apiRequest<ShiftSummary & { success?: boolean }>(
+    `${API_ENDPOINTS.staff.summary}?${params}`
+  );
+  const { success: _s, ...summary } = raw as ShiftSummary & { success?: boolean };
+  return summary;
 };
 
 export type StaffShiftListFilter = 'all' | 'checked-in' | 'absent';
@@ -79,7 +89,10 @@ export const fetchShifts = async (
   if (filter && filter !== 'all') {
     params.set('filter', filter);
   }
-  const data = await apiRequest<Shift[]>(`${API_ENDPOINTS.staff.shifts}?${params}`);
+  const raw = await apiRequest<Shift[] | { success?: boolean; data?: Shift[] }>(
+    `${API_ENDPOINTS.staff.shifts}?${params}`
+  );
+  const data = unwrapData<Shift[]>(raw);
   return Array.isArray(data) ? data : [];
 };
 

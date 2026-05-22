@@ -104,17 +104,21 @@ export function NewJournalEntryModal({ open, onClose, onSuccess, accounts }: Pro
       
       setIsSubmitting(true);
       try {
-          const result = await createJournalEntry({
+          await createJournalEntry({
               date,
               reference,
               memo,
-              lines: validLines.map(line => ({
-                accountCode: line.accountCode,
-                debit: Number(line.debit) || 0,
-                credit: Number(line.credit) || 0,
-                description: line.description || ''
-              })),
-              createdBy: "Current User"
+              lines: validLines.map(line => {
+                const acc = accounts.find((a) => a.code === line.accountCode);
+                return {
+                  accountCode: line.accountCode,
+                  accountName: acc?.name,
+                  debit: Number(line.debit) || 0,
+                  credit: Number(line.credit) || 0,
+                  description: line.description || '',
+                };
+              }),
+              createdBy: 'Finance User',
           });
           
           toast.success("Journal Entry Posted Successfully");

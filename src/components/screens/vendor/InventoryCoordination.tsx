@@ -37,7 +37,19 @@ import {
   DialogTitle,
 } from '../../ui/dialog';
 
-import * as vendorInventoryApi from '../../../api/vendor/vendorInventory.api';
+import {
+  loadVendorInventory,
+  getHubAgingAlerts,
+  loadSupplyPerformance,
+  triggerInventorySync,
+  reconcileInventory,
+  acknowledgeAlert,
+  bulkReorder,
+  alertAllVendors,
+  initiateReturn,
+  initiateLiquidation,
+  type SupplyPerformanceItem,
+} from '../../../api/vendor/vendorInventory.api';
 import { apiDownloadCsv } from '../../../api/apiClient';
 import { getVendors, getVendorSummary } from '../../../api/vendor/vendorManagement.api';
 
@@ -64,12 +76,17 @@ interface AgingAlert {
   product: string;
   batchId: string;
   vendor: string;
+  vendorId?: string;
+  inventoryItemId?: string;
   expiryDate: string;
   daysToExpiry: number;
+  agingDays?: number;
+  message?: string;
   priority: AgingPriority;
   quantity: number;
   unit: string;
   value: number;
+  source?: string;
 }
 
 interface AgingInventory {
@@ -125,6 +142,9 @@ export function InventoryCoordination() {
   const [stockouts, setStockouts] = useState<Stockout[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [hubSummary, setHubSummary] = useState<Record<string, unknown> | null>(null);
+  const [performanceItems, setPerformanceItems] = useState<SupplyPerformanceItem[]>([]);
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
+  const [performanceLoaded, setPerformanceLoaded] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   // processing states for async actions
   const [processingReorders, setProcessingReorders] = useState<string[]>([]);
@@ -132,10 +152,12 @@ export function InventoryCoordination() {
 
   // API integration/loading state
   const [vendorId, setVendorId] = useState<string | null>(null);
+  const [vendorName, setVendorName] = useState<string>('');
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingStock, setLoadingStock] = useState(false);
   const [loadingAlerts, setLoadingAlerts] = useState(false);
+  const [loadingAgingAlerts, setLoadingAgingAlerts] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -184,70 +206,28 @@ export function InventoryCoordination() {
     async function loadAll() {
       const vid = vendorId;
       if (!vid) return;
-
-      // KPIs (includes summary data)
       try {
         setLoadingSummary(true);
-        const kpisResp = await vendorInventoryApi.getKPIs(vid, {});
-        if (!mounted) return;
-        if (kpisResp.kpis && Array.isArray(kpisResp.kpis)) {
-          setKpis(kpisResp.kpis);
-        }
-      } catch (err) {
-        console.error('Failed to fetch KPIs', err);
-        toast.error('Failed to load KPIs');
-      } finally {
-        setLoadingSummary(false);
-      }
-
-      // stock list
-      try {
         setLoadingStock(true);
-        const stockResp = await vendorInventoryApi.listVendorStock(vid);
-        if (!mounted) return;
-        // API may return { total, page, size, items } or { data: [...] }
-        const items = stockResp.items || stockResp.data || stockResp;
-        setStockItems(Array.isArray(items) ? items : []);
-      } catch (err) {
-        console.error('Failed to fetch vendor stock', err);
-        toast.error('Failed to load stock items');
-      } finally {
-        setLoadingStock(false);
-      }
-
-      // aging alerts
-      try {
         setLoadingAlerts(true);
-        const alertsResp = await vendorInventoryApi.getAgingAlerts(vid);
+        const bundle = await loadVendorInventory(vid);
         if (!mounted) return;
-        const alerts = alertsResp.items || alertsResp;
-        setAgingAlerts(Array.isArray(alerts) ? alerts : (alerts.items || []));
+        setVendorName(bundle.vendorName);
+        setKpis(bundle.kpis);
+        setStockItems(bundle.stock);
+        // Hub-wide aging alerts loaded separately
+        setStockouts(bundle.stockouts);
+        setAgingInventory(bundle.agingInventory);
       } catch (err) {
-        console.error('Failed to fetch aging alerts', err);
+        console.error('Failed to load inventory', err);
+        toast.error(err instanceof Error ? err.message : 'Failed to load inventory data');
       } finally {
-        setLoadingAlerts(false);
+        if (mounted) {
+          setLoadingSummary(false);
+          setLoadingStock(false);
+          setLoadingAlerts(false);
+        }
       }
-
-      // stockouts
-      try {
-        const stockoutsResp = await vendorInventoryApi.getStockouts(vid, {});
-        if (!mounted) return;
-        const stockouts = stockoutsResp.items || stockoutsResp;
-        setStockouts(Array.isArray(stockouts) ? stockouts : (stockouts.items || []));
-      } catch (err) {
-        console.error('Failed to fetch stockouts', err);
-      }
-
-      // aging inventory
-      try {
-        const agingResp = await vendorInventoryApi.getAgingInventory(vid, { daysThreshold: 30 });
-        if (!mounted) return;
-        const aging = agingResp.items || agingResp;
-        setAgingInventory(Array.isArray(aging) ? aging : (aging.items || []));
-      } catch (err) {
-        console.error('Failed to fetch aging inventory', err);
-      }
-
     }
 
     loadAll();
@@ -255,6 +235,23 @@ export function InventoryCoordination() {
       mounted = false;
     };
   }, [vendorId, inventoryRefreshKey]);
+  const loadHubAgingAlerts = React.useCallback(async () => {
+    try {
+      setLoadingAgingAlerts(true);
+      const { items } = await getHubAgingAlerts();
+      setAgingAlerts(items);
+    } catch (err) {
+      console.error('Failed to load hub aging alerts', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to load aging alerts');
+    } finally {
+      setLoadingAgingAlerts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHubAgingAlerts();
+  }, [loadHubAgingAlerts, inventoryRefreshKey]);
+
 
   const downloadItemDetails = (item: StockItem) => {
     try {
@@ -335,7 +332,7 @@ export function InventoryCoordination() {
     (async () => {
       try {
         setSyncing(true);
-        await vendorInventoryApi.triggerInventorySync(vendorId);
+        await triggerInventorySync(vendorId);
         toast.success('Inventory sync completed');
         setInventoryRefreshKey((k) => k + 1);
       } catch (err) {
@@ -390,7 +387,7 @@ export function InventoryCoordination() {
     id: item.id,
     product: item.product,
     batchId: item.batchId,
-    vendor: 'Unknown Vendor',
+    vendor: vendorName || 'Vendor',
     expiryDate: item.expiryDate,
     daysToExpiry: item.daysToExpiry,
     priority: item.status === 'Critical' ? 'Critical' : item.status === 'Warning' ? 'High' : 'Low',
@@ -437,10 +434,10 @@ export function InventoryCoordination() {
         return;
       }
       try {
-        await vendorInventoryApi.reconcileInventory(vid, {
+        await reconcileInventory(vid, {
           items: [
             {
-              sku: String(selectedStock.batchId || selectedStock.id),
+              sku: selectedStock.sku || selectedStock.batchId,
               expectedQty: selectedStock.systemQty,
               reportedQty: Number(newPhysicalCount),
             },
@@ -471,7 +468,7 @@ export function InventoryCoordination() {
     }
     setProcessingReorders((prev) => [...prev, id]);
     try {
-      await vendorInventoryApi.bulkReorder(vendorId, { stockoutIds: [id] });
+      await bulkReorder(vendorId, { stockoutIds: [id] });
       setStockouts((prev) => prev.map((x) => (x.id === id ? { ...x, reorderInitiated: true } : x)));
       toast.success('Reorder initiated');
     } catch (err: unknown) {
@@ -490,7 +487,7 @@ export function InventoryCoordination() {
     setProcessingAlerts((prev) => [...prev, id]);
     try {
       const stock = stockouts.find((x) => x.id === id);
-      await vendorInventoryApi.alertAllVendors(vendorId, {
+      await alertAllVendors(vendorId, {
         message: stock ? `Stockout for ${stock.product}. Please replenish inventory.` : undefined,
       });
       setStockouts((prev) => prev.map((x) => (x.id === id ? { ...x, alerted: true } : x)));
@@ -514,7 +511,7 @@ export function InventoryCoordination() {
       return;
     }
     try {
-      await vendorInventoryApi.bulkReorder(vendorId, { stockoutIds: ids });
+      await bulkReorder(vendorId, { stockoutIds: ids });
       setStockouts((prev) => prev.map((x) => ({ ...x, reorderInitiated: true })));
       toast.success(`Bulk reorder started for ${ids.length} stockout items`);
     } catch (err: unknown) {
@@ -529,7 +526,7 @@ export function InventoryCoordination() {
       return;
     }
     try {
-      await vendorInventoryApi.alertAllVendors(vendorId, {
+      await alertAllVendors(vendorId, {
         message: 'Please prioritize stock replenishment for currently out-of-stock SKUs.',
       });
       setStockouts((prev) => prev.map((x) => ({ ...x, alerted: true })));
@@ -540,40 +537,102 @@ export function InventoryCoordination() {
     }
   };
 
+
+  const handleAcknowledgeAlert = async (alert: AgingAlert) => {
+    if (!vendorId) return;
+    try {
+      const ackVendorId = alert.vendorId || vendorId;
+      if (!ackVendorId) throw new Error('Missing vendor context for alert');
+      await acknowledgeAlert(ackVendorId, alert.id, { note: 'Reviewed from inventory dashboard' });
+      setAgingAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+      toast.success('Alert acknowledged');
+      loadHubAgingAlerts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to acknowledge alert');
+    }
+  };
+
   const handleAgingReturn = (item: AgingInventory) => {
     const alert = createAgingAlertFromInventory(item);
     setSelectedAlert(alert);
     setShowReturnLiquidationModal(true);
   };
 
-  const handleAgingLiquidate = (_item: AgingInventory) => {
-    toast.info('Liquidation is not available from the API yet.');
+  const handleAgingLiquidate = async (item: AgingInventory, opts?: { vendorId?: string }) => {
+    const liquidateVendorId = opts?.vendorId || vendorId;
+    if (!liquidateVendorId) {
+      toast.error('Vendor context not ready');
+      return;
+    }
+    try {
+      const result = await initiateLiquidation(liquidateVendorId, item.id, { discountPercent: 30 });
+      toast.success(
+        `Liquidation recorded (${result.liquidatedQty ?? 0} units, recovery ₹${result.recoveryValue ?? 0})`
+      );
+      setInventoryRefreshKey((k) => k + 1);
+      loadHubAgingAlerts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to liquidate');
+    }
   };
 
   // initiate return flow from modal or row
-  const handleInitiateReturn = (alertArg?: AgingAlert) => {
+  const handleInitiateReturn = async (alertArg?: AgingAlert) => {
     const alertToUse = alertArg || selectedAlert;
-    if (!alertToUse) {
-      toast.error('No alert selected for return');
+    const itemId =
+      alertToUse?.inventoryItemId ||
+      (alertToUse?.id?.startsWith('inv-') ? alertToUse.id.slice(4) : undefined) ||
+      agingInventory.find((i) => i.batchId === alertToUse?.batchId)?.id;
+    const returnVendorId = alertToUse?.vendorId || vendorId;
+    if (!returnVendorId || !itemId) {
+      toast.error('Select an inventory item to return');
       return;
     }
-    toast.info('Return initiation is not available from the API yet.');
-    setShowReturnLiquidationModal(false);
+    try {
+      const result = await initiateReturn(returnVendorId, itemId, { reason: 'Damaged Goods' });
+      toast.success(`Return initiated: ${result.reference ?? 'OK'}`);
+      setShowReturnLiquidationModal(false);
+      setShowAgingDetailModal(false);
+      setInventoryRefreshKey((k) => k + 1);
+      loadHubAgingAlerts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to initiate return');
+    }
   };
 
   // helper used by modal 'Create Liquidation' to act on selectedAlert
-  const handleCreateLiquidation = () => {
+  const handleCreateLiquidation = async () => {
     if (!selectedAlert) {
       toast.error('No item selected for liquidation');
       return;
     }
-    // find inventory item and call liquidation handler
-    const inv = agingInventory.find((a) => a.id === selectedAlert.id);
+    const itemId =
+      selectedAlert.inventoryItemId ||
+      (selectedAlert.id.startsWith('inv-') ? selectedAlert.id.slice(4) : undefined);
+    const liquidateVendorId = selectedAlert.vendorId || vendorId;
+    if (itemId && liquidateVendorId) {
+      try {
+        const result = await initiateLiquidation(liquidateVendorId, itemId, { discountPercent: 30 });
+        toast.success(
+          `Liquidation recorded (${result.liquidatedQty ?? 0} units, recovery ₹${result.recoveryValue ?? 0})`
+        );
+        setShowReturnLiquidationModal(false);
+        setShowAgingDetailModal(false);
+        setInventoryRefreshKey((k) => k + 1);
+        loadHubAgingAlerts();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to liquidate');
+      }
+      return;
+    }
+    const inv = agingInventory.find(
+      (a) => a.id === selectedAlert.id || a.batchId === selectedAlert.batchId
+    );
     if (!inv) {
       toast.error('Inventory item not found');
       return;
     }
-    handleAgingLiquidate(inv);
+    await handleAgingLiquidate(inv, { vendorId: liquidateVendorId || undefined });
     setShowReturnLiquidationModal(false);
   };
 
@@ -596,14 +655,24 @@ export function InventoryCoordination() {
         title="Inventory Coordination"
         subtitle="Stock reconciliation, aging alerts, and supply performance"
         actions={
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-md hover:bg-[#4338CA] transition-all duration-200 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Syncing...' : 'Sync Stock'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLoadPerformance}
+              disabled={loadingPerformance || !vendorId}
+              className="flex items-center gap-2 px-6 py-2.5 bg-white border border-[#E5E7EB] text-[#1F2937] font-medium rounded-md hover:bg-[#F9FAFB] transition-all duration-200 disabled:opacity-50"
+            >
+              <TrendingUp className={`w-4 h-4 ${loadingPerformance ? 'animate-pulse' : ''}`} />
+              {loadingPerformance ? 'Loading...' : 'Performance'}
+            </button>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-2 px-6 py-2.5 bg-[#4F46E5] text-white font-medium rounded-md hover:bg-[#4338CA] transition-all duration-200 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync Stock'}
+            </button>
+          </div>
         }
       />
 
@@ -611,8 +680,42 @@ export function InventoryCoordination() {
       <div className="grid grid-cols-2 gap-4">
         {/* Left: Vendor Supply Performance */}
         <div className="bg-white border border-[#E5E7EB] rounded-lg p-6">
-          <h2 className="text-lg font-bold text-[#1F2937] mb-6">Vendor Supply Performance</h2>
-          
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-[#1F2937]">Vendor Supply Performance</h2>
+            {performanceLoaded && (
+              <span className="text-xs text-[#6B7280]">
+                {performanceItems.length} metrics
+              </span>
+            )}
+          </div>
+
+          {loadingPerformance ? (
+            <div className="py-12 text-center text-sm text-[#6B7280]">Loading supply performance…</div>
+          ) : performanceLoaded && performanceItems.length > 0 ? (
+            <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
+              {['Hub', 'Inventory', 'Vendor'].map((group) => {
+                const rows = performanceItems.filter((i) => i.group === group);
+                if (!rows.length) return null;
+                return (
+                  <div key={group} className="mb-3">
+                    <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wide mb-2">{group}</p>
+                    {rows.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-[#F9FAFB] border-b border-[#F3F4F6] last:border-0"
+                      >
+                        <span className="text-sm text-[#4B5563]">{item.label}</span>
+                        <span className={`text-sm font-bold ${performanceToneClass(item.tone)}`}>
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+          <p className="text-xs text-[#9CA3AF] mb-3">Click <strong>Performance</strong> above to load hub, inventory, and vendor metrics.</p>
           <div className="space-y-4">
             {/* Full Fulfillment */}
             <div
@@ -646,7 +749,7 @@ export function InventoryCoordination() {
                 <div>
                   Active vendors (hub):{' '}
                   <span className="font-bold text-[#1F2937]">
-                    {hubSummary?.totalVendors != null ? String(hubSummary.totalVendors) : '—'}
+                    {hubSummary?.activeVendors != null ? String(hubSummary.activeVendors) : hubSummary?.totalVendors != null ? String(hubSummary.totalVendors) : '—'}
                   </span>
                 </div>
                 <div>
@@ -706,6 +809,7 @@ export function InventoryCoordination() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Right: Stock Aging Alerts */}
@@ -718,7 +822,23 @@ export function InventoryCoordination() {
           </div>
 
           <div className="space-y-0 max-h-[300px] overflow-y-auto custom-scrollbar pr-2" aria-label="stock-aging-alerts">
-            {agingAlerts.map((alert) => {
+            {loadingAgingAlerts && (
+              <p className="text-sm text-[#6B7280] py-8 text-center">Loading aging alerts…</p>
+            )}
+            {!loadingAgingAlerts && agingAlerts.length === 0 && (
+              <div className="py-8 text-center">
+                <AlertCircle className="w-10 h-10 text-[#9CA3AF] mx-auto mb-2" />
+                <p className="text-sm text-[#6B7280]">No active aging alerts for this hub</p>
+                <button
+                  type="button"
+                  onClick={() => loadHubAgingAlerts()}
+                  className="text-xs font-bold text-[#4F46E5] hover:underline mt-2"
+                >
+                  Refresh alerts
+                </button>
+              </div>
+            )}
+            {!loadingAgingAlerts && agingAlerts.map((alert) => {
               const colors = getAgingColor(alert.priority);
               return (
                 <div
@@ -737,17 +857,21 @@ export function InventoryCoordination() {
                       </p>
                       <p className="text-xs text-[#6B7280] mb-2">Vendor: {alert.vendor}</p>
                       <p className="text-xs font-bold" style={{ color: colors.text }}>
-                        Expires in {alert.daysToExpiry} day{alert.daysToExpiry !== 1 ? 's' : ''}
+                        {formatAgingAlertLine(alert)}
                       </p>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedAlert(alert);
-                          setShowReturnLiquidationModal(true);
+                          if (alert.priority === 'Critical') {
+                            setSelectedAlert(alert);
+                            setShowReturnLiquidationModal(true);
+                          } else {
+                            handleAcknowledgeAlert(alert);
+                          }
                         }}
                         className="text-xs font-bold text-[#4F46E5] hover:underline mt-1"
                       >
-                        {alert.priority === 'Critical' ? 'Return / Liquidation' : 'Monitor'}
+                        {alert.priority === 'Critical' ? 'Return / Liquidation' : 'Acknowledge'}
                       </button>
                     </div>
                     <Clock className="w-5 h-5 flex-shrink-0" style={{ color: colors.text }} />
@@ -1950,7 +2074,7 @@ export function InventoryCoordination() {
                           </div>
                         </div>
                         <p className="text-xs font-bold mt-2" style={{ color: colors.text }}>
-                          ⚠ Expires in {alert.daysToExpiry} day{alert.daysToExpiry !== 1 ? 's' : ''}
+                          ⚠ {formatAgingAlertLine(alert)}
                         </p>
                       </div>
                       <Clock className="w-5 h-5 flex-shrink-0 ml-4" style={{ color: colors.text }} />

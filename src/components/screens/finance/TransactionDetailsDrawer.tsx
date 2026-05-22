@@ -37,7 +37,10 @@ export function TransactionDetailsDrawer({
 
   return (
     <Sheet open={!!transaction} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:max-w-[420px] p-0 flex flex-col h-full gap-0 overflow-hidden">
+      <SheetContent
+        side="right"
+        className="p-0 flex flex-col h-full gap-0 overflow-hidden w-[min(100vw-1rem,28rem)] sm:w-[30vw] sm:max-w-[32rem] sm:min-w-[22rem]"
+      >
         <SheetHeader className="shrink-0 px-6 pt-6 pb-5 pr-14 border-b border-[#E0E0E0] space-y-2 text-left">
           <p className="text-xs font-semibold tracking-wider text-[#757575] uppercase">
             Transaction Details

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -9,6 +8,12 @@ import { AutoAssignRule } from "./types";
 import { updateAutoAssignRule } from "./dispatchApi";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+
+const DEFAULT_CRITERIA: AutoAssignRule["criteria"] = {
+  maxRadiusKm: 5,
+  maxOrdersPerRider: 3,
+  preferSameZone: true,
+};
 
 interface RulesConfigDrawerProps {
   isOpen: boolean;
@@ -23,21 +28,17 @@ export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: Rul
 
   useEffect(() => {
     if (rules.length > 0) {
-      setActiveRule({ ...rules[0] });
+      setActiveRule({
+        ...rules[0],
+        criteria: { ...DEFAULT_CRITERIA, ...rules[0].criteria },
+      });
     } else if (isOpen) {
       setActiveRule({
-        id: 'default',
-        name: 'Default Rule',
+        id: "default",
+        name: "Default Rule",
         isActive: false,
-        criteria: {
-          maxRadiusKm: 5,
-          maxOrdersPerRider: 3,
-          preferSameZone: true,
-          priorityWeight: 5,
-          distanceWeight: 5,
-          etaWeight: 5,
-        },
-        createdBy: 'system',
+        criteria: { ...DEFAULT_CRITERIA },
+        createdBy: "system",
         updatedAt: new Date().toISOString(),
       });
     }
@@ -51,21 +52,21 @@ export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: Rul
       toast.success("Auto-assign rules updated");
       onRulesUpdate();
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update rules");
     } finally {
       setLoading(false);
     }
   };
 
-  const updateCriteria = (key: keyof AutoAssignRule['criteria'], value: any) => {
+  const updateCriteria = (key: keyof AutoAssignRule["criteria"], value: number | boolean) => {
     if (activeRule) {
       setActiveRule({
         ...activeRule,
         criteria: {
           ...activeRule.criteria,
-          [key]: value
-        }
+          [key]: value,
+        },
       });
     }
   };
@@ -74,43 +75,41 @@ export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: Rul
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Auto-Assign Configuration</SheetTitle>
-          <SheetDescription>
-            Configure the logic used by the auto-assignment engine to distribute orders.
+      <SheetContent className="w-[400px] sm:w-[520px] p-0 flex flex-col h-full gap-0 overflow-hidden">
+        <SheetHeader className="shrink-0 px-6 pt-6 pb-4 pr-14 border-b border-[#E0E0E0] space-y-1.5 text-left">
+          <SheetTitle className="text-lg text-[#212121]">Auto-Assign Configuration</SheetTitle>
+          <SheetDescription className="text-sm text-[#757575] leading-relaxed">
+            Configure constraints used by auto-assign and rider recommendations in Dispatch Operations.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="py-6 space-y-8">
-          {/* Main Toggle */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-8">
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
             <div className="space-y-0.5">
               <Label className="text-base">Rule Active</Label>
-              <p className="text-xs text-gray-500">Enable this rule set for auto-assignment</p>
+              <p className="text-xs text-gray-500">When on, pending orders are auto-assigned on a schedule</p>
             </div>
-            <Switch 
+            <Switch
               checked={activeRule.isActive}
-              onCheckedChange={(c) => setActiveRule({...activeRule, isActive: c})}
+              onCheckedChange={(c) => setActiveRule({ ...activeRule, isActive: c })}
             />
           </div>
 
-          {/* Hard Constraints */}
           <div className="space-y-4">
-            <h4 className="font-medium text-sm text-gray-900 border-b pb-2">Constraints</h4>
-            
+            <h4 className="font-medium text-sm text-gray-900 border-b border-[#E0E0E0] pb-2">Constraints</h4>
+
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label>Max Radius (km)</Label>
                 <span className="text-sm font-medium">{activeRule.criteria.maxRadiusKm} km</span>
               </div>
-              <Slider 
-                value={[activeRule.criteria.maxRadiusKm]} 
-                max={20} 
-                step={0.5} 
-                onValueChange={([v]) => updateCriteria('maxRadiusKm', v)}
+              <Slider
+                value={[activeRule.criteria.maxRadiusKm]}
+                max={20}
+                step={0.5}
+                onValueChange={([v]) => updateCriteria("maxRadiusKm", v)}
               />
-              <p className="text-xs text-gray-500">Maximum distance a rider can be from pickup.</p>
+              <p className="text-xs text-gray-500">Riders farther than this from pickup are excluded.</p>
             </div>
 
             <div className="space-y-2">
@@ -118,78 +117,36 @@ export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: Rul
                 <Label>Max Orders Per Rider</Label>
                 <span className="text-sm font-medium">{activeRule.criteria.maxOrdersPerRider}</span>
               </div>
-              <Slider 
-                value={[activeRule.criteria.maxOrdersPerRider]} 
-                max={10} 
-                step={1} 
-                onValueChange={([v]) => updateCriteria('maxOrdersPerRider', v)}
+              <Slider
+                value={[activeRule.criteria.maxOrdersPerRider]}
+                max={10}
+                step={1}
+                onValueChange={([v]) => updateCriteria("maxOrdersPerRider", v)}
               />
+              <p className="text-xs text-gray-500">Cap on concurrent assignments per rider during auto-assign.</p>
             </div>
 
             <div className="flex items-center justify-between">
-               <Label>Prefer Same Zone</Label>
-               <Switch 
-                 checked={activeRule.criteria.preferSameZone} 
-                 onCheckedChange={(c) => updateCriteria('preferSameZone', c)}
-               />
-            </div>
-          </div>
-
-          {/* Scoring Weights */}
-          <div className="space-y-4">
-            <h4 className="font-medium text-sm text-gray-900 border-b pb-2">Scoring Weights (0-10)</h4>
-            
-            <div className="space-y-3">
-              <div className="space-y-1">
-                 <div className="flex justify-between">
-                   <Label>Distance Weight</Label>
-                   <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">{activeRule.criteria.distanceWeight}</span>
-                 </div>
-                 <Slider 
-                   value={[activeRule.criteria.distanceWeight]} 
-                   max={10} 
-                   step={1}
-                   onValueChange={([v]) => updateCriteria('distanceWeight', v)}
-                 />
-                 <p className="text-[10px] text-gray-500">Higher weight prioritizes closest riders.</p>
+              <div>
+                <Label>Prefer Same Zone</Label>
+                <p className="text-xs text-gray-500 mt-0.5">Only match riders in the order zone when set</p>
               </div>
-
-              <div className="space-y-1">
-                 <div className="flex justify-between">
-                   <Label>ETA Weight</Label>
-                   <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">{activeRule.criteria.etaWeight}</span>
-                 </div>
-                 <Slider 
-                   value={[activeRule.criteria.etaWeight]} 
-                   max={10} 
-                   step={1}
-                   onValueChange={([v]) => updateCriteria('etaWeight', v)}
-                 />
-                 <p className="text-[10px] text-gray-500">Prioritizes riders who can arrive soonest.</p>
-              </div>
-
-              <div className="space-y-1">
-                 <div className="flex justify-between">
-                   <Label>Priority Weight</Label>
-                   <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">{activeRule.criteria.priorityWeight}</span>
-                 </div>
-                 <Slider 
-                   value={[activeRule.criteria.priorityWeight]} 
-                   max={10} 
-                   step={1}
-                   onValueChange={([v]) => updateCriteria('priorityWeight', v)}
-                 />
-                 <p className="text-[10px] text-gray-500">Ensures high priority orders get best riders.</p>
-              </div>
+              <Switch
+                checked={activeRule.criteria.preferSameZone}
+                onCheckedChange={(c) => updateCriteria("preferSameZone", c)}
+              />
             </div>
           </div>
         </div>
 
-        <SheetFooter>
-           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-           <Button onClick={handleSave} className="bg-[#F97316] hover:bg-[#EA580C]" disabled={loading}>
-             {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : "Save Configuration"}
-           </Button>
+        <SheetFooter className="shrink-0 flex-row gap-2 border-t border-[#E0E0E0] px-6 py-4">
+          <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} className="flex-1 bg-[#F97316] hover:bg-[#EA580C]" disabled={loading}>
+            {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : null}
+            Save Configuration
+          </Button>
         </SheetFooter>
       </SheetContent>
     </Sheet>

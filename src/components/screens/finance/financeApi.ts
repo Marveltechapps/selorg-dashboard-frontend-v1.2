@@ -75,6 +75,12 @@ async function getApiErrorMessage(response: Response, fallback: string): Promise
   return fallback;
 }
 
+/** Local calendar day as ISO (avoids UTC midnight shifting "today" for finance APIs). */
+export function localFinanceDayIso(d: Date = new Date()): string {
+  const noon = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+  return noon.toISOString();
+}
+
 function resolveFinanceEntityId(explicit?: string): string {
   if (explicit && explicit.trim()) return explicit.trim();
   const activeStoreId = getActiveStoreId();
@@ -240,16 +246,20 @@ export const exportFinanceReport = async (payload: {
   }
 
   const contentType = response.headers.get('Content-Type') ?? '';
-  const isFile = contentType.includes('application/octet-stream') ||
+  const isFile =
+    contentType.includes('application/octet-stream') ||
     contentType.includes('text/csv') ||
     contentType.includes('text/html') ||
-    contentType.includes('application/pdf');
+    contentType.includes('application/pdf') ||
+    contentType.includes('application/vnd');
 
   if (isFile) {
     const blob = await response.blob();
     const cd = response.headers.get('Content-Disposition');
     const match = cd?.match(/filename="?([^";\n]+)"?/);
-    const filename = match?.[1] ?? `finance-report-${new Date().toISOString().split('T')[0]}.${resolvedFormat}`;
+    const ext =
+      resolvedFormat === 'pdf' && contentType.includes('text/html') ? 'html' : resolvedFormat === 'xlsx' ? 'csv' : resolvedFormat;
+    const filename = match?.[1] ?? `finance-report-${new Date().toISOString().split('T')[0]}.${ext}`;
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

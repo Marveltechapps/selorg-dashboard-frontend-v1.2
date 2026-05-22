@@ -65,7 +65,7 @@ export function LedgerEntryDrawer({ entry, open, onClose }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[600px] p-0 flex flex-col h-full bg-white">
+      <SheetContent className="w-[min(100vw-1rem,28rem)] sm:w-[30vw] sm:max-w-[32rem] sm:min-w-[22rem] p-0 flex flex-col h-full bg-white">
         <div className="p-6 border-b border-gray-100 bg-[#FAFAFA]">
              <div className="flex items-center gap-2 mb-2">
                  <Badge variant="outline" className="font-mono text-xs text-gray-500 border-gray-300">
@@ -203,7 +203,7 @@ export function LedgerEntryDrawer({ entry, open, onClose }: Props) {
                          <div>
                              <h4 className="font-bold text-blue-900 text-sm">Related Bill</h4>
                              <p className="text-blue-700 text-xs mt-1">
-                                 This journal entry was automatically generated from Vendor Bill #BILL-005.
+                                 This journal entry was automatically generated from vendor bill {entry.reference}.
                              </p>
                              <Button
                                  type="button"

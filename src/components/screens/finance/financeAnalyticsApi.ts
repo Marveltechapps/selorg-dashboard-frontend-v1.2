@@ -1,5 +1,5 @@
 import { API_CONFIG, API_ENDPOINTS } from '@/config/api';
-import { getAuthToken } from '@/contexts/AuthContext';
+import { getAuthToken, getActiveStoreId } from '@/contexts/AuthContext';
 
 export type ReportType = "revenue_growth" | "cash_flow" | "expense_breakdown" | "pnl";
 export type Granularity = "month" | "quarter";
@@ -37,6 +37,7 @@ export interface AnalyticsExportRequest {
   to: string;
   format: "pdf" | "xlsx";
   details?: "summary" | "detailed";
+  entityId?: string;
 }
 
 function getAuthHeaders(): HeadersInit {
@@ -143,42 +144,73 @@ export const fetchExpenseBreakdown = async (
   return Array.isArray(data) ? data : [];
 };
 
-export const exportAnalyticsReport = async (req: AnalyticsExportRequest): Promise<void> => {
-  const response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.finance.analytics.export}`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(req),
-  });
+function formatExportError(error: unknown): string {
+  const err = error as {
+    message?: string;
+    response?: { data?: { message?: string; error?: { details?: unknown } } };
+  };
+  const data = err.response?.data;
+  return data?.message || data?.error?.message || err.message || 'Export failed';
+}
 
-  if (!response.ok) {
-    throw new Error(`Export failed: ${response.status}`);
+export const exportAnalyticsReport = async (req: AnalyticsExportRequest): Promise<void> => {
+  const payload = {
+    ...req,
+    entityId: req.entityId || getActiveStoreId() || 'default',
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_CONFIG.baseURL}${API_ENDPOINTS.finance.analytics.export}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error('Cannot reach the server. Check that the backend is running.');
   }
 
   const contentType = response.headers.get('Content-Type') ?? '';
-  const isFile = contentType.includes('application/octet-stream') ||
+
+  if (!response.ok) {
+    let message = `Export failed (${response.status})`;
+    try {
+      const json = await response.json();
+      message = json.message || json.error?.message || message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+
+  const isFile =
     contentType.includes('text/csv') ||
     contentType.includes('text/html') ||
+    contentType.includes('application/octet-stream') ||
     contentType.includes('application/pdf');
 
-  if (isFile) {
-    const blob = await response.blob();
-    const cd = response.headers.get('Content-Disposition');
-    const match = cd?.match(/filename="?([^";\n]+)"?/);
-    const filename = match?.[1] ?? `P&L_Report_${req.from}_${req.to}.${req.format}`;
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    return;
+  if (!isFile) {
+    const json = await response.json();
+    const data = json.success ? json.data : json;
+    if (data?.url) {
+      window.open(data.url, '_blank');
+      return;
+    }
+    throw new Error('Export did not return a downloadable file');
   }
 
-  const json = await response.json();
-  const data = json.success ? json.data : json;
-  if (data?.url) {
-    window.open(data.url, '_blank');
-  }
+  const blob = await response.blob();
+  const cd = response.headers.get('Content-Disposition');
+  const match = cd?.match(/filename="?([^";\n]+)"?/);
+  const defaultExt = req.format === 'pdf' ? 'html' : 'csv';
+  const filename = match?.[1] ?? `P&L_Report_${req.from}_${req.to}.${defaultExt}`;
+
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 };

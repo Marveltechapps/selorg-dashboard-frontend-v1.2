@@ -71,15 +71,55 @@ export const fetchInvoiceDetails = async (id: string): Promise<Invoice | null> =
   return response.data ?? null;
 };
 
+function formatApiValidationError(error: unknown): string {
+  const err = error as {
+    message?: string;
+    response?: {
+      data?: {
+        message?: string;
+        errors?: Array<{ path?: string; field?: string; message?: string }>;
+        error?: { message?: string; details?: Array<{ path?: string; field?: string; message?: string }> };
+      };
+    };
+  };
+  const data = err.response?.data;
+  const details = data?.errors || data?.error?.details;
+  if (Array.isArray(details) && details.length > 0) {
+    return details.map((d) => `${d.path || d.field || 'field'}: ${d.message}`).join('; ');
+  }
+  return data?.message || data?.error?.message || err.message || 'Request failed';
+}
+
 export const createInvoice = async (
   payload: CreateInvoicePayload,
   asDraft: boolean = false
 ): Promise<Invoice> => {
-  const response = await apiRequest<{ success: boolean; data: Invoice }>(`${BASE}/invoices`, {
-    method: 'POST',
-    body: JSON.stringify({ ...payload, asDraft }),
-  });
-  return response.data;
+  const body = {
+    customerName: payload.customerName.trim(),
+    customerEmail: payload.customerEmail.trim(),
+    customerId: payload.customerId,
+    issueDate: payload.issueDate,
+    dueDate: payload.dueDate,
+    notes: payload.notes?.trim() || undefined,
+    currency: 'INR',
+    asDraft,
+    items: payload.items.map((item) => ({
+      description: item.description.trim(),
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxPercent: Number(item.taxPercent ?? 0),
+    })),
+  };
+
+  try {
+    const response = await apiRequest<{ success: boolean; data: Invoice }>(`${BASE}/invoices`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(formatApiValidationError(error));
+  }
 };
 
 export const updateInvoiceStatus = async (id: string, status: InvoiceStatus): Promise<void> => {

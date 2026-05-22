@@ -58,20 +58,20 @@ export function OrderDetailsDrawer({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto p-6 pt-5">
-        <SheetHeader className="space-y-2">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-xl">Order #{order.id}</SheetTitle>
-            <Badge variant="outline" className="text-sm">
+      <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col h-full gap-0 overflow-hidden">
+        <SheetHeader className="shrink-0 px-6 pt-6 pb-4 pr-14 border-b border-[#E0E0E0] space-y-1.5 text-left">
+          <div className="flex items-center justify-between gap-2 pr-2">
+            <SheetTitle className="text-xl text-[#212121]">Order #{order.id}</SheetTitle>
+            <Badge variant="outline" className="text-sm shrink-0">
                 {order.status.replace('_', ' ').toUpperCase()}
             </Badge>
           </div>
-          <SheetDescription>
+          <SheetDescription className="text-sm text-[#757575]">
             Created on {new Date().toLocaleDateString()}
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-4 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
           {/* Status & ETA */}
           <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 p-4 rounded-lg">

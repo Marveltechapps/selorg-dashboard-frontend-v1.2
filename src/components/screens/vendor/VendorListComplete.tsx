@@ -4,21 +4,21 @@ import {
   Search, Download, Upload, X, 
   MoreVertical, Eye, Edit, FileText, MessageSquare,
   BarChart3, Pause, PlayCircle, XCircle, Trash2, CheckCircle,
-  AlertTriangle, MapPin, Send, Loader2, ChevronRight
+  AlertTriangle, MapPin, Send, Loader2
 } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 import { VendorProfile } from './VendorProfile';
 import {
   AddVendorModal,
-  VENDOR_PAYMENT_TERMS,
-  type VendorCreatePayload,
   type VendorWizardFormData,
   type VendorWizardSubmitPayload,
 } from './AddVendorModal';
+import { AddVendorSimpleModal } from './AddVendorSimpleModal';
 import { PerformanceReportModal } from './PerformanceReportModal';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 import { TableSkeleton } from '../../ui/ux-components';
+import { PageHeader } from '../../ui/page-header';
 interface Vendor {
   id: string;
   code: string;
@@ -279,20 +279,14 @@ function flatRowToCreatePayload(row: FlatVendorCsvRow): VendorCreatePayload | { 
 type VendorActionMenuState = { vendorId: string } & VendorActionMenuPosition;
 
 type VendorListProps = {
-  /** Navigate vendor app tabs (e.g. breadcrumb → Vendor Overview). */
+  /** Navigate vendor app tabs (e.g. sidebar / breadcrumb). */
   onNavigateTab?: (tab: string) => void;
+  /** Third breadcrumb segment when viewing inline vendor details. */
+  onBreadcrumbExtraChange?: (label: string | undefined) => void;
 };
 
-function VendorListBreadcrumbSeparator() {
-  return (
-    <li aria-hidden className="flex items-center text-[#D1D5DB]">
-      <ChevronRight className="h-4 w-4 shrink-0" />
-    </li>
-  );
-}
-
 export function VendorList(props: VendorListProps = {}) {
-  const { onNavigateTab } = props;
+  const { onNavigateTab, onBreadcrumbExtraChange } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const actionMenuAnchorRef = useRef<HTMLElement | null>(null);
   const actionMenuPanelRef = useRef<HTMLDivElement | null>(null);
@@ -391,16 +385,20 @@ export function VendorList(props: VendorListProps = {}) {
 
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
 
-  const goToVendorOverview = useCallback(() => {
-    setIsViewDetailsOpen(false);
-    setSelectedVendor(null);
-    onNavigateTab?.('overview');
-  }, [onNavigateTab]);
-
   const goToVendorListRoot = useCallback(() => {
     setIsViewDetailsOpen(false);
     setSelectedVendor(null);
   }, []);
+
+  useEffect(() => {
+    if (!onBreadcrumbExtraChange) return;
+    if (isViewDetailsOpen && selectedVendor?.name) {
+      onBreadcrumbExtraChange(selectedVendor.name);
+    } else {
+      onBreadcrumbExtraChange(undefined);
+    }
+    return () => onBreadcrumbExtraChange(undefined);
+  }, [isViewDetailsOpen, selectedVendor, onBreadcrumbExtraChange]);
 
   const [documentTab, setDocumentTab] = useState<'verified' | 'pending' | 'rejected' | 'upload'>('verified');
   
@@ -1090,153 +1088,6 @@ export function VendorList(props: VendorListProps = {}) {
     }
   };
 
-  // Handler for AddVendorModal (submits to real POST /vendor/vendors)
-  const handleAddVendorSubmit = async (submitPayload: VendorWizardSubmitPayload) => {
-    try {
-      setIsLoading(true);
-      const formData = submitPayload.formData;
-      const isDraft = submitPayload.status === 'draft';
-      const generateUniqueCode = () => {
-        const timestamp = Date.now().toString(36).toUpperCase();
-        const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-        return `VND-${timestamp}-${random}`;
-      };
-      const vendorCode = submitPayload.vendorId ? submitPayload.vendorCode : generateUniqueCode();
-
-      const rawPayment = (formData.paymentTermsPreferred || formData.paymentTermsBank || '').trim();
-      const paymentTermsTopLevel =
-        rawPayment === 'net30' || rawPayment === 'Net 30'
-          ? '30 days'
-          : rawPayment === 'net15'
-            ? '15 days'
-            : rawPayment === 'net45'
-              ? '45 days'
-              : rawPayment === 'net7'
-                ? '7 days'
-                : rawPayment === 'advance'
-                  ? 'advance'
-                  : rawPayment === 'cod'
-                    ? 'cod'
-                    : rawPayment || '30 days';
-
-      const payload: Record<string, unknown> = {
-        vendorName: formData.vendorName,
-        name: formData.vendorName,
-        vendorCode,
-        code: vendorCode,
-        status: isDraft ? 'draft' : 'pending',
-        contact: {
-          name: formData.contactPerson || formData.vendorName,
-          email: formData.email || '',
-          phone: formData.phonePrimary || '',
-        },
-        address: {
-          line1: formData.addressLine1 || 'Not provided',
-          line2: '',
-          line3: null,
-          city: formData.city || 'Not provided',
-          state: formData.state || 'Tamil Nadu',
-          country: 'India',
-          pincode: formData.postalCode || '000000',
-          zipCode: formData.postalCode || '000000',
-        },
-        taxInfo: {
-          gstin: formData.gstNumber || 'PENDING',
-          pan: formData.panNumber || '',
-        },
-        paymentTerms: paymentTermsTopLevel,
-        currencyCode: 'INR',
-        metadata: {
-          category: Array.isArray(formData.selectedCategories)
-            ? formData.selectedCategories[0]
-            : 'General',
-          vendorType: formData.vendorType || 'Third-party',
-          gstNumber: formData.gstNumber || '',
-          panNumber: formData.panNumber || '',
-          bankAccount: formData.accountNo || '',
-          bankName: formData.bankName || '',
-          ifscCode: formData.ifscCode || '',
-          accountHolder: formData.accountHolder || '',
-          accountType: formData.accountType || 'Current',
-          tier: formData.tier || '',
-          description: formData.description || '',
-          registrationNumber: formData.registrationNumber,
-          onboardingSource: formData.onboardingSource || 'direct',
-          serviceableZones: formData.serviceableZones || [],
-          paymentTerms: rawPayment || 'net30',
-          creditLimit: Number(formData.creditLimit) || 0,
-          leadTimeDays: Number(formData.leadTimeDays) || 2,
-          minimumOrderValue: Number(formData.minimumOrderValue) || 0,
-          deliveryWindows: formData.deliveryWindows || [],
-          slaTargetPercent: Number(formData.slaTargetPercent) || 90,
-          substitutionPolicy: formData.substitutionPolicy || 'case_by_case',
-          returnPolicy: formData.returnPolicy || 'partial',
-          specialInstructions: formData.specialInstructions || '',
-          categoryLimits: formData.categoryLimits.map((cl) => ({
-            ...cl,
-            minQty: Number(cl.minQty),
-            maxQty: Number(cl.maxQty),
-            leadTimeDays: cl.leadTimeDays != null ? Number(cl.leadTimeDays) : undefined,
-          })),
-          selectedCategories: formData.selectedCategories || [],
-          productType: formData.productType,
-          minQtyPerDay: formData.minQtyPerDay !== '' ? Number(formData.minQtyPerDay) : undefined,
-          maxQtyPerDay: formData.maxQtyPerDay !== '' ? Number(formData.maxQtyPerDay) : undefined,
-          qtyUnit: formData.qtyUnit,
-          paymentTermsBank: formData.paymentTermsBank,
-          paymentTermsPreferred: formData.paymentTermsPreferred,
-          documents: formData.documents || {},
-        },
-      };
-
-      let result;
-      if (submitPayload.vendorId) {
-        result = await vendorApi.updateVendor(String(submitPayload.vendorId), payload);
-      } else {
-        try {
-          result = await vendorApi.createVendor(payload);
-        } catch (createError: any) {
-          // Log full details to diagnose live backend validation mismatches.
-          console.error('=== CREATE VENDOR FAILED ===');
-          console.error('Payload sent:', JSON.stringify(payload, null, 2));
-          console.error('Error message:', createError.message);
-          console.error('Full error:', createError);
-          console.error('============================');
-          throw createError;
-        }
-      }
-
-      await loadVendors();
-
-      const vendorIdFromResult =
-        result && typeof result === 'object' ? ((result as any)._id ?? (result as any).id) : undefined;
-
-      return {
-        vendorId: vendorIdFromResult ? String(vendorIdFromResult) : submitPayload.vendorId ? String(submitPayload.vendorId) : undefined,
-      };
-    } catch (error: any) {
-      console.error('Failed to create vendor:', error);
-      const msg = error?.message || '';
-      if (
-        msg.includes('already exists') ||
-        error?.status === 409 ||
-        msg.includes('409') ||
-        msg.includes('duplicate')
-      ) {
-        sonnerToast.error(
-          `A vendor with this email already exists. ` +
-            `Search for them in the Vendor List instead.`,
-          { duration: 6000 }
-        );
-      } else {
-        sonnerToast.error(msg || 'Failed to create vendor. Please try again.');
-      }
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const filteredVendors = vendors.filter(vendor => {
     // Exclude deleted vendors from the list (should already be filtered in loadVendors, but double-check)
     // This is a safety check in case any deleted vendors slip through
@@ -1433,64 +1284,11 @@ export function VendorList(props: VendorListProps = {}) {
         </div>
       )}
 
-      {/* Breadcrumb + title / actions */}
-      <div className="flex justify-between items-start flex-wrap gap-4">
-        <div className="min-w-0">
-          <nav className="mb-2" aria-label="Breadcrumb">
-            <ol className="m-0 flex list-none flex-wrap items-center gap-x-1 gap-y-1 p-0 text-sm text-[#6B7280]">
-              <li className="min-w-0">
-                {onNavigateTab ? (
-                  <button
-                    type="button"
-                    className="max-w-full truncate rounded px-0.5 text-left font-medium text-[#6B7280] transition-colors hover:text-[#4F46E5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2"
-                    onClick={goToVendorOverview}
-                  >
-                    Vendor Overview
-                  </button>
-                ) : (
-                  <span className="font-medium text-[#6B7280]">Vendor Overview</span>
-                )}
-              </li>
-              <VendorListBreadcrumbSeparator />
-              {isViewDetailsOpen && selectedVendor ? (
-                <>
-                  <li className="min-w-0">
-                    <button
-                      type="button"
-                      className="max-w-full truncate rounded px-0.5 text-left font-medium text-[#6B7280] transition-colors hover:text-[#4F46E5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2"
-                      onClick={goToVendorListRoot}
-                    >
-                      Vendor List
-                    </button>
-                  </li>
-                  <VendorListBreadcrumbSeparator />
-                  <li className="min-w-0">
-                    <span
-                      className="block truncate font-semibold text-[#1F2937]"
-                      title={selectedVendor.name}
-                      aria-current="page"
-                    >
-                      {selectedVendor.name}
-                    </span>
-                  </li>
-                </>
-              ) : (
-                <li className="min-w-0">
-                  <span className="font-semibold text-[#1F2937]" aria-current="page">
-                    Vendor List
-                  </span>
-                </li>
-              )}
-            </ol>
-          </nav>
-          {!isViewDetailsOpen && (
-            <>
-              <h1 className="text-2xl font-bold text-[#1F2937]">Vendor List</h1>
-              <p className="text-sm text-[#6B7280] mt-1">Manage all vendors and suppliers</p>
-            </>
-          )}
-        </div>
-        {!isViewDetailsOpen && (
+      {!isViewDetailsOpen ? (
+        <PageHeader
+          title="Vendor List"
+          subtitle="Manage all vendors and suppliers"
+          actions={
           <div className="flex flex-wrap gap-3 justify-end">
             <button
               type="button"
@@ -1526,8 +1324,14 @@ export function VendorList(props: VendorListProps = {}) {
               Add Vendor
             </button>
           </div>
-        )}
-      </div>
+          }
+        />
+      ) : (
+        <PageHeader
+          title={selectedVendor?.name ?? 'Vendor'}
+          backButton={{ label: 'Back to list', onClick: goToVendorListRoot }}
+        />
+      )}
 
       {isViewDetailsOpen && selectedVendor ? (
         <VendorProfile
@@ -2284,10 +2088,10 @@ export function VendorList(props: VendorListProps = {}) {
 
       {/* Add Vendor Modal */}
       {isAddModalOpen && (
-        <AddVendorModal
+        <AddVendorSimpleModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
-          onSubmit={handleAddVendorSubmit}
+          onCreated={loadVendors}
         />
       )}
 

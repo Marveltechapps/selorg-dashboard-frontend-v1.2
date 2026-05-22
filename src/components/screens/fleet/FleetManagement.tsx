@@ -140,7 +140,7 @@ export function FleetManagement({ searchQuery = '' }: FleetManagementProps) {
     }
   };
 
-  const handleScheduleMaintenance = async (task: any) => {
+  const handleScheduleMaintenance = async (task: Parameters<typeof createMaintenanceTask>[0]) => {
     await createMaintenanceTask(task);
     await loadData();
   };
@@ -187,6 +187,11 @@ export function FleetManagement({ searchQuery = '' }: FleetManagementProps) {
           onTaskStatusUpdated={(taskId, status) => {
             localMaintenanceUpdatesRef.current[taskId] = status;
             setMaintenanceTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
+          }}
+          onTaskRescheduled={(taskId, scheduledDate) => {
+            setMaintenanceTasks(prev =>
+              prev.map(t => (t.id === taskId ? { ...t, scheduledDate } : t))
+            );
           }}
         />
       </div>

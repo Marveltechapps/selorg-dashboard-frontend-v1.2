@@ -103,6 +103,13 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
+/** Same store scope for list + clear so deletes match what the user sees. */
+export function getAlertsStoreId(): string {
+  const active = getActiveStoreId();
+  if (active && active.trim()) return active.trim();
+  return '';
+}
+
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
   const defaultOptions: RequestInit = {
     headers: getAuthHeaders(),
@@ -156,8 +163,8 @@ export async function fetchAlerts(
   if (options?.search) params.append('search', options.search);
   if (options?.page) params.append('page', options.page.toString());
   if (options?.limit) params.append('limit', options.limit.toString());
-  if (options?.storeId) params.append('storeId', options.storeId);
-  else params.append('storeId', getActiveStoreId() || ''); // Default store ID
+  const storeId = options?.storeId ?? getAlertsStoreId();
+  if (storeId) params.append('storeId', storeId);
 
   const response = await apiRequest(`${ALERTS_ENDPOINT}?${params.toString()}`) as AlertListResponse;
   
@@ -215,22 +222,27 @@ export async function performAlertAction(
 export async function clearResolvedAlerts(options?: {
   archive?: boolean;
   storeId?: string;
+  /** When provided, only these resolved/dismissed alerts are removed (matches visible list). */
+  ids?: string[];
 }): Promise<{ deleted_count: number; message: string }> {
-  const params = new URLSearchParams();
-  if (options?.archive !== undefined) params.append('archive', options.archive.toString());
-  if (options?.storeId) params.append('storeId', options.storeId);
-  else params.append('storeId', getActiveStoreId() || '');
+  const storeId = options?.storeId ?? getAlertsStoreId();
+  const body = {
+    ids: options?.ids?.filter(Boolean) ?? [],
+    storeId: storeId || undefined,
+    archive: options?.archive !== false,
+  };
 
-  const response = await apiRequest(`${ALERTS_ENDPOINT}/resolved?${params.toString()}`, {
-    method: 'DELETE',
+  const response = await apiRequest(`${ALERTS_ENDPOINT}/resolved/clear`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
-  
+
   if (!response.success) {
     throw new Error('Failed to clear resolved alerts');
   }
-  
+
   return {
-    deleted_count: response.deleted_count || 0,
+    deleted_count: response.deleted_count ?? 0,
     message: response.message || 'Resolved alerts cleared successfully',
   };
 }

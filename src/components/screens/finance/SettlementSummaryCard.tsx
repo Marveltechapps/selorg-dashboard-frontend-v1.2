@@ -51,9 +51,9 @@ export function SettlementSummaryCard({ items, isLoading, onSelectGateway }: Pro
                             <div className="flex items-center gap-3">
                                 {/* Placeholder Icons based on gateway name */}
                                 <div className={`h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold text-xs ${
-                                    item.gateway === 'Stripe' ? 'bg-[#635BFF]' : 
-                                    item.gateway === 'PayPal' ? 'bg-[#003087]' : 
-                                    item.gateway === 'Adyen' ? 'bg-[#0ABF53]' : 'bg-gray-500'
+                                    item.id === 'worldline' || item.gateway?.toLowerCase().includes('worldline') ? 'bg-[#0D9488]' :
+                                    item.id === 'cod' || item.gateway?.toLowerCase().includes('cash') ? 'bg-[#F59E0B]' :
+                                    'bg-gray-500'
                                 }`}>
                                     {item.gateway.substring(0, 2).toUpperCase()}
                                 </div>

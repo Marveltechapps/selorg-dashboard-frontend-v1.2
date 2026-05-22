@@ -58,9 +58,22 @@ export function InvoiceFormModal({ open, onClose, onSuccess }: Props) {
       setItems(newItems);
   };
 
-  const updateItem = (index: number, field: keyof Omit<InvoiceItem, 'id'>, value: any) => {
+  const parseNum = (value: string, fallback = 0) => {
+      const n = parseFloat(value);
+      return Number.isFinite(n) ? n : fallback;
+  };
+
+  const updateItem = (index: number, field: keyof Omit<InvoiceItem, 'id'>, value: string | number) => {
       const newItems = [...items];
-      newItems[index] = { ...newItems[index], [field]: value };
+      if (field === 'description') {
+        newItems[index] = { ...newItems[index], description: String(value) };
+      } else if (field === 'quantity') {
+        newItems[index] = { ...newItems[index], quantity: Math.max(1, parseNum(String(value), 1)) };
+      } else if (field === 'unitPrice') {
+        newItems[index] = { ...newItems[index], unitPrice: Math.max(0, parseNum(String(value), 0)) };
+      } else if (field === 'taxPercent') {
+        newItems[index] = { ...newItems[index], taxPercent: Math.min(100, Math.max(0, parseNum(String(value), 0))) };
+      }
       setItems(newItems);
   };
 
@@ -102,8 +115,13 @@ export function InvoiceFormModal({ open, onClose, onSuccess }: Props) {
           taxPercent: Number(item.taxPercent ?? 0),
         }))
         .filter((item) => item.description && item.quantity > 0 && item.unitPrice >= 0);
+      const hasPricedItem = validItems.some((item) => item.unitPrice > 0);
       if (validItems.length === 0) {
           toast.error("Please add at least one valid item with description and quantity");
+          return;
+      }
+      if (!hasPricedItem) {
+          toast.error("At least one line item must have a unit price greater than zero");
           return;
       }
 
@@ -192,20 +210,20 @@ export function InvoiceFormModal({ open, onClose, onSuccess }: Props) {
                              <Input 
                                 className="h-9 text-right" 
                                 type="number" min="1"
-                                value={item.quantity}
-                                onChange={e => updateItem(idx, 'quantity', parseFloat(e.target.value))}
+                                value={item.quantity || ''}
+                                onChange={e => updateItem(idx, 'quantity', e.target.value)}
                              />
                              <Input 
                                 className="h-9 text-right" 
                                 type="number" min="0" step="0.01"
-                                value={item.unitPrice}
-                                onChange={e => updateItem(idx, 'unitPrice', parseFloat(e.target.value))}
+                                value={item.unitPrice || ''}
+                                onChange={e => updateItem(idx, 'unitPrice', e.target.value)}
                              />
                              <Input 
                                 className="h-9 text-right" 
                                 type="number" min="0" max="100"
-                                value={item.taxPercent}
-                                onChange={e => updateItem(idx, 'taxPercent', parseFloat(e.target.value))}
+                                value={item.taxPercent ?? 0}
+                                onChange={e => updateItem(idx, 'taxPercent', e.target.value)}
                              />
                              <Button 
                                 size="icon" 
@@ -223,7 +241,7 @@ export function InvoiceFormModal({ open, onClose, onSuccess }: Props) {
                          <Plus size={16} className="mr-2" /> Add Item
                      </Button>
                      <div className="pr-4 text-sm font-bold text-gray-900">
-                         Total: ${calculateTotal().toFixed(2)}
+                         Total: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(calculateTotal())}
                      </div>
                  </div>
              </div>

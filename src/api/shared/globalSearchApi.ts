@@ -30,7 +30,7 @@ export interface SearchSuggestion {
 }
 
 /** Scopes shared search to the dashboard that issued the request (backend filters modules + recent). */
-export type SearchDashboardScope = 'admin' | 'warehouse';
+export type SearchDashboardScope = 'admin' | 'warehouse' | 'vendor' | 'finance';
 
 export interface GlobalSearchRequestOptions {
   dashboard?: SearchDashboardScope;

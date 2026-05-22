@@ -5,6 +5,14 @@ export interface LedgerSummary {
   receivablesBalance: number;
   payablesBalance: number;
   asOfDate: string;
+  entryCount?: number;
+}
+
+export interface LedgerSyncStats {
+  payments: number;
+  vendors: number;
+  refunds: number;
+  total: number;
 }
 
 export interface LedgerEntry {
@@ -54,15 +62,28 @@ export const fetchAccountingSummary = async (): Promise<LedgerSummary> => {
   return response.data;
 };
 
+export const syncLedger = async (): Promise<LedgerSyncStats> => {
+  const response = await apiRequest<{ success: boolean; data: LedgerSyncStats }>(
+    `${BASE}/ledger/sync`,
+    { method: 'POST', body: JSON.stringify({}) }
+  );
+  return response.data;
+};
+
 export const fetchLedgerEntries = async (params?: {
   dateFrom?: string;
   dateTo?: string;
   accountCode?: string;
+  filter?: 'all' | 'receivables' | 'payables';
 }): Promise<LedgerEntry[]> => {
   const queryParams = new URLSearchParams();
   if (params?.dateFrom) queryParams.append('dateFrom', params.dateFrom);
   if (params?.dateTo) queryParams.append('dateTo', params.dateTo);
-  if (params?.accountCode) queryParams.append('accountCode', params.accountCode);
+  if (params?.filter && params.filter !== 'all') {
+    queryParams.append('accountCode', params.filter);
+  } else if (params?.accountCode) {
+    queryParams.append('accountCode', params.accountCode);
+  }
   const endpoint = `${BASE}/ledger/entries${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
   const response = await apiRequest<{ success: boolean; data: LedgerEntry[] }>(endpoint);
   return response.data ?? [];

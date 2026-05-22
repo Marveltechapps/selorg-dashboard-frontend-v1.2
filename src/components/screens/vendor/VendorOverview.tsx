@@ -1,15 +1,27 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Users, AlertTriangle, Truck, Star, Clock, X, ChevronDown, Download, CheckCircle, Plus } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Users, AlertTriangle, Truck, Star, Clock, ChevronDown, Download, CheckCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 import { PageHeader } from '../../ui/page-header';
 import { exportToCSV, exportToCSVForExcel } from '../../../utils/csvExport';
+import { cn } from '@/lib/utils';
 import { exportToPDF } from '../../../utils/pdfExport';
 import { CardSkeleton, EmptyState, ErrorState, TableSkeleton } from '../../ui/ux-components';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 import { useOnDashboardRefresh, DASHBOARD_TOPICS } from '../../../hooks/useDashboardRefresh';
 import { VendorProfileOverview } from './VendorProfile';
-import { VENDOR_PAYMENT_TERMS } from './AddVendorModal';
+
+type MetricCardColor = 'indigo' | 'green' | 'blue' | 'red' | 'orange' | 'purple';
+
+const METRIC_ICON_STYLES: Record<MetricCardColor, string> = {
+  indigo: 'text-indigo-600 bg-indigo-50',
+  green: 'text-emerald-600 bg-emerald-50',
+  blue: 'text-blue-600 bg-blue-50',
+  red: 'text-red-600 bg-red-50',
+  orange: 'text-amber-600 bg-amber-50',
+  purple: 'text-violet-600 bg-violet-50',
+};
 
 interface MetricCardProps {
   label: string;
@@ -18,26 +30,35 @@ interface MetricCardProps {
   trend?: string;
   trendUp?: boolean;
   icon?: React.ReactNode;
-  color?: string;
+  color?: MetricCardColor;
 }
 
-function MetricCard({ label, value, subValue, trend, trendUp, icon, color = "indigo" }: MetricCardProps) {
+function MetricCard({ label, value, subValue, trend, trendUp, icon, color = 'indigo' }: MetricCardProps) {
+  const iconWrap = METRIC_ICON_STYLES[color] ?? METRIC_ICON_STYLES.indigo;
+
   return (
-    <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
-      <div className="flex justify-between items-start mb-2">
-        <span className="text-[#757575] font-medium text-xs uppercase tracking-wider">{label}</span>
-        {icon && <div className={`text-${color}-500 p-1.5 bg-${color}-50 rounded-lg`}>{icon}</div>}
+    <div className="flex min-h-[7.5rem] flex-col rounded-xl border border-[#e4e4e7] bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <span className="text-xs font-medium uppercase tracking-wide text-[#71717a] leading-snug">{label}</span>
+        {icon ? (
+          <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', iconWrap)}>{icon}</div>
+        ) : null}
       </div>
-      <div className="flex items-end gap-2">
-        <span className="text-2xl font-bold text-[#212121]">{value}</span>
-        {subValue && <span className="text-sm text-[#757575] mb-1">{subValue}</span>}
+      <div className="mt-auto flex min-h-[2.25rem] flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-2xl font-bold tabular-nums text-[#18181b]">{value}</span>
+        {subValue ? <span className="text-sm text-[#71717a]">{subValue}</span> : null}
       </div>
-      {trend && (
-        <div className={`text-xs font-medium mt-2 flex items-center gap-1 ${trendUp ? 'text-green-600' : 'text-red-600'}`}>
+      {trend ? (
+        <div
+          className={cn(
+            'mt-2 flex items-center gap-1 text-xs font-medium',
+            trendUp ? 'text-emerald-600' : 'text-red-600'
+          )}
+        >
           <span>{trendUp ? '↑' : '↓'}</span>
           <span>{trend}</span>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -116,37 +137,19 @@ function mapVendorStatus(raw: string): { label: string; color: 'green' | 'yellow
 }
 
 export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlight')?.trim() || '';
+  const tableHighlightRef = useRef<HTMLTableRowElement | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [summary, setSummary] = useState<VendorSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [profileVendor, setProfileVendor] = useState<Vendor | null>(null);
-  const [formData, setFormData] = useState({
-    vendorCode: '',
-    vendorName: '',
-    gstin: '',
-    paymentTerms: '30 days' as (typeof VENDOR_PAYMENT_TERMS)[number],
-    currencyCode: 'INR',
-    line1: '',
-    line2: '',
-    line3: '',
-    city: '',
-    state: '',
-    country: 'India',
-    zipCode: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    category: '',
-    rating: '',
-  });
-  const [saving, setSaving] = useState(false);
 
   const loadVendors = async () => {
     try {
@@ -247,6 +250,11 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
     loadSummary();
   }, []);
 
+  useEffect(() => {
+    if (!highlightId || !tableHighlightRef.current) return;
+    tableHighlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightId, vendors, loading]);
+
   useOnDashboardRefresh(DASHBOARD_TOPICS.vendor, () => {
     void loadVendors();
     void loadSummary();
@@ -273,82 +281,6 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
     const pad = 5;
     return [Math.max(0, lo - pad), Math.min(100, hi + pad)];
   }, [slaChartData]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.category.trim()) {
-      toast.error('Category is required (stored in metadata)');
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      const metadata: Record<string, string> = { category: formData.category.trim() };
-      if (formData.rating.trim()) metadata.rating = formData.rating.trim();
-
-      const payload = {
-        vendorCode: formData.vendorCode.trim(),
-        vendorName: formData.vendorName.trim(),
-        taxInfo: { gstin: formData.gstin.trim() },
-        paymentTerms: formData.paymentTerms,
-        currencyCode: (formData.currencyCode.trim().toUpperCase() || 'INR').slice(0, 3),
-        address: {
-          line1: formData.line1.trim(),
-          line2: formData.line2.trim() || null,
-          line3: formData.line3.trim() || null,
-          city: formData.city.trim(),
-          state: formData.state.trim(),
-          country: formData.country.trim() || 'India',
-          zipCode: formData.zipCode.trim(),
-        },
-        contact: {
-          name: formData.contactName.trim(),
-          email: formData.email.trim().toLowerCase(),
-          phone: formData.phone.trim(),
-        },
-        status: 'active' as const,
-        metadata,
-      };
-
-      await vendorApi.createVendor(payload);
-      toast.success('Vendor created successfully');
-
-      setFormData({
-        vendorCode: '',
-        vendorName: '',
-        gstin: '',
-        paymentTerms: '30 days',
-        currencyCode: 'INR',
-        line1: '',
-        line2: '',
-        line3: '',
-        city: '',
-        state: '',
-        country: 'India',
-        zipCode: '',
-        contactName: '',
-        email: '',
-        phone: '',
-        category: '',
-        rating: '',
-      });
-      setIsDialogOpen(false);
-
-      await loadVendors();
-      await loadSummary();
-    } catch (error: unknown) {
-      console.error('Failed to save vendor:', error);
-      const err = error as { message?: string; details?: { msg?: string; message?: string }[] };
-      toast.error(err.message || 'Failed to save vendor. Please try again.');
-      if (err.details && Array.isArray(err.details)) {
-        const validationErrors = err.details.map((d) => d.msg || d.message).join(', ');
-        toast.error(`Validation errors: ${validationErrors}`);
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleDownload = (format: string) => {
     setShowDownloadMenu(false);
@@ -489,14 +421,7 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                 </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setIsDialogOpen(true)}
-              className="px-4 py-2 bg-[#1677FF] text-white font-medium rounded-lg hover:bg-[#409EFF] flex items-center gap-2"
-            >
-              <Plus size={16} />
-              Add New Vendor
-            </button>
+
           </div>
         }
       />
@@ -508,80 +433,75 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
       )}
 
       {summaryLoading ? (
-        <CardSkeleton count={8} columns={4} />
+        <CardSkeleton count={8} columns={4} className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" />
       ) : (
-        <div className={summaryLoading ? 'hidden' : ''}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
               label="Active Vendors"
               value={metricValue(s?.activeVendors ?? undefined)}
               subValue={
-                !summaryLoading && !summaryError && s?.pendingVendors != null
-                  ? `${s.pendingVendors} pending`
-                  : undefined
+                !summaryError && s?.pendingVendors != null ? `${s.pendingVendors} pending` : undefined
               }
-              icon={<Users size={18} />}
+              icon={<Users size={16} />}
               color="indigo"
             />
             <MetricCard
               label="SLA Compliance (GRN)"
-              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.slaCompliance ?? undefined)}
-              icon={<Clock size={18} />}
+              value={summaryError ? '—' : formatPercent(s?.slaCompliance ?? undefined)}
+              icon={<Clock size={16} />}
               color="green"
             />
             <MetricCard
               label="Open POs"
               value={metricValue(s?.openPOs ?? undefined)}
               subValue={
-                !summaryLoading && !summaryError ? formatCurrencyINR(s?.openPOValue ?? undefined) : undefined
+                !summaryError && s?.openPOValue != null
+                  ? formatCurrencyINR(s.openPOValue)
+                  : undefined
               }
-              icon={<Truck size={18} />}
+              icon={<Truck size={16} />}
               color="blue"
             />
             <MetricCard
               label="Critical Alerts"
               value={metricValue(s?.criticalAlerts ?? undefined)}
-              icon={<AlertTriangle size={18} />}
+              icon={<AlertTriangle size={16} />}
               color="red"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
               label="On-Time Delivery"
-              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.deliveryTimeliness ?? undefined)}
-              icon={<Truck size={18} />}
+              value={summaryError ? '—' : formatPercent(s?.deliveryTimeliness ?? undefined)}
+              icon={<Truck size={16} />}
               color="green"
             />
             <MetricCard
               label="QC Pass Rate"
-              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.productQuality ?? undefined)}
-              icon={<CheckCircle size={18} />}
+              value={summaryError ? '—' : formatPercent(s?.productQuality ?? undefined)}
+              icon={<CheckCircle size={16} />}
               color="blue"
             />
             <MetricCard
               label="Rejection Rate"
-              value={summaryLoading ? '—' : summaryError ? '—' : formatPercent(s?.rejectionRate ?? undefined)}
-              icon={<AlertTriangle size={18} />}
+              value={summaryError ? '—' : formatPercent(s?.rejectionRate ?? undefined)}
+              icon={<AlertTriangle size={16} />}
               color="orange"
             />
             <MetricCard
               label="Avg PO Response"
               value={
-                summaryLoading || summaryError
+                summaryError
                   ? '—'
                   : s?.avgPOResponseHours == null
                     ? '—'
                     : `${s.avgPOResponseHours} hrs`
               }
-              icon={<Clock size={18} />}
+              icon={<Clock size={16} />}
               color="purple"
             />
           </div>
-        </div>
       )}
 
-      <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm p-6">
+      <div className="bg-white border border-[#e4e4e7] rounded-xl shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h3 className="font-bold text-[#212121]">On-time delivery by day</h3>
@@ -790,8 +710,21 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                     </td>
                   </tr>
                 ) : (
-                  filteredVendors.map((vendor) => (
-                    <tr key={vendor.id} className="hover:bg-[#FAFAFA]">
+                  filteredVendors.map((vendor) => {
+                    const isHighlighted =
+                      highlightId &&
+                      (vendor.id === highlightId ||
+                        vendor.code === highlightId ||
+                        String(vendor.id).toLowerCase() === highlightId.toLowerCase());
+                    return (
+                    <tr
+                      key={vendor.id}
+                      ref={isHighlighted ? tableHighlightRef : undefined}
+                      className={cn(
+                        'hover:bg-[#FAFAFA]',
+                        isHighlighted && 'bg-indigo-50/80 ring-1 ring-inset ring-indigo-200'
+                      )}
+                    >
                       <td className="px-6 py-4">
                         <p className="font-medium text-[#212121]">{vendor.name}</p>
                         <p className="text-xs text-[#757575]">ID: {vendor.code ?? vendor.id}</p>
@@ -831,278 +764,13 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
       </div>
-
-      {isDialogOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsDialogOpen(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white z-10 flex justify-between items-center p-6 border-b border-[#E0E0E0]">
-              <h3 className="font-bold text-[#212121] text-lg">Add New Vendor</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  setFormData({
-                    vendorCode: '',
-                    vendorName: '',
-                    gstin: '',
-                    paymentTerms: '30 days',
-                    currencyCode: 'INR',
-                    line1: '',
-                    line2: '',
-                    line3: '',
-                    city: '',
-                    state: '',
-                    country: 'India',
-                    zipCode: '',
-                    contactName: '',
-                    email: '',
-                    phone: '',
-                    category: '',
-                    rating: '',
-                  });
-                }}
-                className="text-[#616161] hover:text-[#212121] p-1 hover:bg-[#F5F5F5] rounded"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Vendor code <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.vendorCode}
-                    onChange={(e) => setFormData({ ...formData, vendorCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Currency <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.currencyCode}
-                    onChange={(e) => setFormData({ ...formData, currencyCode: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                    maxLength={3}
-                    minLength={3}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Vendor name <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.vendorName}
-                    onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                    maxLength={100}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    GSTIN / tax ID <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.gstin}
-                    onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Payment terms <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <select
-                    value={formData.paymentTerms}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        paymentTerms: e.target.value as (typeof VENDOR_PAYMENT_TERMS)[number],
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  >
-                    {VENDOR_PAYMENT_TERMS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <p className="text-xs font-bold text-[#757575] uppercase">Address</p>
-              <div>
-                <label className="block text-sm font-bold text-[#212121] mb-2">
-                  Line 1 <span className="text-[#EF4444]">*</span>
-                </label>
-                <input
-                  value={formData.line1}
-                  onChange={(e) => setFormData({ ...formData, line1: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">Line 2</label>
-                  <input
-                    value={formData.line2}
-                    onChange={(e) => setFormData({ ...formData, line2: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">Line 3</label>
-                  <input
-                    value={formData.line3}
-                    onChange={(e) => setFormData({ ...formData, line3: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    City <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    State <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Country <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    ZIP / PIN <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    value={formData.zipCode}
-                    onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs font-bold text-[#757575] uppercase">Contact</p>
-              <div>
-                <label className="block text-sm font-bold text-[#212121] mb-2">
-                  Contact name <span className="text-[#EF4444]">*</span>
-                </label>
-                <input
-                  value={formData.contactName}
-                  onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Email <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#212121] mb-2">
-                    Phone <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                    required
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs font-bold text-[#757575] uppercase">Internal</p>
-              <div>
-                <label className="block text-sm font-bold text-[#212121] mb-2">
-                  Category (metadata) <span className="text-[#EF4444]">*</span>
-                </label>
-                <input
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-[#212121] mb-2">Rating (metadata, optional)</label>
-                <input
-                  value={formData.rating}
-                  onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsDialogOpen(false)}
-                  className="flex-1 px-4 py-2 border border-[#E0E0E0] rounded-lg text-sm font-bold text-[#616161] hover:bg-[#F5F5F5] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 px-4 py-2 bg-[#4F46E5] text-white rounded-lg text-sm font-bold hover:bg-[#4338CA] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? 'Saving...' : 'Add Vendor'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
