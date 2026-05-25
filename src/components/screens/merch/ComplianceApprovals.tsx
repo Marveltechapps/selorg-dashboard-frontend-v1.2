@@ -19,11 +19,21 @@ export function ComplianceApprovals({ searchQuery: externalSearch = "" }: { sear
   // State - Using Real API
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [tabFilter, setTabFilter] = useState('Pending');
+  const [searchQuery, setSearchQuery] = useState(externalSearch);
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [riskFilter, setRiskFilter] = useState('all');
+  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
 
   const loadRequests = async () => {
     try {
       setLoading(true);
-      const resp = await complianceApi.getApprovalRequests({});
+      const params: Record<string, string> = {};
+      if (tabFilter !== 'All') params.status = tabFilter;
+      if (typeFilter !== 'all') params.type = typeFilter;
+      if (riskFilter !== 'all') params.riskLevel = riskFilter;
+      const resp = await complianceApi.getApprovalRequests(params);
       const data = resp?.data ?? [];
       setRequests(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -37,15 +47,7 @@ export function ComplianceApprovals({ searchQuery: externalSearch = "" }: { sear
 
   useEffect(() => {
     loadRequests();
-  }, []);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  
-  // Filter State
-  const [tabFilter, setTabFilter] = useState('Pending'); 
-  const [searchQuery, setSearchQuery] = useState(externalSearch);
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [riskFilter, setRiskFilter] = useState('all');
-  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
+  }, [tabFilter, typeFilter, riskFilter]);
 
   // Sync external search
   useEffect(() => {
@@ -110,31 +112,31 @@ export function ComplianceApprovals({ searchQuery: externalSearch = "" }: { sear
       }
   };
 
-  const handleApprove = async (_note?: string) => {
+  const handleApprove = async (note?: string) => {
       if (!approveRequest) return;
       try {
-        await complianceApi.updateApprovalStatus(approveRequest.id, 'Approved');
-        setRequests(prev => prev.map(r => r.id === approveRequest.id ? { ...r, status: 'Approved' } : r));
+        await complianceApi.updateApprovalStatus(approveRequest.id, 'Approved', { note });
+        await loadRequests();
         loadSummary();
-        toast.success("Request Approved");
+        toast.success('Request Approved');
         setApproveRequest(null);
         if (detailRequest?.id === approveRequest.id) setDetailRequest(null);
       } catch {
-        toast.error("Failed to approve request");
+        toast.error('Failed to approve request');
       }
   };
 
-  const handleReject = async (_reason: string) => {
+  const handleReject = async (reason: string) => {
       if (!rejectRequest) return;
       try {
-        await complianceApi.updateApprovalStatus(rejectRequest.id, 'Rejected');
-        setRequests(prev => prev.map(r => r.id === rejectRequest.id ? { ...r, status: 'Rejected' } : r));
+        await complianceApi.updateApprovalStatus(rejectRequest.id, 'Rejected', { reason });
+        await loadRequests();
         loadSummary();
-        toast.success("Request Rejected");
+        toast.success('Request Rejected');
         setRejectRequest(null);
         if (detailRequest?.id === rejectRequest.id) setDetailRequest(null);
       } catch {
-        toast.error("Failed to reject request");
+        toast.error('Failed to reject request');
       }
   };
 
@@ -142,10 +144,8 @@ export function ComplianceApprovals({ searchQuery: externalSearch = "" }: { sear
       if (selectedIds.size === 0) return;
       const status = action === 'approve' ? 'Approved' : 'Rejected';
       try {
-        for (const id of selectedIds) {
-          await complianceApi.updateApprovalStatus(id, status);
-        }
-        setRequests(prev => prev.map(r => selectedIds.has(r.id) ? { ...r, status } : r));
+        await complianceApi.bulkUpdateApprovals(Array.from(selectedIds), status);
+        await loadRequests();
         loadSummary();
         toast.success(`${action === 'approve' ? 'Approved' : 'Rejected'} ${selectedIds.size} requests`);
         setSelectedIds(new Set());
@@ -157,11 +157,9 @@ export function ComplianceApprovals({ searchQuery: externalSearch = "" }: { sear
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-[#212121]">Compliance & Approvals</h1>
-          <p className="text-[#757575] text-sm">Regulatory checks, pricing approvals, and audit logs</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-[#212121]">Compliance & Approvals</h1>
+        <p className="text-[#757575] text-sm">Regulatory checks, pricing approvals, and audit logs</p>
       </div>
 
       {/* KPI Cards */}
@@ -285,6 +283,13 @@ export function ComplianceApprovals({ searchQuery: externalSearch = "" }: { sear
             </div>
         )}
       </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-8 text-gray-500 gap-2">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Loading approval requests…
+        </div>
+      )}
 
       {/* Main Table */}
       <ApprovalQueueTable 

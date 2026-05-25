@@ -49,6 +49,7 @@ import {
   initiateReturn,
   initiateLiquidation,
   type SupplyPerformanceItem,
+  type SupplyPerformanceTone,
 } from '../../../api/vendor/vendorInventory.api';
 import { apiDownloadCsv } from '../../../api/apiClient';
 import { getVendors, getVendorSummary } from '../../../api/vendor/vendorManagement.api';
@@ -60,6 +61,7 @@ type StockoutSeverity = 'Critical' | 'High' | 'Medium';
 
 interface StockItem {
   id: string;
+  sku?: string;
   product: string;
   batchId: string;
   warehouse: string;
@@ -128,6 +130,30 @@ interface KPI {
   color: string;
   bgColor: string;
   subMetrics: { label: string; value: string }[];
+}
+
+
+function performanceToneClass(tone?: SupplyPerformanceTone): string {
+  switch (tone) {
+    case 'good':
+      return 'text-[#10B981]';
+    case 'warning':
+      return 'text-[#F59E0B]';
+    case 'critical':
+      return 'text-[#EF4444]';
+    default:
+      return 'text-[#1F2937]';
+  }
+}
+
+function formatAgingAlertLine(alert: AgingAlert): string {
+  if (alert.message?.trim()) return alert.message.trim();
+  const qty = `${alert.quantity} ${alert.unit}`.trim();
+  if (alert.daysToExpiry <= 0) {
+    return `Expired${qty ? ` · ${qty}` : ''}`;
+  }
+  const dayLabel = alert.daysToExpiry === 1 ? 'day' : 'days';
+  return `${alert.daysToExpiry} ${dayLabel} to expiry${qty ? ` · ${qty}` : ''}`;
 }
 
 export function InventoryCoordination() {
@@ -636,6 +662,36 @@ export function InventoryCoordination() {
     setShowReturnLiquidationModal(false);
   };
 
+
+  const handleLoadPerformance = async () => {
+    if (!vendorId) {
+      toast.error('Wait for vendor data to load, then try again');
+      return;
+    }
+    try {
+      setLoadingPerformance(true);
+      const data = await loadSupplyPerformance(vendorId);
+      setPerformanceItems(data.items ?? []);
+      setPerformanceLoaded(true);
+      setHubSummary((prev) => {
+        const next: Record<string, unknown> = { ...(prev ?? {}), ...(data.hub ?? {}) };
+        if (data.deliveryTimelinessPct != null) {
+          next.deliveryTimeliness = data.deliveryTimelinessPct;
+        }
+        if (data.slaCompliancePct != null) {
+          next.slaCompliance = data.slaCompliancePct;
+        }
+        return next;
+      });
+      if (data.vendorName) setVendorName(data.vendorName);
+    } catch (err) {
+      console.error('Failed to load supply performance', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to load supply performance');
+    } finally {
+      setLoadingPerformance(false);
+    }
+  };
+
   const totalSkusKpi = kpis.find((k) => k.id === 'totalSkus');
   const stockoutKpi = kpis.find((k) => k.id === 'stockouts');
   const lowStockKpi = kpis.find((k) => k.id === 'lowStock');
@@ -715,6 +771,7 @@ export function InventoryCoordination() {
               })}
             </div>
           ) : (
+          <>
           <p className="text-xs text-[#9CA3AF] mb-3">Click <strong>Performance</strong> above to load hub, inventory, and vendor metrics.</p>
           <div className="space-y-4">
             {/* Full Fulfillment */}
@@ -809,6 +866,7 @@ export function InventoryCoordination() {
               </div>
             </div>
           </div>
+          </>
           )}
         </div>
 

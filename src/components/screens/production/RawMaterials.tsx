@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Package, Plus, AlertTriangle, TrendingUp, Download, X, Search, CheckCircle, Loader2 } from 'lucide-react';
+import { Package, Plus, AlertTriangle, TrendingUp, Download, X, Search, CheckCircle, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
 import {
   fetchRawMaterials,
   createRawMaterial,
+  updateRawMaterial,
+  deleteRawMaterial,
   orderMaterial as orderMaterialApi,
   fetchReceipts,
   markReceiptReceived,
@@ -18,7 +20,10 @@ import { useProductionFactory } from '../../../contexts/ProductionFactoryContext
 
 export function RawMaterials() {
   const { selectedFactoryId } = useProductionFactory();
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [materialFormMode, setMaterialFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
+  const [materialToDelete, setMaterialToDelete] = useState<RawMaterial | null>(null);
+  const [savingMaterial, setSavingMaterial] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState<InboundReceipt | null>(null);
   const [showOrderModal, setShowOrderModal] = useState<RawMaterial | null>(null);
   const [orderQty, setOrderQty] = useState('');
@@ -63,7 +68,7 @@ export function RawMaterials() {
     loadData();
   }, [loadData]);
 
-  const [newMaterial, setNewMaterial] = useState({
+  const emptyMaterialForm = () => ({
     name: '',
     currentStock: '',
     unit: '',
@@ -73,27 +78,84 @@ export function RawMaterials() {
     category: '',
   });
 
-  const addMaterial = async () => {
-    if (!newMaterial.name || newMaterial.currentStock === '' || !newMaterial.unit) {
+  const [materialForm, setMaterialForm] = useState(emptyMaterialForm);
+
+  const openCreateMaterial = () => {
+    setEditingMaterialId(null);
+    setMaterialForm(emptyMaterialForm());
+    setMaterialFormMode('create');
+  };
+
+  const openEditMaterial = (material: RawMaterial) => {
+    setEditingMaterialId(material.id);
+    setMaterialForm({
+      name: material.name,
+      currentStock: String(material.currentStock),
+      unit: material.unit,
+      safetyStock: String(material.safetyStock),
+      reorderPoint: String(material.reorderPoint),
+      supplier: material.supplier,
+      category: material.category,
+    });
+    setMaterialFormMode('edit');
+  };
+
+  const closeMaterialForm = () => {
+    setMaterialFormMode(null);
+    setEditingMaterialId(null);
+    setMaterialForm(emptyMaterialForm());
+  };
+
+  const saveMaterialForm = async () => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    if (!materialForm.name.trim() || materialForm.currentStock === '' || !materialForm.unit.trim()) {
       toast.error('Name, current stock, and unit are required');
       return;
     }
+
+    const payload = {
+      name: materialForm.name.trim(),
+      currentStock: parseInt(materialForm.currentStock, 10) || 0,
+      unit: materialForm.unit.trim(),
+      safetyStock: parseInt(materialForm.safetyStock, 10) || 0,
+      reorderPoint: parseInt(materialForm.reorderPoint, 10) || 0,
+      supplier: materialForm.supplier.trim(),
+      category: materialForm.category.trim(),
+    };
+
+    setSavingMaterial(true);
     try {
-      await createRawMaterial({
-        name: newMaterial.name,
-        currentStock: parseInt(newMaterial.currentStock, 10) || 0,
-        unit: newMaterial.unit,
-        safetyStock: parseInt(newMaterial.safetyStock, 10) || 0,
-        reorderPoint: parseInt(newMaterial.reorderPoint, 10) || 0,
-        supplier: newMaterial.supplier,
-        category: newMaterial.category,
-      }, selectedFactoryId);
-      setNewMaterial({ name: '', currentStock: '', unit: '', safetyStock: '', reorderPoint: '', supplier: '', category: '' });
-      setShowAddModal(false);
-      toast.success('Material added successfully');
-      loadData();
+      if (materialFormMode === 'create') {
+        await createRawMaterial(payload, selectedFactoryId);
+        toast.success('Material added successfully');
+      } else if (materialFormMode === 'edit' && editingMaterialId) {
+        await updateRawMaterial(editingMaterialId, payload, selectedFactoryId);
+        toast.success('Material updated successfully');
+      }
+      closeMaterialForm();
+      await loadData();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to add material');
+      toast.error(e instanceof Error ? e.message : 'Failed to save material');
+    } finally {
+      setSavingMaterial(false);
+    }
+  };
+
+  const confirmDeleteMaterial = async () => {
+    if (!materialToDelete || !selectedFactoryId) return;
+    setSavingMaterial(true);
+    try {
+      await deleteRawMaterial(materialToDelete.id, selectedFactoryId);
+      toast.success('Material deleted');
+      setMaterialToDelete(null);
+      await loadData();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete material');
+    } finally {
+      setSavingMaterial(false);
     }
   };
 
@@ -211,9 +273,11 @@ export function RawMaterials() {
               <Download size={16} />
               Export
             </button>
-            <button 
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2"
+            <button
+              type="button"
+              onClick={openCreateMaterial}
+              disabled={!selectedFactoryId}
+              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={16} />
               Add Material
@@ -375,14 +439,33 @@ export function RawMaterials() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          {(isLowStock || isCritical) && (
-                            <button 
-                              onClick={() => openOrderModal(material)}
-                              className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs"
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEditMaterial(material)}
+                              className="p-1.5 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg"
+                              aria-label={`Edit ${material.name}`}
                             >
-                              Order Now
+                              <Pencil size={14} />
                             </button>
-                          )}
+                            <button
+                              type="button"
+                              onClick={() => setMaterialToDelete(material)}
+                              className="p-1.5 text-[#EF4444] hover:text-[#DC2626] hover:bg-red-50 rounded-lg"
+                              aria-label={`Delete ${material.name}`}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            {(isLowStock || isCritical) && (
+                              <button
+                                type="button"
+                                onClick={() => openOrderModal(material)}
+                                className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs px-2 py-1"
+                              >
+                                Order Now
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -530,45 +613,48 @@ export function RawMaterials() {
         )}
       </div>
 
-      {/* Add Material Modal */}
-      {showAddModal && (
+      {/* Create / Edit Material Modal */}
+      {materialFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[#212121]">Add New Material</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-[#757575] hover:text-[#212121]">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {materialFormMode === 'create' ? 'Add New Material' : 'Edit Material'}
+              </h3>
+              <button type="button" onClick={closeMaterialForm} className="text-[#757575] hover:text-[#212121]">
                 <X size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Material Name</label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g., Organic Oats"
-                  value={newMaterial.name}
-                  onChange={(e) => setNewMaterial({...newMaterial, name: e.target.value})}
+                  value={materialForm.name}
+                  onChange={(e) => setMaterialForm({ ...materialForm, name: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-[#212121] mb-2">Current Stock</label>
-                  <input 
+                  <input
                     type="number"
+                    min={0}
                     placeholder="1000"
-                    value={newMaterial.currentStock}
-                    onChange={(e) => setNewMaterial({...newMaterial, currentStock: e.target.value})}
+                    value={materialForm.currentStock}
+                    onChange={(e) => setMaterialForm({ ...materialForm, currentStock: e.target.value })}
                     className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#212121] mb-2">Unit</label>
-                  <input 
+                  <input
                     type="text"
                     placeholder="kg, L, Rolls"
-                    value={newMaterial.unit}
-                    onChange={(e) => setNewMaterial({...newMaterial, unit: e.target.value})}
+                    value={materialForm.unit}
+                    onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })}
                     className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                   />
                 </div>
@@ -576,58 +662,95 @@ export function RawMaterials() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-[#212121] mb-2">Safety Stock</label>
-                  <input 
+                  <input
                     type="number"
+                    min={0}
                     placeholder="200"
-                    value={newMaterial.safetyStock}
-                    onChange={(e) => setNewMaterial({...newMaterial, safetyStock: e.target.value})}
+                    value={materialForm.safetyStock}
+                    onChange={(e) => setMaterialForm({ ...materialForm, safetyStock: e.target.value })}
                     className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#212121] mb-2">Reorder Point</label>
-                  <input 
+                  <input
                     type="number"
+                    min={0}
                     placeholder="300"
-                    value={newMaterial.reorderPoint}
-                    onChange={(e) => setNewMaterial({...newMaterial, reorderPoint: e.target.value})}
+                    value={materialForm.reorderPoint}
+                    onChange={(e) => setMaterialForm({ ...materialForm, reorderPoint: e.target.value })}
                     className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                   />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Supplier</label>
-                <input 
+                <input
                   type="text"
                   placeholder="Supplier name"
-                  value={newMaterial.supplier}
-                  onChange={(e) => setNewMaterial({...newMaterial, supplier: e.target.value})}
+                  value={materialForm.supplier}
+                  onChange={(e) => setMaterialForm({ ...materialForm, supplier: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Category</label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g., Grains, Ingredients"
-                  value={newMaterial.category}
-                  onChange={(e) => setNewMaterial({...newMaterial, category: e.target.value})}
+                  value={materialForm.category}
+                  onChange={(e) => setMaterialForm({ ...materialForm, category: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
             </div>
             <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowAddModal(false)}
+              <button
+                type="button"
+                onClick={closeMaterialForm}
                 className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
               >
                 Cancel
               </button>
-              <button 
-                onClick={addMaterial}
-                className="px-4 py-2 bg-[#3B82F6] text-white font-medium rounded-lg hover:bg-[#2563EB]"
+              <button
+                type="button"
+                onClick={saveMaterialForm}
+                disabled={savingMaterial}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-60 flex items-center gap-2"
               >
-                Add Material
+                {savingMaterial && <Loader2 size={16} className="animate-spin" />}
+                {materialFormMode === 'create' ? 'Add Material' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Material Confirmation */}
+      {materialToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete material?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              This will permanently remove{' '}
+              <span className="font-medium text-[#212121]">{materialToDelete.name}</span> from inventory.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setMaterialToDelete(null)}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteMaterial}
+                disabled={savingMaterial}
+                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-60 flex items-center gap-2"
+              >
+                {savingMaterial && <Loader2 size={16} className="animate-spin" />}
+                Delete
               </button>
             </div>
           </div>

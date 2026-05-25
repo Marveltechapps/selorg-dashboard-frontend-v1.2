@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import { BarChart3, TrendingUp, Map, Download, ChevronRight, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
 import { CampaignPerformance } from './analytics/CampaignPerformance';
 import { SkuSalesReport } from './analytics/SkuSalesReport';
 import { RegionalInsights } from './analytics/RegionalInsights';
 import { ExportReportModal } from './analytics/ExportReportModal';
-import { analyticsApi } from './analytics/analyticsApi';
 
 type AnalyticsView = 'campaign' | 'sku' | 'regional' | null;
 
@@ -17,29 +15,18 @@ interface MerchAnalyticsProps {
 }
 
 export function MerchAnalytics({ searchQuery = "", onNavigate }: MerchAnalyticsProps) {
-  const [activeView, setActiveView] = useState<AnalyticsView>(null);
+  const [activeView, setActiveView] = useState<AnalyticsView>('campaign');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const handleSeedData = async () => {
-    try {
-      await analyticsApi.seedData();
-      setRefreshKey(k => k + 1);
-      toast.success("Analytics data seeded");
-    } catch {
-      toast.error("Failed to seed analytics data");
-    }
-  };
 
   // Helper to render the correct component
   const renderActiveView = () => {
     switch (activeView) {
       case 'campaign':
-        return <CampaignPerformance key={refreshKey} />;
+        return <CampaignPerformance />;
       case 'sku':
-        return <SkuSalesReport key={refreshKey} />;
+        return <SkuSalesReport />;
       case 'regional':
-        return <RegionalInsights key={refreshKey} onNavigate={onNavigate} />;
+        return <RegionalInsights onNavigate={onNavigate} />;
       default:
         return (
           <div className="flex flex-col items-center justify-center min-h-[400px] text-center text-gray-500 space-y-4 py-12">
@@ -65,14 +52,9 @@ export function MerchAnalytics({ searchQuery = "", onNavigate }: MerchAnalyticsP
           <h1 className="text-2xl font-bold text-[#212121]">Analytics & Insights</h1>
           <p className="text-[#757575] text-sm">Explore campaign performance, SKU sales, and regional insights</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleSeedData} className="border-gray-200">
-            Seed Analytics Data
-          </Button>
-          <Button onClick={() => setIsExportModalOpen(true)} className="bg-[#212121] text-white hover:bg-black">
-            <Download className="mr-2 h-4 w-4" /> Export Report
-          </Button>
-        </div>
+        <Button onClick={() => setIsExportModalOpen(true)} className="bg-[#212121] text-white hover:bg-black">
+          <Download className="mr-2 h-4 w-4" /> Export Report
+        </Button>
       </div>
 
       {/* Tiles Row */}

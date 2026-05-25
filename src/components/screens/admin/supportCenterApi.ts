@@ -103,6 +103,11 @@ export interface LiveChat {
   id: string;
   customerId: string;
   customerName: string;
+  /** Preferred label for UI (name or formatted phone) */
+  displayName?: string;
+  customerPhone?: string;
+  subject?: string;
+  orderNumber?: string;
   agentId?: string;
   agentName?: string;
   status: 'waiting' | 'active' | 'ended';

@@ -1,111 +1,145 @@
-import React from 'react';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription
-} from "../../../ui/dialog";
-import { Button } from "../../../ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
+import React, { useEffect, useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../../../ui/dialog';
+import { Button } from '../../../ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ArrowUpRight, Users, ShoppingCart, IndianRupee } from 'lucide-react';
+import { ArrowUpRight, Users, ShoppingCart, IndianRupee, Loader2 } from 'lucide-react';
+import { analyticsApi, type CampaignAnalyticsDetail } from '../analytics/analyticsApi';
 
 interface CampaignAnalyticsModalProps {
   isOpen: boolean;
   onClose: () => void;
   campaignName?: string;
+  campaignId?: string;
+  dateRange?: string;
 }
 
-const data = [
-  { day: 'Mon', sales: 4000, redemptions: 240 },
-  { day: 'Tue', sales: 3000, redemptions: 139 },
-  { day: 'Wed', sales: 2000, redemptions: 98 },
-  { day: 'Thu', sales: 2780, redemptions: 390 },
-  { day: 'Fri', sales: 1890, redemptions: 480 },
-  { day: 'Sat', sales: 2390, redemptions: 380 },
-  { day: 'Sun', sales: 3490, redemptions: 430 },
-];
+export function CampaignAnalyticsModal({
+  isOpen,
+  onClose,
+  campaignName = 'Campaign',
+  campaignId,
+  dateRange = '30days',
+}: CampaignAnalyticsModalProps) {
+  const [range, setRange] = useState(dateRange);
+  const [detail, setDetail] = useState<CampaignAnalyticsDetail | null>(null);
+  const [loading, setLoading] = useState(false);
 
-export function CampaignAnalyticsModal({ isOpen, onClose, campaignName = "Summer Essentials" }: CampaignAnalyticsModalProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const entityKey = campaignId || campaignName;
+    if (!entityKey) return;
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await analyticsApi.getCampaignDetail(entityKey, range);
+        if (mounted) setDetail(data);
+      } catch {
+        if (mounted) setDetail(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen, campaignId, campaignName, range]);
+
+  const chartData = detail?.series ?? [];
+  const kpis = detail?.kpis;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[900px]">
         <DialogHeader>
           <div className="flex justify-between items-start">
-             <div>
-                <DialogTitle className="text-xl font-bold">{campaignName} Analytics</DialogTitle>
-                <DialogDescription>Performance metrics and redemption analysis.</DialogDescription>
-             </div>
-             <div className="flex gap-2">
-                <Select defaultValue="last-7">
-                    <SelectTrigger className="w-[140px] h-8 text-xs">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="last-7">Last 7 Days</SelectItem>
-                        <SelectItem value="total">Total Duration</SelectItem>
-                    </SelectContent>
-                </Select>
-             </div>
+            <div>
+              <DialogTitle className="text-xl font-bold">
+                {detail?.campaignName ?? campaignName} Analytics
+              </DialogTitle>
+              <DialogDescription>Performance metrics and redemption analysis.</DialogDescription>
+            </div>
+            <div className="flex gap-2">
+              <Select value={range} onValueChange={setRange}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7days">Last 7 Days</SelectItem>
+                  <SelectItem value="30days">Last 30 Days</SelectItem>
+                  <SelectItem value="total">Last 90 Days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </DialogHeader>
 
-        {/* KPIs */}
-        <div className="grid grid-cols-4 gap-4 my-4">
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-gray-500 mt-2">Loading campaign details…</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-4 gap-4 my-4">
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-2 text-gray-500 mb-1 text-xs uppercase font-bold">
-                    <IndianRupee size={14} /> Revenue
+                  <IndianRupee size={14} /> Revenue
                 </div>
-                <div className="text-2xl font-bold text-gray-900">₹124.5k</div>
-                <div className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                    <ArrowUpRight size={12} /> +12% vs target
+                <div className="text-2xl font-bold text-gray-900">
+                  ₹{((kpis?.revenue ?? 0) / 1000).toFixed(1)}k
                 </div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="text-xs text-green-600 flex items-center mt-1">
+                  <ArrowUpRight size={12} className="mr-1" /> +{kpis?.uplift ?? 0}% uplift
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-2 text-gray-500 mb-1 text-xs uppercase font-bold">
-                    <ArrowUpRight size={14} /> Uplift
+                  <ShoppingCart size={14} /> Orders
                 </div>
-                <div className="text-2xl font-bold text-gray-900">+18.5%</div>
-                <div className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                    <ArrowUpRight size={12} /> 4.2% vs baseline
+                <div className="text-2xl font-bold text-gray-900">
+                  {(kpis?.orders ?? 0).toLocaleString()}
                 </div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+              </div>
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-2 text-gray-500 mb-1 text-xs uppercase font-bold">
-                    <Users size={14} /> Redemptions
+                  <Users size={14} /> Redemption Rate
                 </div>
-                <div className="text-2xl font-bold text-gray-900">842</div>
-                <div className="text-xs text-gray-500 mt-1">
-                    24% conversion rate
-                </div>
+                <div className="text-2xl font-bold text-gray-900">{kpis?.redemptionRate ?? 0}%</div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="text-gray-500 mb-1 text-xs uppercase font-bold">ROI</div>
+                <div className="text-2xl font-bold text-gray-900">{kpis?.roi ?? 0}x</div>
+              </div>
             </div>
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-2 text-gray-500 mb-1 text-xs uppercase font-bold">
-                    <ShoppingCart size={14} /> Basket Size
-                </div>
-                <div className="text-2xl font-bold text-gray-900">₹48.20</div>
-                <div className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                    <ArrowUpRight size={12} /> +₹5.50 vs avg
-                </div>
-            </div>
-        </div>
 
-        {/* Chart */}
-        <div className="h-[300px] border rounded-xl p-4 bg-white">
-            <h4 className="text-sm font-bold text-gray-700 mb-4">Daily Sales & Redemptions</h4>
-            <ResponsiveContainer width="100%" height="90%">
-                <BarChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6B7280'}} />
-                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6B7280'}} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6B7280'}} />
-                    <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'}} />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="sales" name="Sales Volume ($)" fill="#7C3AED" radius={[4, 4, 0, 0]} barSize={32} />
-                    <Bar yAxisId="right" dataKey="redemptions" name="Redemptions" fill="#10B981" radius={[4, 4, 0, 0]} barSize={32} />
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData.length > 0 ? chartData : [{ day: '-', sales: 0, redemptions: 0 }]}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="day" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="sales" fill="#3b82f6" name="Sales (₹)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="redemptions" fill="#10b981" name="Redemptions" radius={[4, 4, 0, 0]} />
                 </BarChart>
-            </ResponsiveContainer>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end mt-4">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

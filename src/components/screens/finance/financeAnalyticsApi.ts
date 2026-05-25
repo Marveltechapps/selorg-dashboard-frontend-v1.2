@@ -71,9 +71,18 @@ export function dateRangeToFromTo(dateRange: string): { from: string; to: string
       from.setMonth(from.getMonth() - 6);
       break;
     case 'last_12_months':
-    case 'last_year':
       from.setMonth(from.getMonth() - 12);
       break;
+    case 'last_year': {
+      const y = to.getFullYear() - 1;
+      from.setFullYear(y, 0, 1);
+      from.setHours(0, 0, 0, 0);
+      const endPrevYear = new Date(y, 11, 31, 23, 59, 59, 999);
+      return {
+        from: from.toISOString().split('T')[0],
+        to: endPrevYear.toISOString().split('T')[0],
+      };
+    }
     case 'ytd':
       from.setMonth(0);
       from.setDate(1);
@@ -143,15 +152,6 @@ export const fetchExpenseBreakdown = async (
   const data = json.success ? json.data : json;
   return Array.isArray(data) ? data : [];
 };
-
-function formatExportError(error: unknown): string {
-  const err = error as {
-    message?: string;
-    response?: { data?: { message?: string; error?: { details?: unknown } } };
-  };
-  const data = err.response?.data;
-  return data?.message || data?.error?.message || err.message || 'Export failed';
-}
 
 export const exportAnalyticsReport = async (req: AnalyticsExportRequest): Promise<void> => {
   const payload = {

@@ -36,6 +36,18 @@ export interface Collection {
   updatedAt?: string;
 }
 
+function normalizeVisibilityRaw(raw: unknown): Record<string, string> {
+  const src =
+    raw && typeof raw === 'object'
+      ? (raw as Record<string, string>)
+      : {};
+  return {
+    'North America': src['North America'] === 'Visible' ? 'Visible' : 'Hidden',
+    'Europe (West)': src['Europe (West)'] === 'Visible' ? 'Visible' : 'Hidden',
+    APAC: src.APAC === 'Visible' ? 'Visible' : 'Hidden',
+  };
+}
+
 function mapApiSkuToFrontend(api: any): SKU {
   return {
     id: String(api._id ?? api.id ?? ''),
@@ -46,7 +58,7 @@ function mapApiSkuToFrontend(api: any): SKU {
     brand: api.brand ?? 'Generic',
     price: Number(api.sellingPrice ?? api.basePrice ?? api.price ?? 0),
     stock: Number(api.stock ?? 0),
-    visibility: api.visibility ?? { 'North America': 'Hidden', 'Europe (West)': 'Hidden', 'APAC': 'Hidden' },
+    visibility: normalizeVisibilityRaw(api.visibility),
     tags: api.tags ?? [],
     imageUrl: api.imageUrl,
     status: api.status ?? 'active',
@@ -137,6 +149,27 @@ export async function updateSKU(id: string, data: Partial<SKU>): Promise<{ succe
 }
 
 /**
+ * Patch SKU visibility for a region (or Global for all regions)
+ */
+export async function patchSKUVisibility(
+  id: string,
+  payload: { region: string; status: 'Visible' | 'Hidden' }
+): Promise<{ success: boolean; data: SKU }> {
+  const response = await apiRequest<{ success: boolean; data: any }>(
+    `${BASE_PATH}/skus/${id}/visibility`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
+  const updated = response?.data;
+  return {
+    success: response?.success ?? true,
+    data: updated ? mapApiSkuToFrontend(updated) : mapApiSkuToFrontend({ _id: id, visibility: {} }),
+  };
+}
+
+/**
  * Delete SKU
  */
 export async function deleteSKU(id: string): Promise<{ success: boolean }> {
@@ -213,6 +246,7 @@ export const catalogApi = {
   getSKUs,
   createSKU,
   updateSKU,
+  patchSKUVisibility,
   deleteSKU,
   getCollections,
   createCollection,

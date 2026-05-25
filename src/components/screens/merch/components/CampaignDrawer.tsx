@@ -51,6 +51,7 @@ export function CampaignDrawer({ open, onOpenChange, campaign, onAction }: Campa
                     {campaign.status !== 'Archived' && (
                         <Button variant="ghost" size="sm" className="h-6 text-[8px] font-black uppercase tracking-wider px-2.5 text-gray-400 hover:text-red-600" onClick={() => onAction?.(campaign._id, 'Archived')}>Archive</Button>
                     )}
+                    <Button variant="ghost" size="sm" className="h-6 text-[8px] font-black uppercase tracking-wider px-2.5 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => onAction?.(campaign._id, 'Delete')}>Delete</Button>
                 </div>
             </div>
             
@@ -114,10 +115,10 @@ export function CampaignDrawer({ open, onOpenChange, campaign, onAction }: Campa
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 {[
-                                    { label: 'Discount Logic', value: 'Flat 20% Off Base Price' },
-                                    { label: 'Minimum Order', value: '₹25.00' },
-                                    { label: 'Customer Segment', value: 'Loyalty Tier Gold+' },
-                                    { label: 'Stackable', value: 'No', color: 'text-red-600' }
+                                    { label: 'Discount Logic', value: campaign.rules?.discountLogic || '—' },
+                                    { label: 'Minimum Order', value: campaign.rules?.minOrder || '—' },
+                                    { label: 'Customer Segment', value: campaign.rules?.segment || 'All Customers' },
+                                    { label: 'Stackable', value: campaign.rules?.stackable ? 'Yes' : 'No', color: campaign.rules?.stackable ? 'text-green-600' : 'text-red-600' }
                                 ].map((rule) => (
                                     <div key={rule.label} className="flex justify-between p-2.5 border border-gray-100 rounded-lg bg-gray-50/20">
                                         <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">{rule.label}</span>
@@ -132,7 +133,7 @@ export function CampaignDrawer({ open, onOpenChange, campaign, onAction }: Campa
                         <div className="flex items-center justify-between">
                             <h3 className="font-black text-[8px] text-gray-400 uppercase tracking-widest flex items-center gap-2">
                                 <div className="w-1 h-3 bg-[#7C3AED] rounded-full" />
-                                Targeted Products (4)
+                                Targeted Products ({Array.isArray(campaign.skus) ? campaign.skus.length : 0})
                             </h3>
                             <div className="relative w-40">
                                 <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-gray-400" />
@@ -151,23 +152,29 @@ export function CampaignDrawer({ open, onOpenChange, campaign, onAction }: Campa
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {[1, 2, 3, 4].map((i) => (
-                                        <TableRow key={i} className="bg-white hover:bg-gray-50/30 border-b last:border-0 transition-colors">
+                                    {Array.isArray(campaign.skus) && campaign.skus.length > 0 ? (
+                                      campaign.skus.map((sku: { sku?: string; name?: string; category?: string; basePrice?: number; promoPrice?: number }, i: number) => (
+                                        <TableRow key={sku.sku || i} className="bg-white hover:bg-gray-50/30 border-b last:border-0 transition-colors">
                                             <TableCell className="px-3 py-1.5">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-6 h-6 bg-gray-50 rounded-md flex items-center justify-center text-[7px] font-black text-gray-300 border border-gray-100 shrink-0">IMG</div>
+                                                    <div className="w-6 h-6 bg-gray-50 rounded-md flex items-center justify-center text-[7px] font-black text-gray-300 border border-gray-100 shrink-0">SKU</div>
                                                     <div className="min-w-0">
-                                                        <p className="font-black text-[10px] text-gray-900 truncate">SKU {i}02</p>
+                                                        <p className="font-black text-[10px] text-gray-900 truncate">{sku.name || sku.sku || '—'}</p>
                                                     </div>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="px-3 py-1.5">
-                                                <Badge variant="secondary" className="text-[7px] font-black px-1 h-3 bg-gray-100 text-gray-600">Bev</Badge>
+                                                <Badge variant="secondary" className="text-[7px] font-black px-1 h-3 bg-gray-100 text-gray-600">{sku.category || '—'}</Badge>
                                             </TableCell>
-                                            <TableCell className="px-3 py-1.5 text-right font-bold text-gray-300 line-through text-[9px]">₹12</TableCell>
-                                            <TableCell className="px-3 py-1.5 text-right font-black text-green-600 text-[10px]">₹10</TableCell>
+                                            <TableCell className="px-3 py-1.5 text-right font-bold text-gray-300 line-through text-[9px]">₹{sku.basePrice ?? '—'}</TableCell>
+                                            <TableCell className="px-3 py-1.5 text-right font-black text-green-600 text-[10px]">₹{sku.promoPrice ?? '—'}</TableCell>
                                         </TableRow>
-                                    ))}
+                                      ))
+                                    ) : (
+                                      <TableRow>
+                                        <TableCell colSpan={4} className="px-3 py-6 text-center text-[10px] text-gray-400">No SKUs linked to this campaign</TableCell>
+                                      </TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>

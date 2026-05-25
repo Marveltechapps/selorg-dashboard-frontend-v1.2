@@ -7,9 +7,12 @@ const authHeaders = () => ({
   Authorization: `Bearer ${getAuthToken() || ''}`,
 });
 
-function normalizeApproval(a: any) {
+function normalizeApproval(a: Record<string, unknown>) {
   const id = a.id ?? a._id;
-  return { ...a, id: typeof id === 'object' ? id?.toString() : String(id ?? '') };
+  return {
+    ...a,
+    id: typeof id === 'object' ? String((id as { toString?: () => string })?.toString?.() ?? '') : String(id ?? ''),
+  };
 }
 
 export const complianceApi = {
@@ -19,7 +22,7 @@ export const complianceApi = {
       headers: authHeaders(),
     });
     const data = response.data?.data ?? [];
-    const normalized = Array.isArray(data) ? data.map(normalizeApproval) : [];
+    const normalized = Array.isArray(data) ? data.map((a) => normalizeApproval(a as Record<string, unknown>)) : [];
     return { success: response.data?.success ?? true, data: normalized };
   },
 
@@ -27,10 +30,29 @@ export const complianceApi = {
     return complianceApi.getApprovals(filters);
   },
 
-  updateApprovalStatus: async (id: string, status: string, user: string = '') => {
-    const response = await axios.put(`${BASE}/approvals/${id}`, { status, user }, {
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    });
+  updateApprovalStatus: async (
+    id: string,
+    status: string,
+    options: { user?: string; note?: string; reason?: string } = {}
+  ) => {
+    const response = await axios.put(
+      `${BASE}/approvals/${id}`,
+      { status, user: options.user ?? '', note: options.note, reason: options.reason },
+      { headers: { ...authHeaders(), 'Content-Type': 'application/json' } }
+    );
+    return response.data;
+  },
+
+  bulkUpdateApprovals: async (
+    ids: string[],
+    status: 'Approved' | 'Rejected',
+    options: { user?: string; reason?: string } = {}
+  ) => {
+    const response = await axios.post(
+      `${BASE}/approvals/bulk`,
+      { ids, status, user: options.user ?? '', reason: options.reason },
+      { headers: { ...authHeaders(), 'Content-Type': 'application/json' } }
+    );
     return response.data;
   },
 

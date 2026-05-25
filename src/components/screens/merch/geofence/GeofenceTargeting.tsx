@@ -1,19 +1,33 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { MapPin, Loader2 } from 'lucide-react';
 import { Button } from "../../../ui/button";
-import { Zone, Store } from './types';
+import { Zone, Store, KPIStats } from './types';
 import { ZoneControls } from './ZoneControls';
-import { MapArea } from './MapArea';
+import { GeofenceMap } from './GeofenceMap';
 import { KPICards } from './KPICards';
 import { ZoneDetailDrawer } from './ZoneDetailDrawer';
 import { AddZoneWizard } from './AddZoneWizard';
 import { ActiveZonesModal, StoreCoverageModal } from './GeofenceModals';
-import { Switch } from "../../../ui/switch";
-import { Label } from "../../../ui/label";
-import { geofenceApi } from './geofenceApi';
-import { mapZoneFromApi, mapStoreFromApi, pointsToPolygon } from './geofenceUtils';
+import { geofenceApi, HeatmapMetric, PromoHeatmapRow } from './geofenceApi';
+import { mapZoneFromApi, mapStoreFromApi, buildCreateZonePayload, buildUpdateZonePayload } from './geofenceUtils';
 import { toast } from 'sonner';
 import { HeatmapDetailsDrawer } from './HeatmapDetailsDrawer';
+import { ZonesManagementPanel } from './ZonesManagementPanel';
+
+const EMPTY_KPI_STATS: KPIStats = {
+  totalZones: 0,
+  activeZones: 0,
+  inactiveZones: 0,
+  totalArea: 0,
+  storesFullyCovered: 0,
+  storesPartial: 0,
+  storesNone: 0,
+  storesTotal: 0,
+  topPromoZone: '—',
+  topPromoMetric: 'redemptions',
+  topPromoValue: 0,
+  heatmapDays: 30,
+};
 
 export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }) {
   const [zones, setZones] = useState<Zone[]>([]);
@@ -22,13 +36,43 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
   const [error, setError] = useState<string | null>(null);
 
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const [mapFocusedZoneId, setMapFocusedZoneId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isZoneListOpen, setIsZoneListOpen] = useState(false);
   const [isStoreCoverageOpen, setIsStoreCoverageOpen] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [isHeatmapDrawerOpen, setIsHeatmapDrawerOpen] = useState(false);
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('revenue');
+  const [heatmapRows, setHeatmapRows] = useState<PromoHeatmapRow[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [kpiStats, setKpiStats] = useState<KPIStats>(EMPTY_KPI_STATS);
+  const [kpiLoading, setKpiLoading] = useState(false);
+
+  const refreshKpis = useCallback(async () => {
+    try {
+      setKpiLoading(true);
+      const stats = await geofenceApi.getStats(30);
+      setKpiStats({
+        totalZones: stats.totalZones ?? 0,
+        activeZones: stats.activeZones ?? 0,
+        inactiveZones: stats.inactiveZones ?? 0,
+        totalArea: stats.totalArea ?? 0,
+        storesFullyCovered: stats.storesFullyCovered ?? 0,
+        storesPartial: stats.storesPartial ?? 0,
+        storesNone: stats.storesNone ?? 0,
+        storesTotal: stats.storesTotal ?? 0,
+        topPromoZone: stats.topPromoZone ?? '—',
+        topPromoMetric: stats.topPromoMetric ?? 'redemptions',
+        topPromoValue: stats.topPromoValue ?? 0,
+        heatmapDays: stats.heatmapDays ?? 30,
+      });
+    } catch {
+      setKpiStats(EMPTY_KPI_STATS);
+    } finally {
+      setKpiLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -37,11 +81,12 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
       const [zonesRes, storesRes] = await Promise.all([
         geofenceApi.getZones(),
         geofenceApi.getStores(),
+        refreshKpis(),
       ]);
-      const zonesList = Array.isArray(zonesRes) ? zonesRes : (zonesRes as any)?.data ?? [];
-      const storesList = Array.isArray(storesRes) ? storesRes : (storesRes as any)?.data ?? [];
-      setZones(zonesList.map((z: any) => mapZoneFromApi(z)));
-      setStores(storesList.map((s: any) => mapStoreFromApi(s)));
+      const zonesList = Array.isArray(zonesRes) ? zonesRes : (zonesRes as { data?: unknown[] })?.data ?? [];
+      const storesList = Array.isArray(storesRes) ? storesRes : (storesRes as { data?: unknown[] })?.data ?? [];
+      setZones(zonesList.map((z: Record<string, unknown>) => mapZoneFromApi(z)));
+      setStores(storesList.map((s: Record<string, unknown>) => mapStoreFromApi(s)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load geofence data');
       setZones([]);
@@ -49,7 +94,7 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshKpis]);
 
   useEffect(() => {
     loadData();
@@ -74,43 +119,82 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
     try {
       const updated = await geofenceApi.updateZone(id, { isVisible: !zone.isVisible });
       setZones(prev => prev.map(z => z.id === id ? mapZoneFromApi(updated) : z));
+      void refreshKpis();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update visibility');
     }
   };
 
+  const focusZoneOnMap = useCallback((zone: Zone) => {
+    setMapFocusedZoneId(zone.id);
+  }, []);
+
   const handleZoneClick = (zone: Zone) => {
+    focusZoneOnMap(zone);
     setSelectedZone(zone);
     setIsDrawerOpen(true);
+  };
+
+  const handleZoneListSelect = (zone: Zone) => {
+    focusZoneOnMap(zone);
   };
 
   const handleStoreClick = (store: Store) => {
     toast.info(`Store: ${store.name}`);
   };
 
-  const handleAddZone = async (newZone: Zone) => {
+  const handleAddZone = async (
+    newZone: Zone & {
+      polygon?: { lat: number; lng: number }[];
+      settings?: Zone['settings'];
+      linkedStoreIds?: string[];
+    },
+  ) => {
     try {
-      const polygon = (newZone as any).points?.length >= 3
-        ? pointsToPolygon((newZone as any).points)
-        : (newZone as any).polygon ?? [];
-      const payload: Record<string, unknown> = {
-        name: newZone.name,
-        type: (newZone as any).type === 'Serviceable' ? 'standard' : (newZone as any).type === 'Exclusion' ? 'no-service' : 'standard',
-        status: newZone.status === 'Active' ? 'active' : 'inactive',
+      if (!newZone.name?.trim()) {
+        toast.error('Zone name is required');
+        return;
+      }
+      if (!newZone.polygon || newZone.polygon.length < 3) {
+        toast.error('Draw a polygon with at least 3 points');
+        return;
+      }
+      const payload = buildCreateZonePayload({
+        name: newZone.name.trim(),
+        type: newZone.type,
+        status: newZone.status,
         color: newZone.color,
         isVisible: newZone.isVisible,
-        areaSqKm: (newZone as any).areaSqKm,
+        polygon: newZone.polygon,
+        areaSqKm: newZone.areaSqKm,
         city: 'Mumbai',
         region: 'West',
-      };
-      if (polygon.length >= 3) payload.polygon = polygon;
+        settings: newZone.settings,
+      });
       const created = await geofenceApi.createZone(payload);
       const mapped = mapZoneFromApi(created);
-      setZones(prev => [mapped, ...prev]);
+
+      const storeIds = newZone.linkedStoreIds ?? [];
+      if (storeIds.length > 0) {
+        await Promise.all(
+          storeIds.map(async (storeId) => {
+            const store = stores.find((s) => s.id === storeId);
+            if (!store) return;
+            const zones = [...new Set([...store.zones, mapped.name])];
+            await geofenceApi.updateStore(storeId, { zones, serviceStatus: 'Full' });
+          }),
+        );
+        const storesRes = await geofenceApi.getStores();
+        const storesList = Array.isArray(storesRes) ? storesRes : (storesRes as { data?: unknown[] })?.data ?? [];
+        setStores(storesList.map((s: Record<string, unknown>) => mapStoreFromApi(s)));
+      }
+
+      setZones((prev) => [mapped, ...prev]);
       setSelectedZone(mapped);
       setIsDrawerOpen(true);
       setIsWizardOpen(false);
-      toast.success('Zone Created');
+      void refreshKpis();
+      toast.success('Zone created');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create zone');
     }
@@ -124,41 +208,93 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
 
   const handleUpdateZone = async (zoneId: string, updates: Partial<Zone>) => {
     try {
-      const payload: Record<string, unknown> = {};
-      if (updates.name != null) payload.name = updates.name;
-      if (updates.type != null) payload.type = updates.type === 'Serviceable' ? 'standard' : updates.type === 'Exclusion' ? 'no-service' : updates.type;
-      if (updates.status != null) payload.status = updates.status === 'Active' ? 'active' : 'inactive';
-      if (updates.color != null) payload.color = updates.color;
-      if (updates.isVisible != null) payload.isVisible = updates.isVisible;
-      if (updates.areaSqKm != null) payload.areaSqKm = updates.areaSqKm;
-      if ((updates as any).polygon?.length >= 3) payload.polygon = (updates as any).polygon;
+      const payload = buildUpdateZonePayload(updates as Record<string, unknown>);
       const updated = await geofenceApi.updateZone(zoneId, payload);
       const mapped = mapZoneFromApi(updated);
       setZones(prev => prev.map(z => z.id === zoneId ? mapped : z));
       setSelectedZone(mapped);
+      void refreshKpis();
       toast.success('Zone Updated');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update zone');
     }
   };
 
-  const handleArchiveZone = async (zone: Zone) => {
-    if (!confirm(`Are you sure you want to archive ${zone.name}?`)) return;
+  const handleDeleteZone = async (zone: Zone) => {
     try {
       await geofenceApi.deleteZone(zone.id);
-      setZones(prev => prev.filter(z => z.id !== zone.id));
-      setIsDrawerOpen(false);
-      setSelectedZone(null);
-      toast.success('Zone Archived');
+      setZones((prev) => prev.filter((z) => z.id !== zone.id));
+      if (selectedZone?.id === zone.id) {
+        setIsDrawerOpen(false);
+        setSelectedZone(null);
+      }
+      if (mapFocusedZoneId === zone.id) {
+        setMapFocusedZoneId(null);
+      }
+      void refreshKpis();
+      toast.success('Zone deleted');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to archive zone');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete zone');
     }
   };
 
-  const handleHeatmapToggle = () => {
-    const newState = !showHeatmap;
-    setShowHeatmap(newState);
-    if (newState) setIsHeatmapDrawerOpen(true);
+  const handleDuplicateZone = async (zone: Zone) => {
+    if (!zone.polygon || zone.polygon.length < 3) {
+      toast.error('Zone has no boundary to duplicate');
+      return;
+    }
+    try {
+      const payload = buildCreateZonePayload({
+        name: `${zone.name} (Copy)`,
+        type: zone.type,
+        status: zone.status,
+        color: zone.color,
+        isVisible: true,
+        polygon: zone.polygon,
+        areaSqKm: zone.areaSqKm,
+        city: 'Mumbai',
+        region: 'West',
+        settings: zone.settings,
+      });
+      const created = await geofenceApi.createZone(payload);
+      const mapped = mapZoneFromApi(created);
+      setZones((prev) => [mapped, ...prev]);
+      setSelectedZone(mapped);
+      setIsDrawerOpen(true);
+      void refreshKpis();
+      toast.success('Zone duplicated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to duplicate zone');
+    }
+  };
+
+  const handleToggleStatus = async (zone: Zone) => {
+    const next = zone.status === 'Active' ? 'inactive' : 'active';
+    try {
+      const updated = await geofenceApi.toggleZoneStatus(zone.id, next);
+      const mapped = mapZoneFromApi(updated);
+      setZones((prev) => prev.map((z) => (z.id === zone.id ? mapped : z)));
+      if (selectedZone?.id === zone.id) setSelectedZone(mapped);
+      void refreshKpis();
+      toast.success(next === 'active' ? 'Zone activated' : 'Zone deactivated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update status');
+    }
+  };
+
+  const refreshHeatmap = useCallback(async () => {
+    try {
+      const data = await geofenceApi.getPromoHeatmap(30);
+      setHeatmapRows(data.rows ?? []);
+      void refreshKpis();
+    } catch {
+      setHeatmapRows([]);
+    }
+  }, [refreshKpis]);
+
+  const handleHeatmapZoneFocus = (zoneId: string) => {
+    const zone = zones.find((z) => z.id === zoneId);
+    if (zone) focusZoneOnMap(zone);
   };
 
   const handleSeedData = async () => {
@@ -169,14 +305,6 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to seed data');
     }
-  };
-
-  const kpiStats = {
-    activeZones: zones.filter(z => z.status === 'Active' || (z as any).status === 'active').length,
-    totalArea: zones.reduce((acc, z) => acc + (z.areaSqKm || 0), 0),
-    storesFullyCovered: stores.filter(s => s.serviceStatus === 'Full').length,
-    storesTotal: stores.length,
-    topPromoZone: zones[0]?.name ?? '—'
   };
 
   if (loading) {
@@ -198,7 +326,7 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
   }
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-[#212121]">Geofence & Targeting</h1>
@@ -210,43 +338,64 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
               Seed Data
             </Button>
           )}
-          <div className="flex items-center space-x-2 bg-white px-3 py-2 rounded-lg border border-gray-200">
-            <Switch id="heatmap-mode" checked={showHeatmap} onCheckedChange={handleHeatmapToggle} />
-            <Label htmlFor="heatmap-mode" className="text-sm font-medium">Promo Heatmap</Label>
-          </div>
           <Button onClick={() => setIsWizardOpen(true)} className="bg-[#212121] hover:bg-black">
-            <MapPin className="mr-2 h-4 w-4" /> Add Zone
+            <MapPin className="mr-2 h-4 w-4" /> Add zone
           </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 bg-white rounded-xl border border-[#E0E0E0] shadow-sm relative overflow-hidden flex flex-col">
-        <div className="flex-1 relative">
-          <MapArea
-            zones={filteredZones}
-            stores={filteredStores}
-            onZoneClick={handleZoneClick}
-            onStoreClick={handleStoreClick}
-            showHeatmap={showHeatmap}
-          />
-          <ZoneControls
-            zones={filteredZones}
-            onToggleVisibility={handleToggleVisibility}
-            onZoneClick={handleZoneClick}
-            onEditZone={handleEditZone}
-            onArchiveZone={handleArchiveZone}
-          />
         </div>
       </div>
 
       <div className="shrink-0">
         <KPICards
           stats={kpiStats}
+          loading={kpiLoading}
           onViewActiveZones={() => setIsZoneListOpen(true)}
           onViewStoresCovered={() => setIsStoreCoverageOpen(true)}
-          onViewHeatmap={() => { setShowHeatmap(true); setIsHeatmapDrawerOpen(true); }}
+          onViewHeatmap={() => {
+            setShowHeatmap(true);
+            setIsHeatmapDrawerOpen(true);
+            void refreshHeatmap();
+          }}
         />
       </div>
+
+      <div
+        className="h-96 shrink-0 bg-white rounded-xl border border-[#E0E0E0] shadow-sm relative overflow-hidden"
+        style={{ minHeight: 320 }}
+        aria-label="Geofence map"
+      >
+        <div className="absolute inset-0">
+          <GeofenceMap
+            className="h-full w-full"
+            zones={filteredZones}
+            stores={filteredStores}
+            onZoneClick={handleZoneClick}
+            onStoreClick={handleStoreClick}
+            showHeatmap={showHeatmap}
+            heatmapRows={heatmapRows}
+            heatmapMetric={heatmapMetric}
+            focusedZoneId={mapFocusedZoneId}
+          />
+          <ZoneControls
+            zones={filteredZones}
+            onToggleVisibility={handleToggleVisibility}
+            onZoneClick={handleZoneClick}
+            onEditZone={handleEditZone}
+            onArchiveZone={handleDeleteZone}
+          />
+        </div>
+      </div>
+
+      <ZonesManagementPanel
+        zones={filteredZones}
+        selectedZoneId={mapFocusedZoneId}
+        onEditZone={handleEditZone}
+        onSelectZone={handleZoneListSelect}
+        onViewZone={handleZoneClick}
+        onDeleteZone={handleDeleteZone}
+        onDuplicateZone={handleDuplicateZone}
+        onToggleVisibility={handleToggleVisibility}
+        onToggleStatus={handleToggleStatus}
+      />
 
       <ZoneDetailDrawer
         zone={selectedZone}
@@ -254,7 +403,11 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
         onClose={() => { setIsDrawerOpen(false); setIsEditMode(false); }}
         onEdit={handleEditZone}
         onUpdate={handleUpdateZone}
-        onArchive={handleArchiveZone}
+        onArchive={handleDeleteZone}
+        onDuplicate={handleDuplicateZone}
+        onToggleStatus={handleToggleStatus}
+        allZones={zones}
+        stores={stores}
         isEditMode={isEditMode}
         onEditModeChange={setIsEditMode}
       />
@@ -262,7 +415,9 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
       <HeatmapDetailsDrawer
         isOpen={isHeatmapDrawerOpen}
         onClose={() => { setIsHeatmapDrawerOpen(false); setShowHeatmap(false); }}
-        zones={zones}
+        onMetricChange={setHeatmapMetric}
+        onZoneFocus={handleHeatmapZoneFocus}
+        onDataLoaded={setHeatmapRows}
       />
 
       <AddZoneWizard
@@ -278,8 +433,13 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
         onClose={() => setIsZoneListOpen(false)}
         zones={zones}
         onEditZone={handleEditZone}
-        onViewOnMap={(zone) => { setIsZoneListOpen(false); handleZoneClick(zone); }}
-        onArchiveZone={handleArchiveZone}
+        onViewOnMap={(zone) => {
+          setIsZoneListOpen(false);
+          focusZoneOnMap(zone);
+        }}
+        onArchiveZone={handleDeleteZone}
+        onDuplicateZone={handleDuplicateZone}
+        onCreateZone={() => { setIsZoneListOpen(false); setIsWizardOpen(true); }}
       />
 
       <StoreCoverageModal
@@ -292,7 +452,10 @@ export function GeofenceTargeting({ searchQuery = "" }: { searchQuery?: string }
             description: `Zones: ${(store.zones ?? []).join(', ') || 'None assigned'}`
           });
         }}
-        onStoresUpdated={loadData}
+        onStoresUpdated={async () => {
+          await loadData();
+          void refreshKpis();
+        }}
       />
     </div>
   );

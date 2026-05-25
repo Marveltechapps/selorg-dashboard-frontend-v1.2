@@ -25,6 +25,16 @@ function buildUrl(endpoint: string): string {
   return new URL(path, baseWithSlash).toString();
 }
 
+function parseApiErrorBody(errText: string, fallback: string): string {
+  if (!errText?.trim()) return fallback;
+  try {
+    const parsed = JSON.parse(errText) as { error?: string; message?: string };
+    return parsed.error || parsed.message || errText;
+  } catch {
+    return errText;
+  }
+}
+
 async function fetchJson(method: string, endpoint: string, data?: Record<string, unknown>) {
   const url = buildUrl(endpoint);
   let response: Response;
@@ -39,7 +49,7 @@ async function fetchJson(method: string, endpoint: string, data?: Record<string,
   }
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(errText || `API Error: ${response.statusText}`);
+    throw new Error(parseApiErrorBody(errText, `API Error: ${response.statusText}`));
   }
   return response.json();
 }
@@ -166,6 +176,19 @@ export async function getOrderActionLogs(orderId: string, limit = 50) {
   const json = await response.json();
   if (json.success === false) throw new Error(json.error || 'Failed to fetch action logs');
   return json.data || [];
+}
+
+/**
+ * Get single order by ID. GET /api/v1/darkstore/orders/:orderId
+ */
+export async function getOrderById(orderId: string, storeId?: string) {
+  const rawId = orderId.replace(/^#/, '');
+  const qs = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const result = await fetchJson('GET', `/darkstore/orders/${encodeURIComponent(rawId)}${qs}`);
+  if (result && result.success === false) {
+    throw new Error(result.error || 'Failed to fetch order');
+  }
+  return result;
 }
 
 /**

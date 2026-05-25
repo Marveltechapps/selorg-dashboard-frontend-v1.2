@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Bell, BellRing, Search, X, Package, FileText, Loader2, Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { ArrowRight, Bell, BellRing, Search, X, Clock, ShieldCheck } from 'lucide-react';
 import {
   globalSearch,
   getRecentSearches,
@@ -75,6 +76,34 @@ async function fetchProductionNotifications(
 
 const DEBOUNCE_MS = 300;
 
+function envBadge(): { label: string; className: string } | null {
+  const custom = (import.meta.env.VITE_ENV_LABEL as string | undefined)?.trim();
+  if (custom) {
+    return {
+      label: custom,
+      className: 'bg-slate-50 rounded-full border border-slate-200 text-slate-800',
+    };
+  }
+  if (import.meta.env.DEV) {
+    return {
+      label: 'Development',
+      className: 'bg-slate-50 rounded-full border border-slate-200 text-slate-700',
+    };
+  }
+  return {
+    label: 'Production',
+    className: 'bg-rose-50 rounded-full border border-rose-100 text-rose-900',
+  };
+}
+
+function formatTimeAgo(ts: string) {
+  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
 export interface ProductionTopBarProps {
   setActiveTab?: (tab: string) => void;
   onOpenDowntime?: () => void;
@@ -82,6 +111,7 @@ export interface ProductionTopBarProps {
 
 export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
   const navigate = useNavigate();
+  const badge = envBadge();
   const { selectedFactoryId } = useProductionFactory();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<GlobalSearchResult | null>(null);
@@ -96,9 +126,10 @@ export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
   const [dropdownBox, setDropdownBox] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const searchWrapRef = useRef<HTMLDivElement>(null);
-  const searchDropdownPortalRef = useRef<HTMLDivElement>(null);
-  const notifWrapRef = useRef<HTMLDivElement>(null);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
+  const searchDropdownPortalRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runSearch = useCallback(async (q: string) => {
@@ -193,11 +224,22 @@ export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
         !!searchWrapRef.current?.contains(target) || !!searchDropdownPortalRef.current?.contains(target);
       if (!inSearch) setSearchOpen(false);
 
-      if (notifWrapRef.current && !notifWrapRef.current.contains(target)) setNotificationsOpen(false);
+      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setNotificationsOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNotificationsOpen(false);
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, []);
+
+  const notificationCount = useMemo(() => notifications.length, [notifications]);
 
   const dismissSearchOverlay = useCallback(() => {
     setSearchOpen(false);
@@ -318,7 +360,11 @@ export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
           <div
             role="presentation"
             aria-hidden
-            className="fixed inset-0 z-[160] transition-opacity duration-200 motion-reduce:transition-none bg-gradient-to-b from-[#0f172a]/75 via-[#0f172a]/60 to-[#16A34A]/[0.16] backdrop-blur-[7px] supports-[backdrop-filter]:backdrop-blur-lg"
+            className={cn(
+              'fixed inset-0 z-[160] transition-opacity duration-200 motion-reduce:transition-none',
+              'bg-gradient-to-b from-[#0f172a]/75 via-[#0f172a]/60 to-[#e11d48]/[0.16]',
+              'backdrop-blur-[7px] supports-[backdrop-filter]:backdrop-blur-lg'
+            )}
             onMouseDown={(e) => {
               e.preventDefault();
               dismissSearchOverlay();
@@ -327,240 +373,260 @@ export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
           document.body
         )}
       <div
-        className={`h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 left-[220px] right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200 ${
+        className={cn(
+          'production-topbar h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 left-0 right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
           searchOpen ? 'z-[170] border-[#f0f0f3] shadow-[0_6px_24px_-8px_rgba(15,23,42,0.08)]' : 'z-40'
-        }`}
+        )}
       >
-        <div className="flex items-center w-full">
-          {/* Left spacer ensures the search stays centered when there are no left controls */}
-          <div className="flex-1 min-w-0" />
-
-          <div className="flex-none w-full max-w-xl">
-            <div ref={searchWrapRef} className="relative z-[1] w-full min-w-0">
-              <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] shrink-0 pointer-events-none" size={16} aria-hidden />
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Search…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setSearchOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') dismissSearchOverlay();
-                }}
-                className="h-9 sm:h-10 pl-8 sm:pl-10 pr-[4.75rem] sm:pr-[6.25rem] w-full min-w-0 rounded-lg bg-[#f4f4f5] border-transparent text-sm focus:bg-white focus:ring-2 focus:ring-[#e11d48] focus:border-transparent transition-all placeholder-[#a1a1aa] text-[#18181b]"
-              />
-              <div className="pointer-events-none absolute inset-y-0 right-1.5 sm:right-2 flex items-center justify-end gap-0.5 sm:gap-1">
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    className="pointer-events-auto p-1 rounded-md text-[#a1a1aa] hover:bg-[#e4e4e7] hover:text-[#52525b]"
-                    aria-label="Clear search"
-                  >
-                    <X size={14} strokeWidth={2} />
-                  </button>
-                ) : null}
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-xl">
+          <div ref={searchWrapRef} className="relative z-[1] w-full min-w-0">
+            <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] shrink-0 pointer-events-none" size={16} aria-hidden />
+            <input
+              ref={inputRef}
+              type="text"
+              role="combobox"
+              aria-expanded={showSearchPanel}
+              aria-autocomplete="list"
+              autoComplete="off"
+              placeholder="Search…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') dismissSearchOverlay();
+              }}
+              className="h-9 sm:h-10 pl-8 sm:pl-10 pr-[4.75rem] sm:pr-[6.25rem] w-full min-w-0 rounded-lg bg-[#f4f4f5] border-transparent text-sm focus:bg-white focus:ring-2 focus:ring-[#e11d48] focus:border-transparent transition-all placeholder-[#a1a1aa] text-[#18181b]"
+            />
+            <div className="pointer-events-none absolute inset-y-0 right-1.5 sm:right-2 flex items-center justify-end gap-0.5 sm:gap-1">
+              {searchQuery ? (
                 <button
                   type="button"
-                  onClick={focusSearch}
-                  title={`Focus search (${shortcutLabel})`}
-                  aria-keyshortcuts="Meta+K Control+K"
-                  className="pointer-events-auto inline-flex shrink-0 items-center justify-center rounded border border-[#d4d4d8] bg-white px-1 py-0.5 text-[9px] font-mono leading-none text-[#71717a] hover:bg-[#f4f4f5] transition-colors sm:px-1.5 sm:text-[10px] sm:py-0.5"
+                  onClick={clearSearch}
+                  className="pointer-events-auto p-1 rounded-md text-[#a1a1aa] hover:bg-[#e4e4e7] hover:text-[#52525b]"
+                  aria-label="Clear search"
                 >
-                  {shortcutLabel}
+                  <X size={14} strokeWidth={2} />
                 </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0 flex justify-end">
-            <div
-              className="relative z-[2] flex shrink-0 min-w-0 items-center gap-1 sm:gap-4"
-              ref={notifWrapRef}
-            >
+              ) : null}
               <button
                 type="button"
-                onClick={() => setNotificationsOpen((o) => !o)}
-                className="relative p-2 text-[#71717a] hover:bg-[#f4f4f5] rounded-full transition-colors group shrink-0"
-                aria-label="Notifications"
+                onClick={focusSearch}
+                title={`Focus search (${shortcutLabel})`}
+                aria-keyshortcuts="Meta+K Control+K"
+                className="pointer-events-auto inline-flex shrink-0 items-center justify-center rounded border border-[#d4d4d8] bg-white px-1 py-0.5 text-[9px] font-mono leading-none text-[#71717a] hover:bg-[#f4f4f5] transition-colors sm:px-1.5 sm:text-[10px] sm:py-0.5"
               >
-                {notificationsOpen ? (
-                  <BellRing size={20} className="text-[#71717a]" />
-                ) : (
-                  <Bell size={20} className="group-hover:text-[#18181b]" />
-                )}
-                {notifications.length > 0 && (
-                  <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 bg-[#e11d48] rounded-full border border-white text-[10px] leading-4 text-white text-center font-bold">
-                    {notifications.length > 9 ? '9+' : notifications.length}
-                  </span>
-                )}
+                {shortcutLabel}
               </button>
-              {notificationsOpen && (
-                <div
-                  className="absolute right-0 top-full mt-2 z-50 bg-white border border-[#e4e4e7] rounded-xl shadow-2xl overflow-hidden"
-                  style={{ width: '460px', maxWidth: 'calc(100vw - 24px)' }}
-                >
-                  <div className="px-4 py-3 border-b border-[#e4e4e7] flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-[#18181b]">Notifications</h4>
-                    <span className="text-xs text-[#71717a]">{notifications.length} latest</span>
-                  </div>
-                  {notificationsLoading && (
-                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">Loading notifications...</div>
-                  )}
-                  {!notificationsLoading && notifications.length === 0 && (
-                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">No notifications yet</div>
-                  )}
-                  {!notificationsLoading &&
-                    notifications.length > 0 &&
-                    notifications.map((n) => (
-                      <div key={n.id ?? n._id ?? n.title} className="px-4 py-3 border-b border-[#f4f4f5] last:border-b-0 hover:bg-[#fafafa]">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-[#18181b] truncate">
-                            {n.title || 'Notification'}
-                          </p>
-                          {n.createdAt || n.timestamp ? (
-                            <span className="text-[10px] text-[#71717a] shrink-0">
-                              {new Date(n.createdAt ?? n.timestamp ?? '').toLocaleString()}
-                            </span>
-                          ) : null}
-                        </div>
-                        {n.description && <p className="text-xs text-[#52525b] mt-1 line-clamp-2">{n.description}</p>}
-                        {n.createdAt || n.timestamp ? (
-                          <div className="mt-2 flex items-center gap-2 text-[10px]">
-                            <span className="px-1.5 py-0.5 rounded bg-[#f4f4f5] text-[#52525b] uppercase">info</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                </div>
-              )}
             </div>
+
+            {showSearchPanel &&
+              dropdownBox &&
+              createPortal(
+                <div
+                  ref={searchDropdownPortalRef}
+                  role="listbox"
+                  className="fixed isolate z-[180] flex max-h-[min(28rem,72vh)] min-w-[min(100%,280px)] flex-col overflow-hidden rounded-xl border border-[#f0f0f3] bg-white shadow-[0_12px_36px_-10px_rgba(15,23,42,0.12)]"
+                  style={{
+                    top: dropdownBox.top,
+                    left: dropdownBox.left,
+                    width: dropdownBox.width,
+                  }}
+                >
+                  {searchLoading && searchQuery.trim().length >= 2 && (
+                    <div className="shrink-0 border-b border-[#f4f4f5] bg-[#fafafa] px-3 py-2.5">
+                      <div className="flex items-center gap-2 text-sm text-[#52525b]">
+                        <span
+                          className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#e11d48] border-t-transparent"
+                          aria-hidden
+                        />
+                        Searching…
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth [scrollbar-gutter:stable]">
+                    {!searchLoading && searchQuery.trim().length < 2 && recentSearches.length > 0 && (
+                      <div className="border-b border-[#f4f4f5] p-3">
+                        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#71717a]">
+                          <Clock size={12} className="shrink-0" />
+                          Recent
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {recentSearches.slice(0, 5).map((term) => (
+                            <button
+                              key={term}
+                              type="button"
+                              onClick={() => {
+                                setSearchQuery(term);
+                                runSearch(term);
+                              }}
+                              className="rounded-md border border-[#e4e4e7] bg-[#fafafa] px-2 py-1 text-xs text-[#3f3f46] transition-colors hover:border-[#e11d48]/40 hover:bg-rose-50/80"
+                            >
+                              {term}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!searchLoading && suggestions.length > 0 && searchQuery.trim().length >= 2 && (
+                      <div className="border-b border-[#f4f4f5] p-3">
+                        <div className="mb-1.5 text-xs font-semibold text-[#71717a]">Suggestions</div>
+                        <ul className="space-y-0.5">
+                          {suggestions.map((s, idx) => (
+                            <li key={`${s.text}-${idx}`}>
+                              <button
+                                type="button"
+                                onClick={() => handleSuggestionClick(s)}
+                                className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm text-[#18181b] transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#e11d48]/30"
+                              >
+                                <span className="min-w-0 truncate">{s.text}</span>
+                                <ArrowRight size={14} className="shrink-0 text-[#a1a1aa]" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {!searchLoading && searchResults && searchQuery.trim().length >= 2 && searchResults.total > 0 && (
+                      <>
+                        {[
+                          { key: 'orders', label: 'Orders', items: searchResults.results.orders },
+                          { key: 'products', label: 'Products', items: searchResults.results.products },
+                        ].map((section) =>
+                          section.items.length > 0 ? (
+                            <section key={section.key} className="border-b border-[#f4f4f5] last:border-b-0">
+                              <div className="sticky top-0 z-[1] flex items-center justify-between border-b border-[#f4f4f5] bg-white px-3 py-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wide text-[#64748b]">
+                                  {section.label}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-[#64748b]">
+                                  {section.items.length}
+                                </span>
+                              </div>
+                              <ul className="divide-y divide-[#f4f4f5] px-1 py-1">
+                                {section.items.map((item: SearchItem) => (
+                                  <li key={`${section.key}-${item.id}`}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSearchResultClick(item)}
+                                      className="flex w-full items-start justify-between gap-2 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#e11d48]/30"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="truncate text-sm font-medium text-[#18181b]">{item.title}</span>
+                                          <span
+                                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${resultTypeBadgeClass(
+                                              item.type
+                                            )}`}
+                                          >
+                                            {item.type}
+                                          </span>
+                                        </div>
+                                        <p className="mt-0.5 truncate text-xs text-[#71717a]">{item.subtitle}</p>
+                                      </div>
+                                      <ArrowRight size={14} className="mt-0.5 shrink-0 text-[#a1a1aa]" />
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </section>
+                          ) : null
+                        )}
+                      </>
+                    )}
+
+                    {!searchLoading && searchResults && searchQuery.trim().length >= 2 && searchResults.total === 0 && (
+                      <div className="px-4 py-10 text-center text-sm text-[#71717a]">
+                        No results for &ldquo;{searchQuery}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
           </div>
         </div>
-      </div>
-      {showSearchPanel && dropdownBox && createPortal(
-        <div
-          ref={searchDropdownPortalRef}
-          role="listbox"
-          className="fixed isolate z-[180] flex max-h-[min(28rem,72vh)] min-w-[min(100%,280px)] flex-col overflow-hidden rounded-xl border border-[#E0E0E0] bg-white shadow-[0_12px_36px_-10px_rgba(15,23,42,0.12)]"
-          style={{
-            top: dropdownBox.top,
-            left: dropdownBox.left,
-            width: dropdownBox.width,
-          }}
-        >
-          {searchLoading && searchQuery.trim().length >= 2 && (
-            <div className="shrink-0 border-b border-[#F4F4F5] bg-[#FAFAFA] px-3 py-2.5">
-              <div className="flex items-center gap-2 text-sm text-[#52525b]">
-                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#16A34A] border-t-transparent" aria-hidden />
-                Searching…
-              </div>
+
+        <div className="relative z-[2] flex shrink-0 min-w-0 items-center gap-1 sm:gap-4 ml-1 sm:ml-6">
+          {badge && (
+            <div className={cn('hidden sm:flex items-center gap-2 px-3 py-1.5', badge.className)}>
+              <ShieldCheck size={14} className={import.meta.env.DEV ? 'text-slate-600' : 'text-[#e11d48]'} />
+              <span className="text-xs font-medium">{badge.label}</span>
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth [scrollbar-gutter:stable]">
-            {!searchLoading && searchQuery.trim().length < 2 && recentSearches.length > 0 && (
-              <div className="border-b border-[#F4F4F5] p-3">
-                <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#757575]">
-                  <Clock size={12} className="shrink-0" />
-                  Recent
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {recentSearches.slice(0, 5).map((term) => (
-                    <button
-                      key={term}
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery(term);
-                        runSearch(term);
-                      }}
-                      className="rounded-md border border-[#E4E4E7] bg-[#FAFAFA] px-2 py-1 text-xs text-[#3f3f46] transition-colors hover:border-[#16A34A]/40 hover:bg-green-50/80"
-                    >
-                      {term}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+          <div className="h-6 w-px bg-[#e4e4e7] mx-0 sm:mx-2 hidden sm:block shrink-0" />
 
-            {!searchLoading && suggestions.length > 0 && searchQuery.trim().length >= 2 && (
-              <div className="border-b border-[#F4F4F5] p-3">
-                <div className="mb-1.5 text-xs font-semibold text-[#757575]">Suggestions</div>
-                <ul className="space-y-0.5">
-                  {suggestions.map((s, idx) => (
-                    <li key={`${s.text}-${idx}`}>
-                      <button
-                        type="button"
-                        onClick={() => handleSuggestionClick(s)}
-                        className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm text-[#212121] transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#16A34A]/30"
+          <div className="relative shrink-0">
+            <button
+              ref={buttonRef}
+              type="button"
+              className="relative p-2 text-[#71717a] hover:bg-[#f4f4f5] rounded-full transition-colors group shrink-0"
+              aria-label="Notifications"
+              onClick={() => setNotificationsOpen((prev) => !prev)}
+            >
+              {notificationsOpen ? (
+                <BellRing size={20} className="text-[#71717a]" />
+              ) : (
+                <Bell size={20} className="group-hover:text-[#18181b]" />
+              )}
+              {notificationCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 bg-[#e11d48] rounded-full border border-white text-[10px] leading-4 text-white text-center font-bold">
+                  {notificationCount > 9 ? '9+' : notificationCount}
+                </span>
+              )}
+            </button>
+            {notificationsOpen && (
+              <div
+                ref={panelRef}
+                className="absolute right-0 top-full mt-2 z-50 bg-white border border-[#e4e4e7] rounded-xl shadow-2xl overflow-hidden"
+                style={{ width: '460px', maxWidth: 'calc(100vw - 24px)' }}
+              >
+                <div className="px-4 py-3 border-b border-[#e4e4e7] flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-[#18181b]">Notifications</h4>
+                  <span className="text-xs text-[#71717a]">{notificationCount} latest</span>
+                </div>
+                <div className="min-h-[300px] max-h-[min(75vh,540px)] overflow-y-auto">
+                  {notificationsLoading ? (
+                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">Loading notifications...</div>
+                  ) : notificationCount === 0 ? (
+                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">No notifications yet</div>
+                  ) : (
+                    notifications.map((n) => (
+                      <div
+                        key={n.id ?? n._id ?? n.title}
+                        className="px-4 py-3 border-b border-[#f4f4f5] last:border-b-0 hover:bg-[#fafafa]"
                       >
-                        <span className="min-w-0 truncate">{s.text}</span>
-                        <ArrowRight size={14} className="shrink-0 text-[#9E9E9E]" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {!searchLoading && searchResults && searchQuery.trim().length >= 2 && searchResults.total > 0 && (
-              <>
-                {[
-                  { key: 'orders', label: 'Orders', items: searchResults.results.orders, icon: FileText },
-                  { key: 'products', label: 'Products', items: searchResults.results.products, icon: Package },
-                ].map((section) =>
-                  section.items.length > 0 ? (
-                    <section key={section.key} className="border-b border-[#F4F4F5] last:border-b-0">
-                      <div className="sticky top-0 z-[1] flex items-center justify-between border-b border-[#F4F4F5] bg-white px-3 py-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wide text-[#757575]">
-                          {section.label}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-[#757575]">
-                          {section.items.length}
-                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-[#18181b] truncate">{n.title || 'Notification'}</p>
+                          {(n.createdAt || n.timestamp) && (
+                            <span className="text-[10px] text-[#71717a] shrink-0">
+                              {formatTimeAgo(n.createdAt ?? n.timestamp ?? '')}
+                            </span>
+                          )}
+                        </div>
+                        {n.description && (
+                          <p className="text-xs text-[#52525b] mt-1 line-clamp-2">{n.description}</p>
+                        )}
+                        <div className="mt-2 flex items-center gap-2 text-[10px]">
+                          {n.severity && (
+                            <span className="px-1.5 py-0.5 rounded bg-[#f4f4f5] text-[#52525b] uppercase">{n.severity}</span>
+                          )}
+                          {n.status && (
+                            <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 uppercase">{n.status}</span>
+                          )}
+                        </div>
                       </div>
-                      <ul className="divide-y divide-[#F4F4F5] px-1 py-1">
-                        {section.items.map((item: SearchItem) => (
-                          <li key={`${section.key}-${item.id}`}>
-                            <button
-                              type="button"
-                              onClick={() => handleSearchResultClick(item)}
-                              className="flex w-full items-start justify-between gap-2 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#16A34A]/30"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="truncate text-sm font-medium text-[#212121]">{item.title}</span>
-                                  <span
-                                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${resultTypeBadgeClass(
-                                      item.type
-                                    )}`}
-                                  >
-                                    {item.type}
-                                  </span>
-                                </div>
-                                <p className="mt-0.5 truncate text-xs text-[#757575]">{item.subtitle}</p>
-                              </div>
-                              <ArrowRight size={14} className="mt-0.5 shrink-0 text-[#9E9E9E]" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  ) : null
-                )}
-              </>
-            )}
-
-            {!searchLoading && searchResults && searchQuery.trim().length >= 2 && searchResults.total === 0 && (
-              <div className="px-4 py-10 text-center text-sm text-[#757575]">
-                No results for &ldquo;{searchQuery}&rdquo;
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
-        </div>,
-        document.body
-      )}
+        </div>
+      </div>
     </>
   );
 }

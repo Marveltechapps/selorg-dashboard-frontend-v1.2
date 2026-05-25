@@ -15,6 +15,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Checkbox } from "../../../ui/checkbox";
 import { ScrollArea } from "../../../ui/scroll-area";
 import { CollectionType, Region } from './types';
+
+const COLLECTION_TYPES: CollectionType[] = ['Seasonal', 'Thematic', 'Bundle/Combo', 'Brand'];
+const REGION_OPTIONS: Region[] = ['North America', 'Europe (West)', 'APAC'];
+
+function normalizeRegion(region: unknown): Region {
+  if (typeof region === 'string' && REGION_OPTIONS.includes(region as Region)) {
+    return region as Region;
+  }
+  return 'North America';
+}
+
+function normalizeCollectionType(type: unknown): CollectionType {
+  if (typeof type === 'string' && COLLECTION_TYPES.includes(type as CollectionType)) {
+    return type as CollectionType;
+  }
+  return 'Seasonal';
+}
 import { Check, ChevronRight, Upload, Calendar as CalendarIcon, X, Search, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { catalogApi } from '@/api/merch/catalogApi';
@@ -58,8 +75,8 @@ export function CreateCollectionModal({ isOpen, onClose, onSubmit, initialData }
         setData({
           name: initialData.name,
           description: initialData.description,
-          type: initialData.type,
-          region: initialData.region,
+          type: normalizeCollectionType(initialData.type),
+          region: normalizeRegion(initialData.region),
           skus: initialData.skus || [],
           media: initialData.imageUrl || null,
           status: initialData.status
@@ -195,30 +212,37 @@ export function CreateCollectionModal({ isOpen, onClose, onSubmit, initialData }
                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Type</Label>
-                            <Select 
-                                value={data.type} 
-                                onValueChange={(val: CollectionType) => setData({...data, type: val})}
+                            <Select
+                                value={data.type}
+                                onValueChange={(val) =>
+                                  setData((prev) => ({ ...prev, type: val as CollectionType }))
+                                }
                             >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Seasonal">Seasonal</SelectItem>
-                                    <SelectItem value="Thematic">Thematic</SelectItem>
-                                    <SelectItem value="Bundle/Combo">Bundle/Combo</SelectItem>
-                                    <SelectItem value="Brand">Brand</SelectItem>
+                                <SelectTrigger className="w-full bg-white">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent position="popper" sideOffset={4}>
+                                    {COLLECTION_TYPES.map((t) => (
+                                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-2">
                             <Label>Region Scope</Label>
-                            <Select 
-                                value={data.region} 
-                                onValueChange={(val: Region) => setData({...data, region: val})}
+                            <Select
+                                value={data.region}
+                                onValueChange={(val) =>
+                                  setData((prev) => ({ ...prev, region: val as Region }))
+                                }
                             >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="North America">North America</SelectItem>
-                                    <SelectItem value="Europe (West)">Europe (West)</SelectItem>
-                                    <SelectItem value="APAC">APAC</SelectItem>
+                                <SelectTrigger className="w-full bg-white">
+                                  <SelectValue placeholder="Select region" />
+                                </SelectTrigger>
+                                <SelectContent position="popper" sideOffset={4}>
+                                    {REGION_OPTIONS.map((r) => (
+                                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -289,12 +313,16 @@ export function CreateCollectionModal({ isOpen, onClose, onSubmit, initialData }
                  <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                       <div className="space-y-2">
                             <Label>Status</Label>
-                            <Select 
-                                value={data.status} 
-                                onValueChange={(val: string) => setData({...data, status: val as any})}
+                            <Select
+                                value={data.status}
+                                onValueChange={(val) =>
+                                  setData((prev) => ({ ...prev, status: val }))
+                                }
                             >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
+                                <SelectTrigger className="w-full bg-white">
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent position="popper" sideOffset={4}>
                                     <SelectItem value="Draft">Draft</SelectItem>
                                     <SelectItem value="Live">Live</SelectItem>
                                     <SelectItem value="Scheduled">Scheduled</SelectItem>

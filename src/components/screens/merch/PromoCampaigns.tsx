@@ -9,7 +9,8 @@ import { CampaignWizard } from "./components/CampaignWizard";
 import { CampaignDrawer } from "./components/CampaignDrawer";
 import { Separator } from "../../ui/separator";
 import { toast } from "sonner";
-import { merchApi, campaignsApi } from "./merchApi";
+import { campaignsApi } from "./merchApi";
+import { buildCampaignPayload } from "./utils/buildCampaignPayload";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../ui/dropdown-menu";
 
 interface PromoCampaignsProps {
@@ -27,26 +28,27 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
   const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<any>(null);
-  
-  // Load campaigns on mount - API only, no caching
-  useEffect(() => {
-    const loadCampaigns = async () => {
-      setLoading(true);
-      try {
-        const result = await campaignsApi.getCampaigns();
-        if (result.success && Array.isArray(result.data)) {
-          setCampaigns(result.data);
-        } else {
-          setCampaigns([]);
-        }
-      } catch (error) {
-        console.error('Error loading campaigns:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load campaigns');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const loadCampaigns = async () => {
+    setLoading(true);
+    try {
+      const result = await campaignsApi.getCampaigns();
+      if (result.success && Array.isArray(result.data)) {
+        setCampaigns(result.data);
+      } else {
         setCampaigns([]);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error loading campaigns:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load campaigns');
+      setCampaigns([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadCampaigns();
   }, []);
 
@@ -55,18 +57,17 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
     setIsDrawerOpen(true);
   };
 
-  const handleUpdateStatus = async (id: any, newStatus: string) => {
+  const campaignId = (c: { _id?: string; id?: string }) => String(c._id ?? c.id ?? '');
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
     try {
       const result = await campaignsApi.updateCampaignStatus(id, newStatus);
-      if (result.success) {
-      // Update state
-      setCampaigns(prev => prev.map(c => 
-        (c._id === id) ? { ...c, status: newStatus } : c
-      ));
-      if (selectedCampaign?._id === id) {
-        setSelectedCampaign({ ...selectedCampaign, status: newStatus });
-      }
-      toast.success(`Campaign ${newStatus} successfully`);
+      if (result.success && result.data) {
+        setCampaigns(prev => prev.map(c => (campaignId(c) === id ? result.data : c)));
+        if (selectedCampaign && campaignId(selectedCampaign) === id) {
+          setSelectedCampaign(result.data);
+        }
+        toast.success(`Campaign marked as ${newStatus}`);
       } else {
         toast.error('Failed to update campaign status');
       }
@@ -76,68 +77,61 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
     }
   };
 
-  const handleAddCampaign = async (data: any, status: string) => {
-    const period = data.startDate && data.endDate
-      ? `${new Date(data.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(data.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-      : "TBD";
-
-    const normalizedSkus = Array.isArray(data.skus)
-      ? data.skus
-          .map((sku: any) => {
-            if (typeof sku === 'string') return sku;
-            if (sku && typeof sku === 'object') {
-              return {
-                sku: sku.sku || sku.code || sku.id || sku._id || '',
-                name: sku.name || '',
-                category: sku.category || 'General',
-                basePrice: Number(sku.basePrice ?? sku.base ?? 0),
-                promoPrice: Number(sku.promoPrice ?? sku.sell ?? sku.sellingPrice ?? sku.basePrice ?? 0),
-              };
-            }
-            return null;
-          })
-          .filter(Boolean)
-      : [];
-
-    const payload = {
-      ...data,
-      name: data.name || "Untitled Campaign",
-      tagline: data.description || "New Promotion",
-      status,
-      period,
-      target: data.target || (data.skus?.length ? `${data.skus.length} SKUs` : "Selected SKUs"),
-      scope: data.region || "Global",
-      type: (data.type || "Discount").charAt(0).toUpperCase() + (data.type || "Discount").slice(1).toLowerCase(),
-      owner: { name: data.owner || "Muthu", initial: (data.owner || "Muthu").charAt(0).toUpperCase() },
-      kpi: { label: "Revenue Uplift", value: "0%", trend: "neutral" as const },
-      skus: normalizedSkus,
-    };
-    delete (payload as any)._id;
-
+  const handleDeleteCampaign = async (id: string) => {
     try {
-      if (editingCampaign) {
-        const result = await campaignsApi.updateCampaign(editingCampaign._id, payload);
-        if (result.success && result.data) {
-          setCampaigns(prev => prev.map(c => (c._id ?? c.id) === (editingCampaign._id ?? editingCampaign.id) ? result.data : c));
-          toast.success("Campaign Updated Successfully");
-          setEditingCampaign(null);
-        } else {
-          toast.error("Failed to update campaign");
-        }
-      } else {
-        const result = await campaignsApi.createCampaign(payload);
-        if (result.success && result.data) {
-          const created = result.data;
-          setCampaigns(prev => [created, ...prev]);
-          toast.success("Campaign Created Successfully");
-        } else {
-          toast.error("Failed to create campaign");
-        }
+      await campaignsApi.deleteCampaign(id);
+      setCampaigns(prev => prev.filter(c => campaignId(c) !== id));
+      if (selectedCampaign && campaignId(selectedCampaign) === id) {
+        setIsDrawerOpen(false);
+        setSelectedCampaign(null);
       }
-    } catch (err) {
-      console.error("Campaign save error:", err);
-      toast.error(err instanceof Error ? err.message : "Failed to save campaign");
+      toast.success('Campaign deleted');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete campaign');
     }
+  };
+
+  const handleAddCampaign = async (data: Record<string, unknown>, status: string): Promise<boolean> => {
+    const payload = buildCampaignPayload(data, status);
+    const editId = editingCampaign ? campaignId(editingCampaign) : '';
+
+    setIsSaving(true);
+    try {
+      if (editingCampaign && editId) {
+        const result = await campaignsApi.updateCampaign(editId, payload);
+        if (result.success && result.data) {
+          setCampaigns(prev => prev.map(c => (campaignId(c) === editId ? result.data : c)));
+          toast.success('Campaign updated successfully');
+          setEditingCampaign(null);
+          return true;
+        }
+        toast.error('Failed to update campaign');
+        return false;
+      }
+      const result = await campaignsApi.createCampaign(payload);
+      if (result.success && result.data) {
+        setCampaigns(prev => [result.data, ...prev]);
+        toast.success(
+          status === 'Draft'
+            ? 'Draft saved'
+            : 'Campaign submitted for approval'
+        );
+        return true;
+      }
+      toast.error('Failed to create campaign');
+      return false;
+    } catch (err) {
+      console.error('Campaign save error:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to save campaign');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openLaunchWizard = () => {
+    setEditingCampaign(null);
+    setIsWizardOpen(true);
   };
 
   const filteredCampaigns = campaigns.filter(c => {
@@ -191,7 +185,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
         </div>
         <Button 
             className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
-            onClick={() => setIsWizardOpen(true)}
+            onClick={openLaunchWizard}
         >
           <Megaphone className="mr-2 h-4 w-4" />
           Launch Campaign
@@ -233,12 +227,12 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
                     <Megaphone className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900">No campaigns in database</h3>
                     <p className="text-gray-500 mb-6">Start by launching your first campaign to sync with MongoDB.</p>
-                    <Button onClick={() => setIsWizardOpen(true)} variant="outline">Launch Campaign</Button>
+                    <Button onClick={openLaunchWizard} variant="outline">Launch Campaign</Button>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredCampaigns.map((campaign) => (
-                        <Card key={campaign._id} className="hover:shadow-md transition-all cursor-pointer group flex flex-col" onClick={() => handleCampaignClick(campaign)}>
+                        <Card key={campaignId(campaign)} className="hover:shadow-md transition-all cursor-pointer group flex flex-col" onClick={() => handleCampaignClick(campaign)}>
                             <CardHeader className="p-5 pb-0">
                                 <div className="flex justify-between items-start mb-4">
                                     <Badge className={`${getStatusColor(campaign.status)} hover:${getStatusColor(campaign.status)} px-2.5 py-0.5 text-[10px] uppercase tracking-wide border font-bold shadow-none`}>
@@ -263,7 +257,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
                                             <Separator className="my-1" />
                                             <DropdownMenuItem 
                                                 className="text-red-600 focus:text-red-600"
-                                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(campaign._id, 'Archived'); }}
+                                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(campaignId(campaign), 'Archived'); }}
                                             >
                                                 <XCircle size={14} className="mr-2" />
                                                 Archive Campaign
@@ -339,7 +333,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
                                             className="h-8 text-xs bg-white text-red-600 border border-red-100 hover:bg-red-50" 
                                             onClick={(e) => { 
                                                 e.stopPropagation(); 
-                                                handleUpdateStatus(campaign._id, 'Stopped'); 
+                                                handleUpdateStatus(campaignId(campaign), 'Stopped'); 
                                             }}
                                         >
                                             Stop
@@ -351,7 +345,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
                                             className="flex-1 h-8 text-xs bg-[#212121] text-white hover:bg-gray-800" 
                                             onClick={(e) => { 
                                                 e.stopPropagation(); 
-                                                handleUpdateStatus(campaign._id, 'Active'); 
+                                                handleUpdateStatus(campaignId(campaign), 'Active'); 
                                             }}
                                         >
                                             Approve
@@ -360,7 +354,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
                                             className="flex-1 h-8 text-xs bg-white text-red-600 border border-gray-200 hover:bg-gray-50" 
                                             onClick={(e) => { 
                                                 e.stopPropagation(); 
-                                                handleUpdateStatus(campaign._id, 'Draft'); 
+                                                handleUpdateStatus(campaignId(campaign), 'Draft'); 
                                             }}
                                         >
                                             Reject
@@ -387,6 +381,7 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
 
       <CampaignWizard 
         open={isWizardOpen} 
+        isSubmitting={isSaving}
         onOpenChange={(open) => {
           setIsWizardOpen(open);
           if (!open) {
@@ -403,11 +398,15 @@ export function PromoCampaigns({ searchQuery = '', region = 'North America', sco
         campaign={selectedCampaign} 
         onAction={(id, action) => {
             if (action === 'Edit') {
-                const campaignToEdit = campaigns.find(c => c._id === id);
+                const campaignToEdit = campaigns.find(c => campaignId(c) === id);
                 if (campaignToEdit) {
                   setEditingCampaign(campaignToEdit);
                   setIsDrawerOpen(false);
                   setIsWizardOpen(true);
+                }
+            } else if (action === 'Delete') {
+                if (window.confirm('Permanently delete this campaign? This cannot be undone.')) {
+                  handleDeleteCampaign(id);
                 }
             } else {
                 handleUpdateStatus(id, action);

@@ -43,6 +43,8 @@ export const API_ENDPOINTS = {
     },
     overview: '/production/overview',
     overviewBatch: '/production/overview/batch',
+    overviewLines: '/production/overview/lines',
+    overviewLine: (lineId: string) => `/production/overview/lines/${lineId}`,
     updateLine: (lineId: string) => `/production/overview/lines/${lineId}`,
     factories: '/production/factories',
     dashboard: {
@@ -62,6 +64,7 @@ export const API_ENDPOINTS = {
     },
     rawMaterials: {
       materials: '/production/raw-materials/materials',
+      material: (id: string) => `/production/raw-materials/materials/${id}`,
       orderMaterial: (id: string) => `/production/raw-materials/materials/${id}/order`,
       receipts: '/production/raw-materials/receipts',
       receiveReceipt: (id: string) => `/production/raw-materials/receipts/${id}/receive`,
@@ -70,6 +73,7 @@ export const API_ENDPOINTS = {
     },
     planning: {
       plans: '/production/planning',
+      plan: (id: string) => `/production/planning/${id}`,
     },
     workOrders: {
       list: '/production/work-orders',
@@ -80,12 +84,15 @@ export const API_ENDPOINTS = {
     qc: {
       summary: '/production/qc/summary',
       inspections: '/production/qc/inspections',
+      inspection: (id: string) => `/production/qc/inspections/${id}`,
       samples: '/production/qc/samples',
       sampleStatus: (id: string) => `/production/qc/samples/${id}`,
     },
     maintenance: {
       equipment: '/production/maintenance/equipment',
+      equipmentById: (id: string) => `/production/maintenance/equipment/${id}`,
       tasks: '/production/maintenance/tasks',
+      task: (id: string) => `/production/maintenance/tasks/${id}`,
       taskStatus: (id: string) => `/production/maintenance/tasks/${id}/status`,
       iot: '/production/maintenance/iot',
     },
@@ -411,6 +418,7 @@ export const API_ENDPOINTS = {
     utilities: {
       uploadHistory: '/vendor/utilities/upload-history',
       bulkUpload: '/vendor/utilities/bulk-upload',
+      bulkUploadTemplate: '/vendor/utilities/bulk-upload/template',
       contracts: '/vendor/utilities/contracts',
       contractById: (id: string) => `/vendor/utilities/contracts/${id}`,
       auditLogs: '/vendor/utilities/audit-logs',

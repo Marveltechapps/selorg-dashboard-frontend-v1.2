@@ -5,7 +5,9 @@ import { Badge } from "../../../ui/badge";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
 import { Zone, Store } from './types';
-import { Search, MapPin, AlertCircle } from 'lucide-react';
+import { Search, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { geofenceApi } from './geofenceApi';
 
 interface ActiveZonesModalProps {
   isOpen: boolean;
@@ -14,9 +16,20 @@ interface ActiveZonesModalProps {
   onEditZone: (zone: Zone) => void;
   onViewOnMap: (zone: Zone) => void;
   onArchiveZone?: (zone: Zone) => void;
+  onDuplicateZone?: (zone: Zone) => void;
+  onCreateZone?: () => void;
 }
 
-export function ActiveZonesModal({ isOpen, onClose, zones, onEditZone, onViewOnMap, onArchiveZone }: ActiveZonesModalProps) {
+export function ActiveZonesModal({
+  isOpen,
+  onClose,
+  zones,
+  onEditZone,
+  onViewOnMap,
+  onArchiveZone,
+  onDuplicateZone,
+  onCreateZone,
+}: ActiveZonesModalProps) {
     const [search, setSearch] = useState('');
     
     const filteredZones = zones.filter(z => z.name.toLowerCase().includes(search.toLowerCase()));
@@ -24,8 +37,13 @@ export function ActiveZonesModal({ isOpen, onClose, zones, onEditZone, onViewOnM
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-3xl h-[70vh] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle>Active Zones</DialogTitle>
+                <DialogHeader className="flex flex-row items-center justify-between gap-4">
+                    <DialogTitle>Manage zones</DialogTitle>
+                    {onCreateZone && (
+                      <Button size="sm" className="bg-[#212121] hover:bg-black" onClick={onCreateZone}>
+                        New zone
+                      </Button>
+                    )}
                 </DialogHeader>
                 <div className="flex items-center gap-2 mb-4">
                     <Search className="w-4 h-4 text-gray-500" />
@@ -63,7 +81,10 @@ export function ActiveZonesModal({ isOpen, onClose, zones, onEditZone, onViewOnM
                                     <TableCell>{zone.areaSqKm}</TableCell>
                                     <TableCell className="text-right space-x-2">
                                         <Button variant="ghost" size="sm" onClick={() => onViewOnMap(zone)}>View on Map</Button>
-                                        <Button variant="outline" size="sm" onClick={() => onEditZone(zone)}>Edit</Button>
+                                        <Button variant="outline" size="sm" onClick={() => { onClose(); onEditZone(zone); }}>Edit</Button>
+                                        {onDuplicateZone && (
+                                          <Button variant="ghost" size="sm" onClick={() => onDuplicateZone(zone)}>Duplicate</Button>
+                                        )}
                                         {onArchiveZone && (
                                             <Button 
                                                 variant="ghost" 
@@ -71,7 +92,7 @@ export function ActiveZonesModal({ isOpen, onClose, zones, onEditZone, onViewOnM
                                                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                                 onClick={() => onArchiveZone(zone)}
                                             >
-                                                Archive
+                                                Delete
                                             </Button>
                                         )}
                                     </TableCell>
@@ -96,38 +117,32 @@ interface StoreCoverageModalProps {
 }
 
 export function StoreCoverageModal({ isOpen, onClose, stores, zones, onViewTargeting, onStoresUpdated }: StoreCoverageModalProps) {
-    const handleFixCoverageGaps = () => {
+    const handleFixCoverageGaps = async () => {
         const storesWithoutZones = stores.filter(s => s.zones.length === 0);
         if (storesWithoutZones.length === 0) {
             toast.info('All stores have zone coverage');
             return;
         }
-        
-        // Auto-assign stores to nearest zones (simplified: assign to first available zone)
+
+        const nearestZone = zones.find(z => z.status === 'Active');
+        if (!nearestZone) {
+            toast.error('No active zones available to assign');
+            return;
+        }
+
         let fixedCount = 0;
-        storesWithoutZones.forEach(store => {
-            const nearestZone = zones.find(z => z.status === 'Active');
-            if (nearestZone) {
-                const updated = geofenceApi.updateStore(store.id, {
+        try {
+            for (const store of storesWithoutZones) {
+                await geofenceApi.updateStore(store.id, {
                     zones: [...store.zones, nearestZone.name],
-                    serviceStatus: 'Full'
+                    serviceStatus: 'Full',
                 });
-                if (updated) fixedCount++;
+                fixedCount += 1;
             }
-        });
-        
-        if (fixedCount > 0) {
-            toast.success(`Fixed coverage for ${fixedCount} store(s)`, {
-                description: 'Stores have been assigned to zones and will persist after refresh'
-            });
-            // Notify parent to reload stores
-            if (onStoresUpdated) {
-                onStoresUpdated();
-            }
-        } else {
-            toast.error('Failed to fix coverage gaps', {
-                description: 'No active zones available to assign'
-            });
+            toast.success(`Fixed coverage for ${fixedCount} store(s)`);
+            onStoresUpdated?.();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to fix coverage gaps');
         }
     };
 

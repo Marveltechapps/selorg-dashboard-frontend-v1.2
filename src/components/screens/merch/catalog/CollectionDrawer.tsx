@@ -31,8 +31,8 @@ export function CollectionDrawer({ collection, isOpen, onClose, onEdit, onDuplic
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
-        <SheetHeader className="mb-6">
+      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto px-6 py-6">
+        <SheetHeader className="mb-6 p-0 pr-10">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
                 <SheetTitle className="text-2xl font-bold text-[#212121]">{collection.name}</SheetTitle>
@@ -161,7 +161,7 @@ export function CollectionDrawer({ collection, isOpen, onClose, onEdit, onDuplic
             </TabsContent>
         </Tabs>
 
-        <div className="mt-8 pt-6 border-t border-[#E0E0E0] flex gap-3">
+        <div className="mt-8 pt-6 border-t border-[#E0E0E0] flex gap-3 shrink-0">
              <Button className="flex-1 bg-[#7C3AED] hover:bg-[#6D28D9]" onClick={() => onEdit(collection)}>
                 <Edit size={16} className="mr-2" /> Edit Collection
              </Button>

@@ -1726,14 +1726,6 @@ export function InboundOperations() {
                   documentsComplete: false,
                 });
               }
-                setApprovalNotes('');
-                setQualityChecks({
-                  inspected: false,
-                  noDamage: false,
-                  quantitiesVerified: false,
-                  documentsComplete: false,
-                });
-              }
             }}
               className="px-6 py-2.5 bg-[#10B981] text-white text-sm font-medium rounded-md hover:bg-[#059669] transition-all duration-200"
             >

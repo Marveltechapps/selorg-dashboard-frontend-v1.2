@@ -165,8 +165,13 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
  * Generate Label
  * POST /api/v1/darkstore/utilities/labels/generate
  */
-export async function generateLabel(payload: GenerateLabelRequest): Promise<GenerateLabelResponse> {
-  const response = await apiRequest(`${UTILITIES_ENDPOINT}/labels/generate`, {
+export async function generateLabel(
+  payload: GenerateLabelRequest,
+  storeId?: string
+): Promise<GenerateLabelResponse> {
+  const sid = storeId ?? getActiveStoreId() ?? '';
+  const qs = sid ? `?storeId=${encodeURIComponent(sid)}` : '';
+  const response = await apiRequest(`${UTILITIES_ENDPOINT}/labels/generate${qs}`, {
     method: 'POST',
     body: JSON.stringify(payload),
   }) as GenerateLabelResponse;

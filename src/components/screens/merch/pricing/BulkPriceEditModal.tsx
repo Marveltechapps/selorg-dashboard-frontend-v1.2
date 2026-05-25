@@ -26,6 +26,9 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
   const [adjustUnit, setAdjustUnit] = useState('percent');
   const [targetMargin, setTargetMargin] = useState('');
   const [comment, setComment] = useState('');
+  const [updatedCount, setUpdatedCount] = useState(0);
+  const [competitorMode, setCompetitorMode] = useState('match');
+  const [competitorBeatPct, setCompetitorBeatPct] = useState('5');
   
   const nextStep = () => setStep(s => Math.min(s + 1, 3));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
@@ -57,11 +60,20 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
       } else if (actionType === 'margin' && targetMargin) {
         const target = parseFloat(targetMargin);
         if (isNaN(target) || target <= 0 || target >= 100) {
-          return sku; // Skip invalid values
+          return sku;
         }
         const cost = sku.cost || (sku.sell * (1 - sku.margin / 100));
         newPrice = cost / (1 - target / 100);
         newMargin = target;
+      } else if (actionType === 'competitor') {
+        const competitor = sku.competitor ?? sku.competitorAvg ?? 0;
+        if (competitor <= 0) return sku;
+        const beatPct = parseFloat(competitorBeatPct) || 0;
+        newPrice = competitorMode === 'beat'
+          ? competitor * (1 - beatPct / 100)
+          : competitor;
+        const cost = sku.cost || (sku.sell * (1 - sku.margin / 100));
+        newMargin = newPrice > 0 ? ((newPrice - cost) / newPrice) * 100 : sku.margin;
       }
       
       return {
@@ -77,9 +89,10 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
     const finalSkus = [...updatedSkus, ...unchangedSkus];
     
     if (onBulkUpdate) {
-      onBulkUpdate(finalSkus);
+      onBulkUpdate(updatedSkus);
     }
     
+    setUpdatedCount(updatedSkus.length);
     toast.success(`Bulk price update applied to ${updatedSkus.length} SKUs`);
     setStep(3);
   };
@@ -94,6 +107,9 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
       setAdjustUnit('percent');
       setTargetMargin('');
       setComment('');
+      setUpdatedCount(0);
+      setCompetitorMode('match');
+      setCompetitorBeatPct('5');
     }
   }, [open]);
 
@@ -170,14 +186,14 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
                     <p className="text-sm text-muted-foreground">Match or beat competitor average</p>
                      {actionType === 'competitor' && (
                         <div className="flex gap-2 mt-2 items-center">
-                             <Select defaultValue="match">
+                             <Select value={competitorMode} onValueChange={setCompetitorMode}>
                                 <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="match">Match Average</SelectItem>
                                     <SelectItem value="beat">Beat by</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <Input className="w-[80px]" placeholder="5" />
+                            <Input className="w-[80px]" placeholder="5" value={competitorBeatPct} onChange={(e) => setCompetitorBeatPct(e.target.value)} type="number" />
                             <span className="text-sm">%</span>
                         </div>
                     )}
@@ -212,6 +228,12 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
         const cost = sku.cost || (sku.sell * (1 - sku.margin / 100));
         newPrice = cost / (1 - target / 100);
         newMargin = target;
+      } else if (actionType === 'competitor') {
+        const competitor = sku.competitor ?? sku.competitorAvg ?? 0;
+        const beatPct = parseFloat(competitorBeatPct) || 0;
+        newPrice = competitorMode === 'beat' ? competitor * (1 - beatPct / 100) : competitor;
+        const cost = sku.cost || (sku.sell * (1 - sku.margin / 100));
+        newMargin = newPrice > 0 ? ((newPrice - cost) / newPrice) * 100 : sku.margin;
       }
       
       return {
@@ -284,9 +306,9 @@ export function BulkPriceEditModal({ open, onOpenChange, selectedCount = 0, allS
         <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
             <Check size={32} />
         </div>
-        <h3 className="font-bold text-xl">Updates Queued</h3>
+        <h3 className="font-bold text-xl">Updates Applied</h3>
         <p className="text-muted-foreground max-w-xs">
-            Price changes for {selectedCount || 45} SKUs have been submitted for approval.
+            Price changes for {updatedCount || selectedCount || allSkus.length} SKU(s) have been saved.
         </p>
     </div>
   );

@@ -26,6 +26,8 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
     description: '',
     type: 'base',
     scope: 'region',
+    skuCriteria: undefined as string | undefined,
+    priority: 'medium',
     pricingMethod: 'fixed',
     marginMin: '',
     marginMax: '',
@@ -56,14 +58,14 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
       </div>
       <div className="space-y-2">
         <Label>Rule Type</Label>
-        <Select 
-          value={formData.type} 
-          onValueChange={v => setFormData({...formData, type: v})}
+        <Select
+          value={formData.type}
+          onValueChange={(v) => setFormData((prev) => ({ ...prev, type: v }))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full bg-white">
             <SelectValue placeholder="Select type" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent position="popper" sideOffset={4}>
             <SelectItem value="base">Base price override</SelectItem>
             <SelectItem value="geo">Geo-pricing</SelectItem>
             <SelectItem value="time">Time-based</SelectItem>
@@ -105,11 +107,14 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
         
         <div className="space-y-2">
            <Label>Select Target SKUs</Label>
-           <Select>
-            <SelectTrigger>
+           <Select
+            value={formData.skuCriteria ?? ''}
+            onValueChange={(v) => setFormData((prev) => ({ ...prev, skuCriteria: v }))}
+          >
+            <SelectTrigger className="w-full bg-white">
               <SelectValue placeholder="Select criteria (Category, Brand, Collection)" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" sideOffset={4}>
               <SelectItem value="category">Category</SelectItem>
               <SelectItem value="brand">Brand</SelectItem>
               <SelectItem value="collection">Collection</SelectItem>
@@ -189,7 +194,7 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
                 {formData.startDate ? format(formData.startDate, "PPP") : <span>Pick a date</span>}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            <PopoverContent className="w-auto p-0 z-[10100]" align="start">
               <Calendar
                 mode="single"
                 selected={formData.startDate}
@@ -214,7 +219,7 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
                 {formData.endDate ? format(formData.endDate, "PPP") : <span>Pick a date</span>}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            <PopoverContent className="w-auto p-0 z-[10100]" align="start">
               <Calendar
                 mode="single"
                 selected={formData.endDate}
@@ -228,11 +233,14 @@ export function PriceRuleWizard({ open, onOpenChange, onSubmit }: PriceRuleWizar
 
       <div className="space-y-2">
         <Label>Priority Level</Label>
-        <Select defaultValue="medium">
-            <SelectTrigger>
-              <SelectValue />
+        <Select
+          value={formData.priority}
+          onValueChange={(v) => setFormData((prev) => ({ ...prev, priority: v }))}
+        >
+            <SelectTrigger className="w-full bg-white">
+              <SelectValue placeholder="Select priority" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" sideOffset={4}>
               <SelectItem value="high">High (Overrides others)</SelectItem>
               <SelectItem value="medium">Medium</SelectItem>
               <SelectItem value="low">Low</SelectItem>

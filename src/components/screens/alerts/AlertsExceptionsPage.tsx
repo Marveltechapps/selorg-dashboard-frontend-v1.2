@@ -13,6 +13,16 @@ import { LocationMapModal } from "./modals/LocationMapModal";
 import { AddNoteModal } from "./modals/AddNoteModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { 
   CheckCircle2, 
@@ -36,6 +46,8 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
   const [localSearchQuery, setLocalSearchQuery] = useState("");
   const [actionLoading, setActionLoading] = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -288,46 +300,52 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
     }
   };
 
+  const resolvedCount = alerts.filter(
+    (a) => a.status === "resolved" || a.status === "dismissed"
+  ).length;
+
   const handleClearResolved = async () => {
     const resolvedAlerts = alerts.filter(
       (a) => a.status === "resolved" || a.status === "dismissed"
     );
     if (resolvedAlerts.length === 0) {
       toast.info("No resolved alerts to clear");
+      setIsClearConfirmOpen(false);
       return;
     }
 
-    if (!confirm(`Clear ${resolvedAlerts.length} resolved alert(s) from this list?`)) {
-      return;
-    }
-
+    setIsClearing(true);
     const resolvedIds = resolvedAlerts.map((a) => a.id);
-    const previousAlerts = alerts;
-
-    setAlerts((prev) =>
-      prev.filter((a) => a.status !== "resolved" && a.status !== "dismissed")
-    );
 
     try {
-      const result = await clearResolvedAlerts({ ids: resolvedIds, archive: true });
+      let result = await clearResolvedAlerts({ ids: resolvedIds });
+
+      if (result.deleted_count === 0 && resolvedIds.length > 0) {
+        result = await clearResolvedAlerts();
+      }
 
       if (result.deleted_count === 0) {
-        setAlerts(previousAlerts);
         toast.error("No alerts were removed", {
-          description: "They may belong to another store or were already cleared. Try Refresh.",
+          description:
+            "Resolved alerts may belong to another store or were already cleared. Try Refresh.",
         });
         await loadAlerts(true);
         return;
       }
 
-      toast.success(result.message || `Cleared ${result.deleted_count} resolved alert(s)`);
+      await loadAlerts(true);
+      toast.success(
+        result.message || `Cleared ${result.deleted_count} resolved alert(s)`
+      );
     } catch (e: unknown) {
       console.error("Failed to clear resolved alerts:", e);
-      setAlerts(previousAlerts);
       toast.error("Failed to clear resolved alerts", {
         description: e instanceof Error ? e.message : "Please try again",
       });
-      await loadAlerts(false);
+      await loadAlerts(true);
+    } finally {
+      setIsClearing(false);
+      setIsClearConfirmOpen(false);
     }
   };
 
@@ -400,7 +418,12 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
               Updated {lastRefresh.toLocaleTimeString()}
             </span>
           )}
-          <Button variant="outline" onClick={handleClearResolved} className="text-gray-600" disabled={loading}>
+          <Button
+            variant="outline"
+            onClick={() => setIsClearConfirmOpen(true)}
+            className="text-gray-600"
+            disabled={loading || isClearing || resolvedCount === 0}
+          >
             <Trash2 size={16} className="mr-2" /> Clear Resolved
           </Button>
         </div>
@@ -492,6 +515,30 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
         title={activeAlert ? `Location: ${activeAlert.source.riderName || activeAlert.source.vehicleId}` : undefined}
         coords={activeAlert?.source.lat ? { lat: activeAlert.source.lat, lng: activeAlert.source.lng } : undefined}
       />
+
+      <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear resolved alerts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes {resolvedCount} resolved or dismissed alert
+              {resolvedCount === 1 ? "" : "s"} from the database for your store. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isClearing}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleClearResolved();
+              }}
+            >
+              {isClearing ? "Clearing…" : "Clear alerts"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );

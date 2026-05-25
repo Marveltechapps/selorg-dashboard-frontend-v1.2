@@ -15,17 +15,13 @@ interface TransferOrderModalProps {
   onComplete?: () => void;
 }
 
-const SOURCE_OPTIONS = [
-  { value: 'Central Warehouse', label: 'Central Warehouse' },
-  { value: 'South Hub', label: 'South Hub' },
-];
-
 export function TransferOrderModal({ open, onOpenChange, sku, onComplete }: TransferOrderModalProps) {
   const [fromLocation, setFromLocation] = useState('');
   const [toLocation, setToLocation] = useState('');
   const [quantity, setQuantity] = useState('');
   const [requiredDate, setRequiredDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [locations, setLocations] = useState<Array<{ name: string; available: number }>>([]);
 
   useEffect(() => {
     if (!open) {
@@ -33,12 +29,20 @@ export function TransferOrderModal({ open, onOpenChange, sku, onComplete }: Tran
       setToLocation('');
       setQuantity('');
       setRequiredDate('');
+      return;
     }
+    allocationApi.fetchLocations()
+      .then((list) => setLocations(list.map((l) => ({ name: l.name, available: l.available }))))
+      .catch(() => setLocations([]));
   }, [open]);
 
   const handleCreateOrder = async () => {
     if (!fromLocation || !toLocation || !quantity || !sku) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+    if (fromLocation === toLocation) {
+      toast.error('Source and destination must be different');
       return;
     }
     setSubmitting(true);
@@ -63,7 +67,13 @@ export function TransferOrderModal({ open, onOpenChange, sku, onComplete }: Tran
     }
   };
 
-  const destOptions = (sku?.locations ?? []).map((loc: any) => ({ value: loc.name, label: loc.name }));
+  const skuLocationNames = new Set((sku?.locations ?? []).map((loc: any) => loc.name));
+  const sourceOptions = locations.length > 0
+    ? locations
+    : [{ name: 'Central Warehouse', available: 0 }, { name: 'South Hub', available: 0 }];
+  const destOptions = locations.length > 0
+    ? locations.filter((l) => l.name !== fromLocation)
+    : [...skuLocationNames].map((name) => ({ name: name as string, available: 0 }));
 
   if (!sku) return null;
 
@@ -88,8 +98,10 @@ export function TransferOrderModal({ open, onOpenChange, sku, onComplete }: Tran
                   <SelectValue placeholder="Select origin" />
                 </SelectTrigger>
                 <SelectContent>
-                  {SOURCE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  {sourceOptions.map((o) => (
+                    <SelectItem key={o.name} value={o.name}>
+                      {o.name}{o.available > 0 ? ` (${o.available} avail.)` : ''}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -101,10 +113,8 @@ export function TransferOrderModal({ open, onOpenChange, sku, onComplete }: Tran
                   <SelectValue placeholder="Select dest." />
                 </SelectTrigger>
                 <SelectContent>
-                  {destOptions.length > 0 ? destOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  )) : SOURCE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  {destOptions.map((o) => (
+                    <SelectItem key={o.name} value={o.name}>{o.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

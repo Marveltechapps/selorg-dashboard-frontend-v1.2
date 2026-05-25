@@ -10,24 +10,54 @@ export interface Zone {
   description?: string;
   areaSqKm?: number;
   storesCovered?: number;
-  // Mock geometry for SVG
-  points: { x: number; y: number }[]; // Percentages 0-100 relative to map container
+  polygon?: { lat: number; lng: number }[];
+  center?: { lat: number; lng: number };
+  points: { x: number; y: number }[];
+  analytics?: {
+    areaSize?: number;
+    revenue?: number;
+    dailyOrders?: number;
+    activeOrders?: number;
+    totalOrders?: number;
+    avgDeliveryTime?: number;
+    riderCount?: number;
+    capacityUsage?: number;
+  };
+  settings?: {
+    deliveryFee?: number;
+    minOrderValue?: number;
+    maxDeliveryRadius?: number;
+    estimatedDeliveryTime?: number;
+    surgeMultiplier?: number;
+    maxCapacity?: number;
+  };
 }
 
 export interface Store {
   id: string;
   name: string;
   address: string;
-  x: number; // Percentage 0-100
-  y: number; // Percentage 0-100
-  zones: string[]; // Zone IDs
+  x: number;
+  y: number;
+  latitude?: number;
+  longitude?: number;
+  zones: string[];
   serviceStatus: 'Full' | 'Partial' | 'None';
 }
 
+export type TopPromoMetric = 'redemptions' | 'revenue' | 'orders';
+
 export interface KPIStats {
+  totalZones: number;
   activeZones: number;
+  inactiveZones: number;
   totalArea: number;
   storesFullyCovered: number;
+  storesPartial: number;
+  storesNone: number;
   storesTotal: number;
   topPromoZone: string;
+  topPromoMetric: TopPromoMetric;
+  topPromoValue: number;
+  heatmapDays?: number;
 }

@@ -111,7 +111,7 @@ export function mapStockItemFromApi(raw: Record<string, unknown>): StockItem {
   return {
     id: String(raw._id ?? raw.id ?? sku),
     sku,
-    product: String(raw.name ?? raw.product ?? (raw.productName ?? sku) || 'Item'),
+    product: String((raw.name ?? raw.product ?? raw.productName ?? sku) || 'Item'),
     batchId: String((raw.batchId ?? sku) || '—'),
     warehouse: String(raw.location ?? raw.warehouse ?? 'Chennai Hub'),
     systemQty,

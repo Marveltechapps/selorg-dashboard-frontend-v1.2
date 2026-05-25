@@ -34,14 +34,24 @@ export async function fetchAdjustments(params = {}) {
  * Create inventory adjustment
  */
 export async function createAdjustment(data) {
-  const { sku, mode, quantity, reason_code, notes = '' } = data;
-  
-  return post(BASE_PATH, {
+  const {
+    sku,
+    mode,
+    quantity,
+    reason_code,
+    notes = '',
+    storeId = getActiveStoreId() || '',
+  } = data;
+
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+
+  return post(`${BASE_PATH}${query}`, {
     sku,
     mode,
     quantity,
     reason_code,
     notes,
+    storeId,
   });
 }
 

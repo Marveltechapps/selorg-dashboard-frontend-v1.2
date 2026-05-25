@@ -8,10 +8,14 @@ import { getActiveStoreId } from '../../contexts/AuthContext';
 
 const BASE_PATH = '/api/v1/darkstore/inbound';
 
+function encodeId(id) {
+  return encodeURIComponent(String(id ?? ''));
+}
+
 /**
  * Get inbound summary
  */
-export async function getInboundSummary(storeId = getActiveStoreId() || '', date) {
+export async function getInboundSummary(storeId = getActiveStoreId() || 'DS-Adyar-01', date) {
   const params = { storeId };
   if (date) params.date = date;
   return get(`${BASE_PATH}/summary`, params);
@@ -22,7 +26,7 @@ export async function getInboundSummary(storeId = getActiveStoreId() || '', date
  */
 export async function getGRNList(params = {}) {
   const {
-    storeId = getActiveStoreId() || '',
+    storeId = getActiveStoreId() || 'DS-Adyar-01',
     status = 'all',
     truckId,
     search,
@@ -41,28 +45,28 @@ export async function getGRNList(params = {}) {
  * Get GRN details
  */
 export async function getGRNDetails(grnId) {
-  return get(`${BASE_PATH}/grn/${grnId}`);
+  return get(`${BASE_PATH}/grn/${encodeId(grnId)}`);
 }
 
 /**
  * Start GRN processing
  */
 export async function startGRNProcessing(grnId, data = {}) {
-  return post(`${BASE_PATH}/grn/${grnId}/start`, data);
+  return post(`${BASE_PATH}/grn/${encodeId(grnId)}/start`, data);
 }
 
 /**
  * Update GRN item quantity
  */
 export async function updateGRNItemQuantity(grnId, sku, data) {
-  return put(`${BASE_PATH}/grn/${grnId}/items/${sku}`, data);
+  return put(`${BASE_PATH}/grn/${encodeId(grnId)}/items/${encodeId(sku)}`, data);
 }
 
 /**
  * Complete GRN processing
  */
 export async function completeGRNProcessing(grnId, data = {}) {
-  return post(`${BASE_PATH}/grn/${grnId}/complete`, data);
+  return post(`${BASE_PATH}/grn/${encodeId(grnId)}/complete`, data);
 }
 
 // Putaway task functions moved to putaway.api.js to avoid duplicate exports
@@ -72,7 +76,7 @@ export async function completeGRNProcessing(grnId, data = {}) {
  */
 export async function getInterStoreTransfers(params = {}) {
   const {
-    storeId = getActiveStoreId() || '',
+    storeId = getActiveStoreId() || 'DS-Adyar-01',
     status = 'all',
     page = 1,
     limit = 50,
@@ -84,8 +88,17 @@ export async function getInterStoreTransfers(params = {}) {
 /**
  * Receive inter-store transfer
  */
-export async function receiveInterStoreTransfer(transferId, data = {}) {
-  return post(`${BASE_PATH}/transfers/${transferId}/receive`, data);
+export async function getTransferDetails(transferId, storeId = getActiveStoreId() || '') {
+  return get(`${BASE_PATH}/transfers/${transferId}`, { storeId });
+}
+
+export async function receiveInterStoreTransfer(transferId, data = {}, storeId = getActiveStoreId() || '') {
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return post(`${BASE_PATH}/transfers/${transferId}/receive${query}`, data);
+}
+
+export async function fetchInboundStaff(storeId = getActiveStoreId() || '', status = 'all') {
+  return get('/api/v1/darkstore/staff/roster', { storeId, status, limit: 100 });
 }
 
 /**

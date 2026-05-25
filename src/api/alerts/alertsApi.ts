@@ -226,11 +226,14 @@ export async function clearResolvedAlerts(options?: {
   ids?: string[];
 }): Promise<{ deleted_count: number; message: string }> {
   const storeId = options?.storeId ?? getAlertsStoreId();
-  const body = {
-    ids: options?.ids?.filter(Boolean) ?? [],
+  const ids = options?.ids?.map((id) => id.trim()).filter(Boolean) ?? [];
+  const body: Record<string, unknown> = {
     storeId: storeId || undefined,
     archive: options?.archive !== false,
   };
+  if (ids.length > 0) {
+    body.ids = ids;
+  }
 
   const response = await apiRequest(`${ALERTS_ENDPOINT}/resolved/clear`, {
     method: 'POST',

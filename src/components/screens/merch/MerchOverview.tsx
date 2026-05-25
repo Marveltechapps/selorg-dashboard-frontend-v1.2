@@ -16,7 +16,17 @@ import {
     DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 import { toast } from "sonner";
-import { getMerchStats, getCampaigns } from '../../../api/merch/merchApi';
+import {
+  getMerchStats,
+  getCampaigns,
+  updateCampaign,
+  seedMerchOverview,
+  mapOverviewStatsFromApi,
+  mapOverviewCampaignFromApi,
+  resolveDisplayStatus,
+  type OverviewStatsDisplay,
+  type MerchOverviewCampaign,
+} from '../../../api/merch/merchApi';
 import { setOpenPendingUpdates } from './pricingPendingUpdatesBridge';
 
 import { CampaignDrawer } from './components/CampaignDrawer';
@@ -64,17 +74,6 @@ interface MerchOverviewProps {
   onSearchChange?: (query: string) => void;
 }
 
-interface Campaign {
-    id: string;
-    name: string;
-    type: string;
-    status: 'Active' | 'Scheduled' | 'Ending Soon' | 'Expired';
-    uplift: string;
-    redemption: string;
-    startDate: string;
-    endDate: string;
-}
-
 export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: MerchOverviewProps) {
   // Modal States
   const [isActiveCampaignsOpen, setIsActiveCampaignsOpen] = useState(false);
@@ -89,57 +88,67 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
 
   // Data State - Using Real API
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<any>({
-    activeCampaigns: { value: "0", trend: "", trendUp: true },
-    promoUplift: { value: "+0%", trend: "vs last month", trendUp: true },
-    priceChanges: { value: "0", subValue: "Pending", trend: "Needs approval", trendUp: false },
-    stockConflicts: { value: "0", trend: "High Priority", trendUp: false }
-  });
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [seeding, setSeeding] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [stats, setStats] = useState<OverviewStatsDisplay>(mapOverviewStatsFromApi(null));
+  const [campaigns, setCampaigns] = useState<MerchOverviewCampaign[]>([]);
 
-  // Load data from API
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const [statsResp, campaignsResp] = await Promise.all([
-          getMerchStats(),
-          getCampaigns({ status: 'active' })
-        ]);
-        if (!mounted) return;
-        
-        if (statsResp.success && statsResp.data) {
-          setStats({
-            activeCampaigns: statsResp.data.activeCampaigns || stats.activeCampaigns,
-            promoUplift: statsResp.data.promoUplift || stats.promoUplift,
-            priceChanges: statsResp.data.priceChanges || stats.priceChanges,
-            stockConflicts: statsResp.data.stockConflicts || stats.stockConflicts
-          });
-        }
-        
-        if (campaignsResp.success && campaignsResp.data) {
-          const formattedCampaigns = campaignsResp.data.map((c: any) => ({
-            id: c._id || c.id,
-            name: c.name,
-            type: c.type,
-            status: c.status === 'active' ? 'Active' : c.status === 'scheduled' ? 'Scheduled' : c.status,
-            uplift: c.performance?.uplift ? `+${c.performance.uplift}%` : '-',
-            redemption: c.performance?.orders ? `${c.performance.orders.toLocaleString()} uses` : '0 uses',
-            startDate: c.startDate ? new Date(c.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
-            endDate: c.endDate ? new Date(c.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
-          }));
-          setCampaigns(formattedCampaigns);
-        }
-      } catch (err) {
-        console.error('Failed to load merch data', err);
-        toast.error('Failed to load merch overview');
-      } finally {
-        setLoading(false);
+  const loadOverview = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [statsResp, campaignsResp] = await Promise.all([
+        getMerchStats(),
+        getCampaigns(),
+      ]);
+
+      if (statsResp.success && statsResp.data) {
+        setStats(
+          mapOverviewStatsFromApi(statsResp.data as Record<string, unknown>)
+        );
       }
-    })();
-    return () => { mounted = false; };
+
+      if (campaignsResp.success && Array.isArray(campaignsResp.data)) {
+        const formatted = campaignsResp.data
+          .map((c) => mapOverviewCampaignFromApi(c as Record<string, unknown>))
+          .filter(
+            (c) =>
+              c.id &&
+              c.status !== 'Expired' &&
+              c.status !== 'Draft' &&
+              String(c.raw?.status ?? c.status) !== 'Archived'
+          );
+        setCampaigns(formatted);
+      } else {
+        setCampaigns([]);
+      }
+    } catch (err) {
+      console.error('Failed to load merch data', err);
+      const msg =
+        err instanceof Error ? err.message : 'Failed to load merchandising overview';
+      setLoadError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadOverview();
+  }, [loadOverview]);
+
+  const handleSeedSampleData = async () => {
+    try {
+      setSeeding(true);
+      await seedMerchOverview();
+      toast.success('Sample merchandising data loaded');
+      await loadOverview();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to seed overview data');
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const filteredCampaigns = campaigns.filter(campaign => 
     campaign.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -147,7 +156,22 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
     campaign.status.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleCampaignAction = async (action: string, campaign: Campaign) => {
+  const openCampaignDetail = (campaign: MerchOverviewCampaign) => {
+    setSelectedCampaignData({
+      ...campaign,
+      _id: campaign.id,
+      status: campaign.status,
+      tagline: campaign.tagline ?? `${campaign.type} campaign`,
+      period: campaign.period ?? `${campaign.startDate} – ${campaign.endDate}`,
+      owner: campaign.owner ?? { name: 'Merch Ops', initial: 'MO' },
+      target: campaign.target ?? '—',
+      kpi: campaign.kpi ?? { label: 'Revenue Uplift', value: campaign.uplift, trend: 'up' },
+      skus: (campaign.raw?.skus as unknown[]) ?? [],
+    });
+    setIsCampaignDrawerOpen(true);
+  };
+
+  const handleCampaignAction = async (action: string, campaign: MerchOverviewCampaign) => {
     switch (action) {
         case 'analytics':
             setSelectedCampaign(campaign.name);
@@ -155,6 +179,7 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
             break;
         case 'extend':
             setSelectedCampaign(campaign.name);
+            setSelectedCampaignData(campaign);
             setIsExtendOpen(true);
             break;
         case 'edit':
@@ -163,39 +188,49 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
             break;
         case 'clone':
             toast.success(`Campaign "${campaign.name}" cloned to drafts.`);
+            onNavigate?.('promotions');
             break;
-        case 'detail': {
-            const startD = (campaign as any).startDate ?? (campaign as any).start ?? '';
-            const endD = (campaign as any).endDate ?? (campaign as any).end ?? '';
-            const red = (campaign as any).redemption ?? (campaign as any).redemptions ?? '0 uses';
-            setSelectedCampaignData({
-                ...campaign,
-                _id: campaign.id,
-                tagline: `${(campaign as any).type || 'Promo'} Campaign`,
-                period: `${startD} - ${endD}`,
-                owner: { name: "Sarah Miller", initial: "SM" },
-                target: "Beverages, Snacks",
-                kpi: { label: "Revenue Uplift", value: (campaign as any).uplift, trend: "up" }
-            });
-            setIsCampaignDrawerOpen(true);
+        case 'detail':
+            openCampaignDetail(campaign);
+            break;
+        case 'stop': {
+            try {
+              await updateCampaign(campaign.id, { status: 'Stopped' });
+              setCampaigns((prev) =>
+                prev.map((c) =>
+                  c.id === campaign.id ? { ...c, status: 'Expired' } : c
+                )
+              );
+              toast.success('Campaign stopped', {
+                description: `"${campaign.name}" is no longer active.`,
+              });
+              await loadOverview();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : 'Failed to stop campaign');
+            }
             break;
         }
-        case 'stop':
-            setCampaigns(prev => prev.map(c => 
-                c.id === campaign.id ? { ...c, status: 'Expired' } : c
-            ));
-            toast.error("Campaign Stopped", {
-                description: `"${campaign.name}" has been moved to expired.`
-            });
-            break;
     }
   };
 
-  if (loading) {
+  if (loading && campaigns.length === 0 && !loadError) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <Loader2 className="h-10 w-10 text-[#7C3AED] animate-spin" />
-        <p className="text-gray-500 font-medium">Loading Merchandising Overview...</p>
+        <Loader2 className="h-10 w-10 text-[#e11d48] animate-spin" />
+        <p className="text-[#71717a] font-medium">Loading Merchandising Overview...</p>
+      </div>
+    );
+  }
+
+  if (loadError && campaigns.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4 max-w-md mx-auto text-center">
+        <AlertCircle className="h-10 w-10 text-[#e11d48]" />
+        <p className="text-[#18181b] font-semibold">Could not load overview</p>
+        <p className="text-sm text-[#71717a]">{loadError}</p>
+        <Button className="bg-[#e11d48] hover:bg-[#be123c]" onClick={() => loadOverview()}>
+          Retry
+        </Button>
       </div>
     );
   }
@@ -293,8 +328,22 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
                     <Megaphone className="text-gray-400" size={24} />
                 </div>
                 <h4 className="text-lg font-bold text-gray-900 mb-1">No active campaigns yet</h4>
-                <p className="text-gray-500 mb-4 text-sm">Create a promotional campaign to see performance here.</p>
-                <Button className="bg-[#7C3AED]" onClick={() => onNavigate?.('promotions')}>Create Campaign</Button>
+                <p className="text-gray-500 mb-4 text-sm">
+                  Load sample data from the API or create a campaign in Promotion Campaigns.
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <Button
+                    variant="outline"
+                    disabled={seeding}
+                    onClick={handleSeedSampleData}
+                  >
+                    {seeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Load sample data
+                  </Button>
+                  <Button className="bg-[#e11d48] hover:bg-[#be123c]" onClick={() => onNavigate?.('promotions')}>
+                    Create Campaign
+                  </Button>
+                </div>
             </div>
         ) : filteredCampaigns.length === 0 ? (
             <div className="p-12 text-center bg-white border-t">
@@ -430,16 +479,37 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
         open={isCampaignDrawerOpen} 
         onOpenChange={setIsCampaignDrawerOpen} 
         campaign={selectedCampaignData} 
-        onAction={(id, action) => {
+        onAction={async (id, action) => {
             if (action === 'Edit') {
                 setIsCampaignDrawerOpen(false);
                 onNavigate?.('promotions');
-            } else {
-                setCampaigns(prev => prev.map(c => 
-                    c.id === String(id) ? { ...c, status: action as any } : c
-                ));
-                setSelectedCampaignData(prev => prev ? { ...prev, status: action } : null);
-                toast.success(`Campaign ${action}`);
+                return;
+            }
+            const statusMap: Record<string, string> = {
+              Paused: 'Paused',
+              Active: 'Active',
+              Archived: 'Archived',
+            };
+            const apiStatus = statusMap[action] ?? action;
+            try {
+              await updateCampaign(String(id), { status: apiStatus });
+              setCampaigns((prev) =>
+                prev.map((c) =>
+                  c.id === String(id)
+                    ? {
+                        ...c,
+                        status: resolveDisplayStatus(apiStatus, c.endsAt) as MerchOverviewCampaign['status'],
+                      }
+                    : c
+                )
+              );
+              setSelectedCampaignData((prev) =>
+                prev ? { ...prev, status: action } : null
+              );
+              toast.success(`Campaign ${action.toLowerCase()}`);
+              await loadOverview();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : 'Failed to update campaign');
             }
         }}
       />
@@ -484,7 +554,10 @@ export function MerchOverview({ onNavigate, searchQuery = "", onSearchChange }: 
       <ExtendCampaignModal
         isOpen={isExtendOpen}
         onClose={() => setIsExtendOpen(false)}
+        campaignId={selectedCampaignData?.id}
         campaignName={selectedCampaign}
+        currentEndDate={selectedCampaignData?.endDate ?? selectedCampaignData?.period ?? '—'}
+        onExtended={loadOverview}
       />
 
     </div>

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Bell, Search, X, Clock } from 'lucide-react';
-import { cn } from "../lib/utils";
+import { cn } from '../lib/utils';
+import { Bell, BellRing, Search, X, ArrowRight, Clock, Menu, ShieldCheck } from 'lucide-react';
 import { setPendingOrderSearch } from '../utils/pendingOrderSearch';
 import {
   globalSearch,
@@ -12,50 +12,40 @@ import {
   type SearchItem,
   type SearchSuggestion,
 } from '../api/shared/globalSearchApi';
+import { fetchHistory, type NotificationHistory } from '@/components/screens/admin/notificationsApi';
+import { fetchAlerts } from '@/api/alerts/alertsApi';
+import { useAuth } from '../contexts/AuthContext';
 
-interface MetricCardProps {
-  label: string;
-  value: string;
-  trend?: string;
-  trendUp?: boolean;
-  status?: 'normal' | 'warning' | 'critical';
+function isAdminNotificationRole(role?: string): boolean {
+  const r = (role || '').toLowerCase().replace(/\s+/g, '_');
+  return r === 'admin' || r === 'super_admin' || r === 'superadmin';
 }
 
-function MetricCard({ label, value, trend, trendUp, status = 'normal' }: MetricCardProps) {
-  return (
-    <div className={cn(
-      "flex flex-col p-3 rounded-xl border shadow-sm transition-all hover:shadow-md",
-      status === 'critical' ? "bg-red-50 border-red-200" : 
-      status === 'warning' ? "bg-[#FFFBE6] border-[#FFE58F]" : 
-      "bg-white border-[#E0E0E0]"
-    )}>
-      <span className="text-[10px] font-bold text-[#9E9E9E] uppercase tracking-wider">{label}</span>
-      <div className="flex items-end justify-between mt-1">
-        <span className={cn(
-          "text-2xl font-bold tracking-tight",
-          status === 'critical' ? "text-[#EF4444]" : 
-          status === 'warning' ? "text-[#D48806]" : 
-          "text-[#212121]"
-        )}>{value}</span>
-        {trend && (
-          <span className={cn(
-            "text-[10px] font-bold mb-1 px-1.5 py-0.5 rounded-full",
-            trendUp ? "text-[#22C55E] bg-[#DCFCE7]" : "text-[#EF4444] bg-[#FEE2E2]"
-          )}>
-            {trend}
-          </span>
-        )}
-      </div>
-    </div>
-  );
+async function loadTopBarNotifications(
+  role: string | undefined,
+  storeId: string | null
+): Promise<NotificationHistory[]> {
+  if (isAdminNotificationRole(role)) {
+    const history = await fetchHistory().catch(() => []);
+    return Array.isArray(history) ? history.slice(0, 12) : [];
+  }
+  const alerts = await fetchAlerts('all', {
+    storeId: storeId || undefined,
+    limit: 12,
+  }).catch(() => []);
+  return alerts.slice(0, 12).map((alert) => ({
+    id: alert.id,
+    userId: '',
+    userName: '',
+    templateName: alert.type,
+    title: alert.title,
+    body: alert.description,
+    channel: 'in-app' as const,
+    status:
+      alert.status === 'resolved' || alert.status === 'dismissed' ? 'opened' : 'sent',
+    sentAt: alert.createdAt,
+  }));
 }
-
-const SAMPLE_NOTIFICATIONS = [
-  { id: '1', title: 'Order ORD-3001 ready for dispatch', time: '2 min ago', unread: true },
-  { id: '2', title: 'Stock low: SKU-101 Organic Milk', time: '15 min ago', unread: true },
-  { id: '3', title: 'RTO risk: ORD-4001 - 2 attempts', time: '1 hr ago', unread: false },
-  { id: '4', title: 'New batch picklist created', time: '2 hrs ago', unread: false },
-];
 
 function resultTypeBadgeClass(type: string): string {
   const colors: Record<string, string> = {
@@ -73,7 +63,6 @@ const DARKSTORE_TABS = new Set([
   'overview',
   'liveorders',
   'cancelledorders',
-  'pickpack',
   'pickpackops',
   'livepickingmonitor',
   'slamonitor',
@@ -135,25 +124,53 @@ function formatResultSectionLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-interface TopBarProps {
-  setActiveTab?: (tab: string) => void;
+function envBadge(): { label: string; className: string } | null {
+  const custom = (import.meta.env.VITE_ENV_LABEL as string | undefined)?.trim();
+  if (custom) {
+    return {
+      label: custom,
+      className: 'bg-slate-50 rounded-full border border-slate-200 text-slate-800',
+    };
+  }
+  if (import.meta.env.DEV) {
+    return {
+      label: 'Development',
+      className: 'bg-slate-50 rounded-full border border-slate-200 text-slate-700',
+    };
+  }
+  return {
+    label: 'Production',
+    className: 'bg-rose-50 rounded-full border border-rose-100 text-rose-900',
+  };
 }
 
-export function TopBar({ setActiveTab }: TopBarProps = {}) {
-  const [searchQuery, setSearchQuery] = useState('');
+interface TopBarProps {
+  setActiveTab?: (tab: string) => void;
+  onMenuClick?: () => void;
+  wideSidebar?: boolean;
+}
+
+export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBarProps = {}) {
+  const navigate = useNavigate();
+  const { user, activeStoreId } = useAuth();
+  const badge = envBadge();
+  const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [results, setResults] = useState<GlobalSearchResult | null>(null);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [shortcutLabel, setShortcutLabel] = useState('⌘K');
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const searchDropdownPortalRef = useRef<HTMLDivElement | null>(null);
   const [dropdownBox, setDropdownBox] = useState<{ top: number; left: number; width: number } | null>(null);
-  const navigate = useNavigate();
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifItems, setNotifItems] = useState<NotificationHistory[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const mac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -161,38 +178,9 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
   }, []);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotificationsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     getRecentSearches(10, { dashboard: 'warehouse' })
       .then((r) => setRecentSearches(Array.isArray(r) ? r : []))
       .catch(() => setRecentSearches([]));
-  }, []);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (setActiveTab) setActiveTab('liveorders');
-    if (q) {
-      navigate(`/darkstore/liveorders?q=${encodeURIComponent(q)}`, { replace: true });
-      setPendingOrderSearch(q);
-    }
-    setSearchOpen(false);
-    setSearchQuery('');
-  };
-
-  const clearSearch = useCallback(() => {
-    setSearchQuery('');
-    setResults(null);
-    setSuggestions([]);
-    inputRef.current?.focus();
   }, []);
 
   const dismissSearchOverlay = useCallback(() => {
@@ -205,8 +193,16 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
     setSearchOpen(true);
   }, []);
 
+  const closeSearchUi = useCallback(() => {
+    setSearchOpen(false);
+    setQuery('');
+    setResults(null);
+    setSuggestions([]);
+    inputRef.current?.blur();
+  }, []);
+
   useEffect(() => {
-    const q = searchQuery.trim();
+    const q = query.trim();
     if (q.length < 2) {
       setResults(null);
       setSuggestions([]);
@@ -242,7 +238,7 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
       window.clearTimeout(timer);
       setSearchLoading(false);
     };
-  }, [searchQuery]);
+  }, [query]);
 
   useEffect(() => {
     const handleOutside = (event: MouseEvent) => {
@@ -286,36 +282,12 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const showSearchPanel = useMemo(() => {
-    const q = searchQuery.trim();
-    return (
-      searchOpen &&
-      (q.length >= 2 || (q.length < 2 && recentSearches.length > 0) || (searchLoading && q.length >= 2))
-    );
-  }, [recentSearches.length, searchLoading, searchOpen, searchQuery]);
-
-  useLayoutEffect(() => {
-    if (!showSearchPanel) {
-      setDropdownBox(null);
-      return;
-    }
-    const el = searchWrapRef.current;
-    if (!el) return;
-    const update = () => {
-      const r = el.getBoundingClientRect();
-      setDropdownBox({ top: r.bottom + 6, left: r.left, width: r.width });
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-    };
-  }, [showSearchPanel]);
+  const clearSearch = useCallback(() => {
+    setQuery('');
+    setResults(null);
+    setSuggestions([]);
+    inputRef.current?.focus();
+  }, []);
 
   const goDarkstore = useCallback(
     (tab: string, params?: Record<string, string>) => {
@@ -328,9 +300,9 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
       }
       const qs = sp.toString();
       navigate(`/darkstore/${t}${qs ? `?${qs}` : ''}`, { replace: true });
-      dismissSearchOverlay();
+      closeSearchUi();
     },
-    [navigate, dismissSearchOverlay]
+    [navigate, closeSearchUi]
   );
 
   const navigateSearchItem = useCallback(
@@ -338,7 +310,7 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
       const m = item.metadata as Record<string, unknown> | undefined;
       if (m && typeof m.href === 'string' && m.href.startsWith('/')) {
         navigate(m.href);
-        dismissSearchOverlay();
+        closeSearchUi();
         return;
       }
 
@@ -351,7 +323,7 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
       }
       goDarkstore(tab);
     },
-    [dismissSearchOverlay, goDarkstore, navigate]
+    [navigate, goDarkstore, closeSearchUi]
   );
 
   const navigateSuggestionPick = useCallback(
@@ -380,6 +352,108 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
     [goDarkstore]
   );
 
+  const submitSearchQuery = useCallback(() => {
+    const q = query.trim();
+    if (!q) return;
+    setPendingOrderSearch(q);
+    if (setActiveTab) setActiveTab('liveorders');
+    goDarkstore('liveorders', { q });
+  }, [query, setActiveTab, goDarkstore]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setNotifLoading(true);
+      const items = await loadTopBarNotifications(user?.role, activeStoreId);
+      if (!active) return;
+      setNotifItems(items);
+      setNotifLoading(false);
+    };
+    load();
+    const timer = window.setInterval(load, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [user?.role, activeStoreId]);
+
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setNotifOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    let active = true;
+    const loadLatest = async () => {
+      setNotifLoading(true);
+      const items = await loadTopBarNotifications(user?.role, activeStoreId);
+      if (!active) return;
+      setNotifItems(items);
+      setNotifLoading(false);
+    };
+    loadLatest();
+    const timer = window.setInterval(loadLatest, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [notifOpen, user?.role, activeStoreId]);
+
+  const unreadCount = useMemo(
+    () => notifItems.filter((item) => item.status !== 'opened' && item.status !== 'clicked').length,
+    [notifItems]
+  );
+
+  const formatTimeAgo = (ts: string) => {
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  const showSearchPanel =
+    searchOpen &&
+    (query.trim().length >= 2 ||
+      (query.trim().length < 2 && recentSearches.length > 0) ||
+      (searchLoading && query.trim().length >= 2));
+
+  useLayoutEffect(() => {
+    if (!showSearchPanel) {
+      setDropdownBox(null);
+      return;
+    }
+    const el = searchWrapRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setDropdownBox({ top: r.bottom + 6, left: r.left, width: r.width });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [showSearchPanel]);
+
   return (
     <>
       {searchOpen &&
@@ -389,7 +463,7 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
             aria-hidden
             className={cn(
               'fixed inset-0 z-[160] transition-opacity duration-200 motion-reduce:transition-none',
-              'bg-gradient-to-b from-[#0f172a]/75 via-[#0f172a]/60 to-[#1677FF]/[0.16]',
+              'bg-gradient-to-b from-[#0f172a]/75 via-[#0f172a]/60 to-[#e11d48]/[0.16]',
               'backdrop-blur-[7px] supports-[backdrop-filter]:backdrop-blur-lg'
             )}
             onMouseDown={(e) => {
@@ -401,215 +475,266 @@ export function TopBar({ setActiveTab }: TopBarProps = {}) {
         )}
       <div
         className={cn(
-          'h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 left-[220px] right-0 z-40 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
+          'darkstore-topbar admin-topbar h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 left-0 right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
+          wideSidebar && 'darkstore-topbar--v2',
           searchOpen ? 'z-[170] border-[#f0f0f3] shadow-[0_6px_24px_-8px_rgba(15,23,42,0.08)]' : 'z-40'
         )}
       >
+        {onMenuClick && (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="darkstore-mobile-only p-2 -ml-1 mr-1 shrink-0 text-[#71717a] hover:bg-[#f4f4f5] rounded-lg"
+            aria-label="Open menu"
+          >
+            <Menu size={24} />
+          </button>
+        )}
+
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-xl">
-          <form onSubmit={handleSearchSubmit} className="relative">
-            <div ref={searchWrapRef} className="relative w-full min-w-0">
-              <Search
-                className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] shrink-0 pointer-events-none"
-                size={16}
-              />
-              <input
-                ref={inputRef}
-                type="text"
-                role="combobox"
-                aria-expanded={showSearchPanel}
-                aria-autocomplete="list"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setSearchOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') dismissSearchOverlay();
-                }}
-                className="h-9 sm:h-10 pl-8 sm:pl-10 pr-[4.75rem] sm:pr-[6.25rem] w-full min-w-0 rounded-lg bg-[#f4f4f5] border-transparent text-sm focus:bg-white focus:ring-2 focus:ring-[#1677FF] focus:border-transparent transition-all placeholder-[#a1a1aa] text-[#18181b]"
-              />
-
-              <div className="pointer-events-none absolute inset-y-0 right-1.5 sm:right-2 flex items-center justify-end gap-0.5 sm:gap-1">
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    className="pointer-events-auto p-1 rounded-md text-[#a1a1aa] hover:bg-[#e4e4e7] hover:text-[#52525b]"
-                    aria-label="Clear search"
-                    onClick={clearSearch}
-                  >
-                    <X size={14} strokeWidth={2} />
-                  </button>
-                ) : null}
-
+          <div ref={searchWrapRef} className="relative z-[1] w-full min-w-0">
+            <Search
+              className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] shrink-0 pointer-events-none"
+              size={16}
+              aria-hidden
+            />
+            <input
+              ref={inputRef}
+              type="text"
+              role="combobox"
+              aria-expanded={showSearchPanel}
+              aria-autocomplete="list"
+              autoComplete="off"
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') dismissSearchOverlay();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitSearchQuery();
+                }
+              }}
+              className="h-9 sm:h-10 pl-8 sm:pl-10 pr-[4.75rem] sm:pr-[6.25rem] w-full min-w-0 rounded-lg bg-[#f4f4f5] border-transparent text-sm focus:bg-white focus:ring-2 focus:ring-[#e11d48] focus:border-transparent transition-all placeholder-[#a1a1aa] text-[#18181b]"
+            />
+            <div className="pointer-events-none absolute inset-y-0 right-1.5 sm:right-2 flex items-center justify-end gap-0.5 sm:gap-1">
+              {query ? (
                 <button
                   type="button"
-                  onClick={focusSearch}
-                  title={`Focus search (${shortcutLabel})`}
-                  aria-keyshortcuts="Meta+K Control+K"
-                  className="pointer-events-auto inline-flex shrink-0 items-center justify-center rounded border border-[#d4d4d8] bg-white px-1 py-0.5 text-[9px] font-mono leading-none text-[#71717a] hover:bg-[#f4f4f5] transition-colors sm:px-1.5 sm:text-[10px] sm:py-0.5"
+                  onClick={clearSearch}
+                  className="pointer-events-auto p-1 rounded-md text-[#a1a1aa] hover:bg-[#e4e4e7] hover:text-[#52525b]"
+                  aria-label="Clear search"
                 >
-                  {shortcutLabel}
+                  <X size={14} strokeWidth={2} />
                 </button>
-              </div>
-            </div>
-          </form>
-
-          {showSearchPanel && dropdownBox && (
-            createPortal(
-              <div
-                ref={searchDropdownPortalRef}
-                role="listbox"
-                className="fixed isolate z-[180] flex max-h-[min(28rem,72vh)] min-w-[min(100%,280px)] flex-col overflow-hidden rounded-xl border border-[#f0f0f3] bg-white shadow-[0_12px_36px_-10px_rgba(15,23,42,0.12)]"
-                style={{
-                  top: dropdownBox.top,
-                  left: dropdownBox.left,
-                  width: dropdownBox.width,
-                }}
+              ) : null}
+              <button
+                type="button"
+                onClick={focusSearch}
+                title={`Focus search (${shortcutLabel})`}
+                aria-keyshortcuts="Meta+K Control+K"
+                className="pointer-events-auto inline-flex shrink-0 items-center justify-center rounded border border-[#d4d4d8] bg-white px-1 py-0.5 text-[9px] font-mono leading-none text-[#71717a] hover:bg-[#f4f4f5] transition-colors sm:px-1.5 sm:text-[10px] sm:py-0.5"
               >
-                {searchLoading && searchQuery.trim().length >= 2 && (
-                  <div className="shrink-0 border-b border-[#f4f4f5] bg-[#fafafa] px-3 py-2.5">
-                    <div className="flex items-center gap-2 text-sm text-[#52525b]">
-                      <span
-                        className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#1677FF] border-t-transparent"
-                        aria-hidden
-                      />
-                      Searching…
-                    </div>
-                  </div>
-                )}
+                {shortcutLabel}
+              </button>
+            </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth [scrollbar-gutter:stable]">
-                  {!searchLoading && searchQuery.trim().length < 2 && recentSearches.length > 0 && (
-                    <div className="border-b border-[#f4f4f5] p-3">
-                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#71717a]">
-                        <Clock size={12} className="shrink-0" />
-                        Recent
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {recentSearches.map((term, idx) => (
-                          <button
-                            key={`${term}-${idx}`}
-                            type="button"
-                            onClick={() => navigateRecentTerm(term)}
-                            className="rounded-md border border-[#e4e4e7] bg-[#fafafa] px-2 py-1 text-xs text-[#3f3f46] transition-colors hover:border-[#1677FF]/40 hover:bg-[#E6F7FF]/60"
-                          >
-                            {term}
-                          </button>
-                        ))}
+            {showSearchPanel &&
+              dropdownBox &&
+              createPortal(
+                <div
+                  ref={searchDropdownPortalRef}
+                  role="listbox"
+                  className="fixed isolate z-[180] flex max-h-[min(28rem,72vh)] min-w-[min(100%,280px)] flex-col overflow-hidden rounded-xl border border-[#f0f0f3] bg-white shadow-[0_12px_36px_-10px_rgba(15,23,42,0.12)]"
+                  style={{
+                    top: dropdownBox.top,
+                    left: dropdownBox.left,
+                    width: dropdownBox.width,
+                  }}
+                >
+                  {searchLoading && query.trim().length >= 2 && (
+                    <div className="shrink-0 border-b border-[#f4f4f5] bg-[#fafafa] px-3 py-2.5">
+                      <div className="flex items-center gap-2 text-sm text-[#52525b]">
+                        <span
+                          className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#e11d48] border-t-transparent"
+                          aria-hidden
+                        />
+                        Searching…
                       </div>
                     </div>
                   )}
 
-                  {!searchLoading && suggestions.length > 0 && searchQuery.trim().length >= 2 && (
-                    <div className="border-b border-[#f4f4f5] p-3">
-                      <div className="mb-1.5 text-xs font-semibold text-[#71717a]">Suggestions</div>
-                      <ul className="space-y-0.5">
-                        {suggestions.map((suggestion, idx) => (
-                          <li key={`${suggestion.text}-${idx}`}>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth [scrollbar-gutter:stable]">
+                    {!searchLoading && query.trim().length < 2 && recentSearches.length > 0 && (
+                      <div className="border-b border-[#f4f4f5] p-3">
+                        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#71717a]">
+                          <Clock size={12} className="shrink-0" />
+                          Recent
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {recentSearches.map((term, idx) => (
                             <button
+                              key={`${term}-${idx}`}
                               type="button"
-                              onClick={() => navigateSuggestionPick(suggestion)}
-                              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm text-[#18181b] transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#1677FF]/30"
+                              onClick={() => navigateRecentTerm(term)}
+                              className="rounded-md border border-[#e4e4e7] bg-[#fafafa] px-2 py-1 text-xs text-[#3f3f46] transition-colors hover:border-[#e11d48]/40 hover:bg-rose-50/80"
                             >
-                              <span className="min-w-0 truncate">{suggestion.text}</span>
-                              <ArrowRight size={14} className="shrink-0 text-[#a1a1aa]" />
+                              {term}
                             </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {!searchLoading &&
-                    results &&
-                    searchQuery.trim().length >= 2 &&
-                    results.total > 0 &&
-                    Object.entries(results.results).map(([category, list]) => {
-                      if (!Array.isArray(list) || list.length === 0) return null;
-                      return (
-                        <section key={category} className="border-b border-[#f4f4f5] last:border-b-0">
-                          <div className="sticky top-0 z-[1] flex items-center justify-between border-b border-[#f4f4f5] bg-white px-3 py-2">
-                            <span className="text-[11px] font-bold uppercase tracking-wide text-[#64748b]">
-                              {formatResultSectionLabel(category)}
-                            </span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-[#64748b]">
-                              {list.length}
-                            </span>
-                          </div>
-                          <ul className="divide-y divide-[#f4f4f5] px-1 py-1">
-                            {list.map((item: SearchItem) => (
-                              <li key={`${category}-${item.id}`}>
-                                <button
-                                  type="button"
-                                  onClick={() => navigateSearchItem(category, item)}
-                                  className="flex w-full items-start justify-between gap-2 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#1677FF]/30"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="truncate text-sm font-medium text-[#18181b]">{item.title}</span>
-                                      <span
-                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${resultTypeBadgeClass(
-                                          item.type
-                                        )}`}
-                                      >
-                                        {item.type}
-                                      </span>
-                                    </div>
-                                    <p className="mt-0.5 truncate text-xs text-[#71717a]">{item.subtitle}</p>
-                                  </div>
-                                  <ArrowRight size={14} className="mt-0.5 shrink-0 text-[#a1a1aa]" />
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </section>
-                      );
-                    })}
-
-                  {!searchLoading &&
-                    results &&
-                    searchQuery.trim().length >= 2 &&
-                    results.total === 0 && (
-                      <div className="px-4 py-10 text-center text-sm text-[#71717a]">
-                        No results for &ldquo;{searchQuery.trim()}&rdquo;
+                          ))}
+                        </div>
                       </div>
                     )}
-                </div>
-              </div>,
-              document.body
-            )
+
+                    {!searchLoading && suggestions.length > 0 && query.trim().length >= 2 && (
+                      <div className="border-b border-[#f4f4f5] p-3">
+                        <div className="mb-1.5 text-xs font-semibold text-[#71717a]">Suggestions</div>
+                        <ul className="space-y-0.5">
+                          {suggestions.map((suggestion, idx) => (
+                            <li key={`${suggestion.text}-${idx}`}>
+                              <button
+                                type="button"
+                                onClick={() => navigateSuggestionPick(suggestion)}
+                                className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm text-[#18181b] transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#e11d48]/30"
+                              >
+                                <span className="min-w-0 truncate">{suggestion.text}</span>
+                                <ArrowRight size={14} className="shrink-0 text-[#a1a1aa]" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {!searchLoading &&
+                      results &&
+                      query.trim().length >= 2 &&
+                      results.total > 0 &&
+                      Object.entries(results.results).map(([type, list]) => {
+                        if (!list?.length) return null;
+                        return (
+                          <section key={type} className="border-b border-[#f4f4f5] last:border-b-0">
+                            <div className="sticky top-0 z-[1] flex items-center justify-between border-b border-[#f4f4f5] bg-white px-3 py-2">
+                              <span className="text-[11px] font-bold uppercase tracking-wide text-[#64748b]">
+                                {formatResultSectionLabel(type)}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-[#64748b]">
+                                {list.length}
+                              </span>
+                            </div>
+                            <ul className="divide-y divide-[#f4f4f5] px-1 py-1">
+                              {list.map((item) => (
+                                <li key={`${type}-${item.id}`}>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigateSearchItem(type, item)}
+                                    className="flex w-full items-start justify-between gap-2 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#e11d48]/30"
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="truncate text-sm font-medium text-[#18181b]">{item.title}</span>
+                                        <span
+                                          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${resultTypeBadgeClass(item.type)}`}
+                                        >
+                                          {item.type}
+                                        </span>
+                                      </div>
+                                      <p className="mt-0.5 truncate text-xs text-[#71717a]">{item.subtitle}</p>
+                                    </div>
+                                    <ArrowRight size={14} className="mt-0.5 shrink-0 text-[#a1a1aa]" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        );
+                      })}
+
+                    {!searchLoading &&
+                      results &&
+                      query.trim().length >= 2 &&
+                      results.total === 0 && (
+                        <div className="px-4 py-10 text-center text-sm text-[#71717a]">
+                          No results for &ldquo;{query.trim()}&rdquo;
+                        </div>
+                      )}
+                  </div>
+                </div>,
+                document.body
+              )}
+          </div>
+        </div>
+
+        <div className="relative z-[2] flex shrink-0 min-w-0 items-center gap-1 sm:gap-4 ml-1 sm:ml-6">
+          {badge && (
+            <div className={cn('hidden sm:flex items-center gap-2 px-3 py-1.5', badge.className)}>
+              <ShieldCheck size={14} className={import.meta.env.DEV ? 'text-slate-600' : 'text-[#e11d48]'} />
+              <span className="text-xs font-medium">{badge.label}</span>
+            </div>
           )}
 
-          <div className="relative" ref={notifRef}>
+          <div className="h-6 w-px bg-[#e4e4e7] mx-0 sm:mx-2 hidden sm:block shrink-0" />
+
+          <div className="relative shrink-0">
             <button
+              ref={buttonRef}
               type="button"
-              onClick={() => setNotificationsOpen((o) => !o)}
-              className="relative p-2 text-[#71717a] hover:bg-[#f4f4f5] rounded-full transition-colors group"
+              className="relative p-2 text-[#71717a] hover:bg-[#f4f4f5] rounded-full transition-colors group shrink-0"
+              aria-label="Notifications"
+              onClick={() => setNotifOpen((prev) => !prev)}
             >
-              <Bell size={20} className="group-hover:text-[#18181b]" />
+              {notifOpen ? (
+                <BellRing size={20} className="text-[#71717a]" />
+              ) : (
+                <Bell size={20} className="group-hover:text-[#18181b]" />
+              )}
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 bg-[#e11d48] rounded-full border border-white text-[10px] leading-4 text-white text-center font-bold">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
-            {notificationsOpen && (
-              <div className="absolute right-2 top-full mt-2 w-80 bg-white border border-[#E0E0E0] rounded-xl shadow-xl py-2 z-50">
-                <div className="px-4 py-2 border-b border-[#E0E0E0]">
-                  <h3 className="font-bold text-sm text-[#212121]">Notifications</h3>
+            {notifOpen && (
+              <div
+                ref={panelRef}
+                className="absolute right-0 top-full mt-2 z-50 bg-white border border-[#e4e4e7] rounded-xl shadow-2xl overflow-hidden"
+                style={{ width: '460px', maxWidth: 'calc(100vw - 24px)' }}
+              >
+                <div className="px-4 py-3 border-b border-[#e4e4e7] flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-[#18181b]">Notifications</h4>
+                  <span className="text-xs text-[#71717a]">{notifItems.length} latest</span>
                 </div>
-                <div className="max-h-72 overflow-y-auto">
-                  {SAMPLE_NOTIFICATIONS.map((n) => (
-                    <button
-                      key={n.id}
-                      type="button"
-                      className={cn(
-                        "w-full text-left px-4 py-3 hover:bg-[#F5F5F5] transition-colors",
-                        n.unread && "bg-[#E6F7FF]/50"
-                      )}
-                      onClick={() => {
-                        setNotificationsOpen(false);
-                        if (setActiveTab) setActiveTab('alerts');
-                      }}
-                    >
-                      <p className="text-sm font-medium text-[#212121]">{n.title}</p>
-                      <p className="text-xs text-[#757575] mt-0.5">{n.time}</p>
-                    </button>
-                  ))}
+                <div className="min-h-[300px] max-h-[min(75vh,540px)] overflow-y-auto">
+                  {notifLoading ? (
+                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">Loading notifications...</div>
+                  ) : notifItems.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">No notifications yet</div>
+                  ) : (
+                    notifItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="w-full text-left px-4 py-3 border-b border-[#f4f4f5] last:border-b-0 hover:bg-[#fafafa]"
+                        onClick={() => {
+                          setNotifOpen(false);
+                          if (setActiveTab) setActiveTab('alerts');
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-[#18181b] truncate">
+                            {item.title || item.templateName || 'Notification'}
+                          </p>
+                          <span className="text-[10px] text-[#71717a] shrink-0">{formatTimeAgo(item.sentAt)}</span>
+                        </div>
+                        <p className="text-xs text-[#52525b] mt-1 line-clamp-2">{item.body || 'No message body'}</p>
+                        <div className="mt-2 flex items-center gap-2 text-[10px]">
+                          <span className="px-1.5 py-0.5 rounded bg-[#f4f4f5] text-[#52525b] uppercase">{item.channel}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 uppercase">{item.status}</span>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             )}

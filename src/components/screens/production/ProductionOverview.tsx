@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Play, AlertTriangle, Clock, PauseCircle, Package, Download, X, StopCircle, Loader2 } from 'lucide-react';
+import { Play, AlertTriangle, Clock, PauseCircle, Package, Download, X, StopCircle, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
 import {
   fetchProductionOverview,
-  startProductionBatch,
   updateProductionLine,
+  createProductionLine,
+  updateProductionLineDetails,
+  deleteProductionLine,
   type ProductionLineOverview,
   type ProductionOverviewKPIs,
 } from '../../../api/productionApi';
@@ -44,7 +46,6 @@ function MetricCard({ label, value, subValue, trend, trendUp, icon, color = "blu
 
 export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeModal }: { showDowntimeModal?: boolean; onCloseDowntimeModal?: () => void } = {}) {
   const { selectedFactoryId } = useProductionFactory();
-  const [showBatchModal, setShowBatchModal] = useState(false);
   const [showManageModal, setShowManageModal] = useState<ProductionLineOverview | null>(null);
   const [showDowntimeModalLocal, setShowDowntimeModalLocal] = useState(false);
   const showDowntime = showDowntimeModal || showDowntimeModalLocal;
@@ -57,11 +58,117 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [newBatch, setNewBatch] = useState({
-    line: '',
-    product: '',
-    target: '',
+  const [lineFormMode, setLineFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [lineForm, setLineForm] = useState({
+    name: '',
+    status: 'idle' as ProductionLineOverview['status'],
+    currentJob: '',
+    output: '0',
+    target: '0',
+    efficiency: '0',
   });
+  const [lineToDelete, setLineToDelete] = useState<ProductionLineOverview | null>(null);
+  const [savingLine, setSavingLine] = useState(false);
+
+  const emptyLineForm = () => ({
+    name: '',
+    status: 'idle' as ProductionLineOverview['status'],
+    currentJob: '',
+    output: '0',
+    target: '0',
+    efficiency: '0',
+  });
+
+  const openCreateLine = () => {
+    setEditingLineId(null);
+    setLineForm(emptyLineForm());
+    setLineFormMode('create');
+  };
+
+  const openEditLine = (line: ProductionLineOverview) => {
+    setEditingLineId(line.id);
+    setLineForm({
+      name: line.name,
+      status: line.status,
+      currentJob: line.currentJob ?? '',
+      output: String(line.output),
+      target: String(line.target),
+      efficiency: String(line.efficiency),
+    });
+    setLineFormMode('edit');
+    setShowManageModal(null);
+  };
+
+  const saveLineForm = async () => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    if (!lineForm.name.trim()) {
+      toast.error('Line name is required');
+      return;
+    }
+    const output = Math.max(0, parseInt(lineForm.output, 10) || 0);
+    const target = Math.max(0, parseInt(lineForm.target, 10) || 0);
+    const efficiency = Math.max(0, Math.min(100, parseInt(lineForm.efficiency, 10) || 0));
+
+    setSavingLine(true);
+    try {
+      if (lineFormMode === 'create') {
+        await createProductionLine(
+          {
+            name: lineForm.name.trim(),
+            status: lineForm.status,
+            currentJob: lineForm.currentJob.trim() || undefined,
+            output,
+            target,
+            efficiency,
+          },
+          selectedFactoryId
+        );
+        toast.success('Production line created');
+      } else if (lineFormMode === 'edit' && editingLineId) {
+        await updateProductionLineDetails(
+          editingLineId,
+          {
+            name: lineForm.name.trim(),
+            status: lineForm.status,
+            currentJob: lineForm.currentJob.trim(),
+            output,
+            target,
+            efficiency,
+          },
+          selectedFactoryId
+        );
+        toast.success('Production line updated');
+      }
+      setLineFormMode(null);
+      setEditingLineId(null);
+      setLineForm(emptyLineForm());
+      await loadOverview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save line');
+    } finally {
+      setSavingLine(false);
+    }
+  };
+
+  const confirmDeleteLine = async () => {
+    if (!lineToDelete || !selectedFactoryId) return;
+    setSavingLine(true);
+    try {
+      await deleteProductionLine(lineToDelete.id, selectedFactoryId);
+      toast.success('Production line deleted');
+      setLineToDelete(null);
+      if (showManageModal?.id === lineToDelete.id) setShowManageModal(null);
+      await loadOverview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete line');
+    } finally {
+      setSavingLine(false);
+    }
+  };
 
   const loadOverview = useCallback(async () => {
     if (!selectedFactoryId) {
@@ -88,31 +195,6 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
   useEffect(() => {
     loadOverview();
   }, [loadOverview]);
-
-  const startBatch = async () => {
-    if (!newBatch.line || !newBatch.product || !newBatch.target) {
-      toast.error('Please fill line, product, and target');
-      return;
-    }
-    const targetNum = parseInt(newBatch.target, 10);
-    if (isNaN(targetNum) || targetNum < 1) {
-      toast.error('Target must be a positive number');
-      return;
-    }
-    try {
-      await startProductionBatch({
-        lineId: newBatch.line,
-        product: newBatch.product,
-        targetQuantity: targetNum,
-      }, selectedFactoryId);
-      await loadOverview();
-      setNewBatch({ line: '', product: '', target: '' });
-      setShowBatchModal(false);
-      toast.success('Batch started successfully');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to start batch');
-    }
-  };
 
   const pauseLine = async (id: string) => {
     const line = lines.find((l) => l.id === id);
@@ -228,21 +310,14 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
         title="Production Overview"
         subtitle="Live monitoring of assembly lines and output"
         actions={
-          <>
-            <button 
-              onClick={exportReport}
-              className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2"
-            >
-              <Download size={16} />
-              Export Report
-            </button>
-            <button 
-              onClick={() => setShowBatchModal(true)}
-              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] transition-transform active:scale-95"
-            >
-              Start New Batch
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={exportReport}
+            className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center gap-2"
+          >
+            <Download size={16} />
+            Export Report
+          </button>
         }
       />
 
@@ -286,11 +361,22 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
 
       {/* Production Lines Status */}
       <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
+        <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center gap-3">
           <h3 className="font-bold text-[#212121]">Active Production Lines</h3>
-          <span className="text-xs font-medium px-2 py-1 bg-[#F0FDF4] text-[#16A34A] rounded-full border border-[#16A34A]/20">
-            {lines.filter(l => l.status === 'running').length} / {lines.length} Running
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium px-2 py-1 bg-[#F0FDF4] text-[#16A34A] rounded-full border border-[#16A34A]/20">
+              {lines.filter(l => l.status === 'running').length} / {lines.length} Running
+            </span>
+            <button
+              type="button"
+              onClick={openCreateLine}
+              disabled={!selectedFactoryId}
+              className="px-3 py-1.5 bg-[#16A34A] text-white text-xs font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              <Plus size={14} />
+              Add Line
+            </button>
+          </div>
         </div>
         <div className="p-0">
           <table className="w-full text-sm text-left">
@@ -336,12 +422,33 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => setShowManageModal(line)}
-                      className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs"
-                    >
-                      Manage
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditLine(line)}
+                        className="p-1.5 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg"
+                        aria-label={`Edit ${line.name}`}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLineToDelete(line)}
+                        disabled={line.status === 'running'}
+                        className="p-1.5 text-[#EF4444] hover:text-[#DC2626] hover:bg-red-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label={`Delete ${line.name}`}
+                        title={line.status === 'running' ? 'Stop the line before deleting' : 'Delete line'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowManageModal(line)}
+                        className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs px-2 py-1"
+                      >
+                        Manage
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )))}
@@ -349,69 +456,6 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
           </table>
         </div>
       </div>
-
-      {/* Start Batch Modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[#212121]">Start New Production Batch</h3>
-              <button onClick={() => setShowBatchModal(false)} className="text-[#757575] hover:text-[#212121]">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[#212121] mb-2">Production Line</label>
-                <select 
-                  value={newBatch.line}
-                  onChange={(e) => setNewBatch({...newBatch, line: e.target.value})}
-                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                >
-                  <option value="">Select line</option>
-                  {lines.map(line => (
-                    <option key={line.id} value={line.id}>{line.name}{line.status === 'running' ? ' (running)' : ''}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#212121] mb-2">Product</label>
-                <input 
-                  type="text"
-                  placeholder="e.g., Organic Oats"
-                  value={newBatch.product}
-                  onChange={(e) => setNewBatch({...newBatch, product: e.target.value})}
-                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#212121] mb-2">Target Quantity</label>
-                <input 
-                  type="number"
-                  placeholder="5000"
-                  value={newBatch.target}
-                  onChange={(e) => setNewBatch({...newBatch, target: e.target.value})}
-                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                />
-              </div>
-            </div>
-            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowBatchModal(false)}
-                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={startBatch}
-                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D]"
-              >
-                Start Batch
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Downtime Modal */}
       {showDowntime && (
@@ -491,7 +535,15 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
                   <p className="font-bold text-blue-900">{showManageModal.currentJob}</p>
                 </div>
               )}
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => openEditLine(showManageModal)}
+                  className="flex-1 min-w-[120px] px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center justify-center gap-2"
+                >
+                  <Pencil size={16} />
+                  Edit
+                </button>
                 {showManageModal.status === 'running' && (
                   <>
                     <button 
@@ -526,9 +578,156 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
                   </button>
                 )}
                 {showManageModal.status === 'idle' && !showManageModal.currentJob && (
-                  <p className="text-sm text-[#757575]">Line stopped. Start a new batch from the overview.</p>
+                  <p className="text-sm text-[#757575]">Line stopped. Edit the line to update job details.</p>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit Line Modal */}
+      {lineFormMode && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {lineFormMode === 'create' ? 'Add Production Line' : 'Edit Production Line'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setLineFormMode(null);
+                  setEditingLineId(null);
+                  setLineForm(emptyLineForm());
+                }}
+                className="text-[#757575] hover:text-[#212121]"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#212121] mb-2">Line Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Line E (Labeling)"
+                  value={lineForm.name}
+                  onChange={(e) => setLineForm({ ...lineForm, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#212121] mb-2">Status</label>
+                <select
+                  value={lineForm.status}
+                  onChange={(e) =>
+                    setLineForm({ ...lineForm, status: e.target.value as ProductionLineOverview['status'] })
+                  }
+                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                >
+                  <option value="idle">Idle</option>
+                  <option value="running">Running</option>
+                  <option value="changeover">Changeover</option>
+                  <option value="maintenance">Maintenance</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#212121] mb-2">Current Job (optional)</label>
+                <input
+                  type="text"
+                  placeholder="Job #1042 - Organic Oats"
+                  value={lineForm.currentJob}
+                  onChange={(e) => setLineForm({ ...lineForm, currentJob: e.target.value })}
+                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Output</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={lineForm.output}
+                    onChange={(e) => setLineForm({ ...lineForm, output: e.target.value })}
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Target</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={lineForm.target}
+                    onChange={(e) => setLineForm({ ...lineForm, target: e.target.value })}
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Efficiency %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={lineForm.efficiency}
+                    onChange={(e) => setLineForm({ ...lineForm, efficiency: e.target.value })}
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setLineFormMode(null);
+                  setEditingLineId(null);
+                  setLineForm(emptyLineForm());
+                }}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveLineForm}
+                disabled={savingLine}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-60 flex items-center gap-2"
+              >
+                {savingLine && <Loader2 size={16} className="animate-spin" />}
+                {lineFormMode === 'create' ? 'Create Line' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {lineToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete production line?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              This will permanently remove <span className="font-medium text-[#212121]">{lineToDelete.name}</span>.
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setLineToDelete(null)}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteLine}
+                disabled={savingLine}
+                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-60 flex items-center gap-2"
+              >
+                {savingLine && <Loader2 size={16} className="animate-spin" />}
+                Delete
+              </button>
             </div>
           </div>
         </div>

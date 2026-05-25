@@ -3,7 +3,7 @@ import {
   Search, Filter, AlertTriangle, ArrowUp, ArrowDown, Package, 
   LayoutGrid, List, Plus, Minus, History, BarChart3, 
   MapPin, AlertCircle, CheckCircle2, RefreshCw, Thermometer,
-  Calendar, ChevronRight, X, FileText, Scan, Zap,
+  Calendar, ChevronRight, X, FileText, Scan, Zap, Upload, Download,
   MoreVertical, Pencil, Trash2, Tag, Box, Target, UserPlus
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
@@ -31,8 +31,10 @@ import {
   fetchAdjustments,
   createAdjustment,
   fetchCycleCount,
-  scanItem,
+  downloadCycleCountReport,
   fetchAuditLogs,
+  bulkImportInventory,
+  downloadInventoryImportTemplate,
   fetchItemHistory,
   createRestockTask,
 } from '../../api/inventory-management';
@@ -49,7 +51,7 @@ import { Button } from "../ui/button";
 export function InventoryOps() {
   const [activeTab, setActiveTab] = useState<'live' | 'stock' | 'adjust' | 'count'>('live');
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: '', name: '' });
-  const [showScanModal, setShowScanModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [selectedItemHistory, setSelectedItemHistory] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -88,10 +90,10 @@ export function InventoryOps() {
               <History size={16} /> Audit Log
             </button>
             <button 
-              onClick={() => setShowScanModal(true)}
+              onClick={() => setShowUploadModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-[#212121] text-white rounded-lg text-sm font-bold hover:bg-[#333] shadow-md"
             >
-              <Scan size={16} /> Scan Item
+              <Upload size={16} /> Upload Sheet
             </button>
           </div>
         }
@@ -107,7 +109,12 @@ export function InventoryOps() {
 
       {/* Tab Content */}
       <div className="min-h-[600px]">
-        {activeTab === 'live' && <LiveShelfView />}
+        {activeTab === 'live' && (
+          <LiveShelfView
+            refreshKey={refreshTrigger}
+            onRequestUpload={() => setShowUploadModal(true)}
+          />
+        )}
         {activeTab === 'stock' && <StockLevels onDelete={handleDelete} refreshTrigger={refreshTrigger} deletedSku={deletedSku} onClearDeletedSku={() => setDeletedSku(null)} />}
         {activeTab === 'adjust' && <InventoryAdjustments />}
         {activeTab === 'count' && <CycleCount />}
@@ -121,13 +128,11 @@ export function InventoryOps() {
         onConfirm={confirmDelete}
       />
 
-      {/* Scan Item Modal */}
-      <ScanItemModal 
-        open={showScanModal} 
-        onOpenChange={setShowScanModal} 
-        onSuccess={() => {
-          if (activeTab === 'stock') setRefreshTrigger(prev => prev + 1);
-        }}
+      <InventorySheetUploadModal
+        open={showUploadModal}
+        onOpenChange={setShowUploadModal}
+        storeId={storeId}
+        onSuccess={() => setRefreshTrigger((t) => t + 1)}
       />
 
       {/* Global Audit Log Modal */}
@@ -147,88 +152,180 @@ export function InventoryOps() {
 
 // --- Modals ---
 
-function ScanItemModal({ open, onOpenChange, onSuccess }: any) {
-  const [sku, setSku] = useState('');
-  const [location, setLocation] = useState('');
+function InventorySheetUploadModal({
+  open,
+  onOpenChange,
+  onSuccess,
+  storeId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
+  storeId: string;
+}) {
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [validateOnly, setValidateOnly] = useState(false);
+  const [lastResult, setLastResult] = useState<any>(null);
 
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sku) {
-      toast.error('Please enter SKU');
+  const reset = () => {
+    setFile(null);
+    setLastResult(null);
+    setValidateOnly(false);
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await downloadInventoryImportTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'inventory-import-template.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Template downloaded');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to download template');
+    }
+  };
+
+  const handleImport = async () => {
+    if (!file) {
+      toast.error('Select a CSV or Excel file');
       return;
     }
-    
     setLoading(true);
     try {
-      const result = await scanItem({ sku, location });
-      const itemName = result.item?.name || result.product_name || 'Item';
-      const itemLocation = result.item?.location || result.location || location;
-      const itemStock = result.item?.current_stock || result.stock || 0;
-      toast.success(`Scanned ${itemName} at ${itemLocation} - Stock: ${itemStock}`);
-      onSuccess?.();
-      onOpenChange(false);
-      setSku('');
-      setLocation('');
+      const result = await bulkImportInventory(file, {
+        storeId,
+        zone: 'Zone 1 (Ambient)',
+        validateOnly,
+      });
+      setLastResult(result);
+      if (result.failedRows > 0) {
+        toast.warning(result.message || `Imported with ${result.failedRows} errors`);
+      } else {
+        toast.success(
+          validateOnly
+            ? `Validated ${result.processedRows} rows`
+            : `Imported ${result.processedRows} items`
+        );
+        if (!validateOnly) {
+          onSuccess?.();
+          onOpenChange(false);
+          reset();
+        }
+      }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to scan item');
+      toast.error(error.message || 'Import failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]" aria-describedby="scan-item-description">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) reset();
+      }}
+    >
+      <DialogContent
+        className="!w-[min(100%-2rem,400px)] !max-w-[400px] sm:!max-w-[400px]"
+        aria-describedby="upload-sheet-description"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Scan className="w-5 h-5" /> Scan Item
+            <Upload className="w-5 h-5" /> Upload Inventory Sheet
           </DialogTitle>
-          <DialogDescription id="scan-item-description">
-            Enter SKU and location to verify item details.
+          <DialogDescription id="upload-sheet-description">
+            Import or update stock from CSV/Excel. Columns: sku, product_name, category, stock, location, barcode.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleScan} className="space-y-4 py-4">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-[#616161] uppercase">SKU / Barcode</label>
-            <input 
-              autoFocus
-              className="w-full p-2.5 border border-[#E0E0E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1677FF] outline-none"
-              placeholder="Enter SKU..."
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              disabled={loading}
+
+        <div className="space-y-4 py-2">
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="flex items-center gap-2 text-sm font-bold text-[#1677FF] hover:underline"
+          >
+            <Download size={16} /> Download template (.csv)
+          </button>
+
+          <div
+            className={cn(
+              'border-2 border-dashed rounded-xl p-6 text-center transition-colors',
+              file ? 'border-[#1677FF] bg-[#F0F7FF]' : 'border-[#E0E0E0] bg-[#FAFAFA]'
+            )}
+          >
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              id="inventory-sheet-input"
+              onChange={(e) => {
+                setFile(e.target.files?.[0] || null);
+                setLastResult(null);
+              }}
             />
+            <label htmlFor="inventory-sheet-input" className="cursor-pointer block">
+              <FileText className="w-10 h-10 mx-auto text-[#9E9E9E] mb-2" />
+              {file ? (
+                <p className="text-sm font-bold text-[#212121]">{file.name}</p>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-[#212121]">Click to choose file</p>
+                  <p className="text-xs text-[#9E9E9E] mt-1">CSV or Excel up to 10MB</p>
+                </>
+              )}
+            </label>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-[#616161] uppercase">Location (Optional)</label>
-            <input 
-              className="w-full p-2.5 border border-[#E0E0E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1677FF] outline-none"
-              placeholder="e.g. A-01-02"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              disabled={loading}
+
+          <label className="flex items-center gap-2 text-sm text-[#616161]">
+            <input
+              type="checkbox"
+              checked={validateOnly}
+              onChange={(e) => setValidateOnly(e.target.checked)}
+              className="rounded border-[#E0E0E0]"
             />
-          </div>
-          <DialogFooter className="pt-2">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button 
-              type="submit" 
-              className="bg-[#212121] hover:bg-[#333]"
-              disabled={loading || !sku}
-            >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Scan className="w-4 h-4 mr-2" />}
-              {loading ? 'Scanning...' : 'Verify Item'}
-            </Button>
-          </DialogFooter>
-        </form>
+            Validate only (do not save)
+          </label>
+
+          {lastResult?.errors?.length > 0 && (
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-3 text-xs text-[#B91C1C]">
+              {lastResult.errors.slice(0, 8).map((err: any, i: number) => (
+                <div key={i}>
+                  Row {err.row}: {err.error}
+                </div>
+              ))}
+              {lastResult.errors.length > 8 && (
+                <div className="mt-1 font-bold">+{lastResult.errors.length - 8} more errors</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="pt-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="bg-[#212121] hover:bg-[#333]"
+            disabled={loading || !file}
+            onClick={handleImport}
+          >
+            {loading ? (
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Upload className="w-4 h-4 mr-2" />
+            )}
+            {loading ? 'Processing...' : validateOnly ? 'Validate Sheet' : 'Import & Update'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -442,33 +539,89 @@ function TabButton({ id, label, icon: Icon, active, onClick }: any) {
 
 // --- Sub-Components ---
 
-function LiveShelfView() {
+function LiveShelfView({
+  refreshKey = 0,
+  onRequestUpload,
+}: {
+  refreshKey?: number;
+  onRequestUpload?: () => void;
+}) {
   const [shelfData, setShelfData] = useState<any>(null);
+  const [catalogItems, setCatalogItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedShelf, setSelectedShelf] = useState<string>('A-01-01');
+  const [selectedShelf, setSelectedShelf] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
 
   useEffect(() => {
     loadShelfView();
-  }, [selectedShelf, storeId]);
+  }, [selectedShelf, storeId, refreshKey]);
 
   const loadShelfView = async () => {
     try {
       setLoading(true);
-      const data = await fetchShelfView({ storeId, zone: 'Zone 1 (Ambient)', aisle: 'all', shelf_location: selectedShelf });
+      const [data, stockRes] = await Promise.all([
+        fetchShelfView({
+          storeId,
+          zone: 'Zone 1 (Ambient)',
+          aisle: 'all',
+          shelf_location: selectedShelf || undefined,
+        }),
+        fetchStockLevels({ storeId, page: 1, limit: 500, sheetOnly: true }).catch(() => ({ items: [] })),
+      ]);
+
       if (data && (data.success !== false || data.aisles || data.alerts)) {
         setShelfData(data);
+        const firstShelf =
+          data.selected_shelf?.location_code ||
+          data.aisles?.[0]?.shelves?.[0]?.location_code;
+        if (!selectedShelf && firstShelf) {
+          setSelectedShelf(firstShelf);
+        }
       } else {
         setShelfData(null);
       }
+
+      const items =
+        stockRes?.items && Array.isArray(stockRes.items)
+          ? stockRes.items
+          : Array.isArray(stockRes)
+            ? stockRes
+            : [];
+      setCatalogItems(items);
     } catch (error: any) {
       console.error('Failed to load shelf view:', error);
-      // Silent fail - don't disrupt UI
       setShelfData(null);
+      setCatalogItems([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const filteredCatalog = catalogItems.filter((item) => {
+    const q = searchTerm.toLowerCase().trim();
+    if (!q) return true;
+    const sku = (item.sku || '').toLowerCase();
+    const name = ((item.name || item.product_name) || '').toLowerCase();
+    const loc = (item.location || '').toLowerCase();
+    return sku.includes(q) || name.includes(q) || loc.includes(q);
+  });
+
+  const catalogStats = {
+    total: catalogItems.length,
+    inStock: catalogItems.filter((i) => (i.stock || 0) > 0).length,
+    outOfStock: catalogItems.filter((i) => (i.stock || 0) === 0).length,
+    lowStock: catalogItems.filter(
+      (i) => (i.stock || 0) > 0 && (i.stock || 0) < 15
+    ).length,
+  };
+
+  const handleCatalogItemClick = (item: any) => {
+    if (item.location) {
+      setSelectedShelf(item.location);
+      setShowHistory(false);
     }
   };
 
@@ -487,8 +640,33 @@ function LiveShelfView() {
     }
   }
   
+  const hasShelfMap =
+    shelfData?.aisles &&
+    Array.isArray(shelfData.aisles) &&
+    shelfData.aisles.some((a: any) => (a.shelves || []).length > 0);
+
   return (
     <div className="space-y-6">
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
+          <p className="text-xs font-bold text-[#757575] uppercase">SKUs in store</p>
+          <p className="text-2xl font-bold text-[#212121] mt-1">{loading ? '—' : catalogStats.total}</p>
+        </div>
+        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
+          <p className="text-xs font-bold text-[#757575] uppercase">In stock</p>
+          <p className="text-2xl font-bold text-[#16A34A] mt-1">{loading ? '—' : catalogStats.inStock}</p>
+        </div>
+        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
+          <p className="text-xs font-bold text-[#757575] uppercase">Low stock</p>
+          <p className="text-2xl font-bold text-[#D97706] mt-1">{loading ? '—' : catalogStats.lowStock}</p>
+        </div>
+        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
+          <p className="text-xs font-bold text-[#757575] uppercase">Out of stock</p>
+          <p className="text-2xl font-bold text-[#EF4444] mt-1">{loading ? '—' : catalogStats.outOfStock}</p>
+        </div>
+      </div>
+
       {/* Alerts Bar */}
       <div className="flex gap-4 overflow-x-auto pb-2">
         <div className="flex items-center gap-2 px-4 py-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg text-[#B91C1C] text-sm font-bold">
@@ -498,13 +676,18 @@ function LiveShelfView() {
            <MapPin size={16} /> {loading ? '...' : (shelfData?.alerts?.misplaced_items || shelfData?.misplaced_shelves || 0)} Misplaced Items
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-[#FEFCE8] border border-[#FEF08A] rounded-lg text-[#A16207] text-sm font-bold">
-           <AlertCircle size={16} /> {loading ? '...' : (shelfData?.alerts?.damaged_goods_reports || shelfData?.damaged_goods_reports || 0)} Damaged Goods Reports
+           <AlertCircle size={16} /> {loading ? '...' : (shelfData?.alerts?.critical_shelves ?? shelfData?.alerts?.damaged_goods_reports ?? 0)} Critical / Alerts
         </div>
+        {shelfData?.source === 'inventory' && (
+          <span className="flex items-center px-3 py-2 text-xs font-bold text-[#1677FF] bg-[#F0F7FF] border border-[#BAE7FF] rounded-lg">
+            Map built from uploaded inventory
+          </span>
+        )}
       </div>
 
-      <div className="grid grid-cols-12 gap-6 h-[600px]">
+      <div className="grid grid-cols-12 gap-6 min-h-[600px]">
         {/* Map Visualization */}
-        <div className="col-span-12 lg:col-span-8 bg-white border border-[#E0E0E0] rounded-xl shadow-sm flex flex-col">
+        <div className="col-span-12 lg:col-span-7 bg-white border border-[#E0E0E0] rounded-xl shadow-sm flex flex-col min-h-[560px]">
           <div className="p-4 border-b border-[#E0E0E0] flex justify-between items-center bg-[#FAFAFA]">
              <h3 className="font-bold text-[#212121]">Store Map: Zone 1 (Ambient)</h3>
              <div className="flex items-center gap-2 text-xs">
@@ -518,11 +701,23 @@ function LiveShelfView() {
               <div className="flex items-center justify-center h-full">
                 <div className="text-[#9E9E9E]">Loading shelf view...</div>
               </div>
-            ) : !shelfData ? (
+            ) : !shelfData || !hasShelfMap ? (
               <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="text-[#9E9E9E] mb-2">No shelf data available</div>
-                  <div className="text-xs text-[#757575]">Please check backend connection</div>
+                <div className="text-center max-w-sm px-4">
+                  <Package className="w-12 h-12 mx-auto text-[#BDBDBD] mb-3" />
+                  <div className="text-[#616161] font-bold mb-1">No inventory on the floor yet</div>
+                  <div className="text-xs text-[#9E9E9E] mb-4">
+                    Upload a sheet with SKU, stock, and shelf location (e.g. A-01-01) to populate this map.
+                  </div>
+                  {onRequestUpload && (
+                    <button
+                      type="button"
+                      onClick={onRequestUpload}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#1677FF] text-white rounded-lg text-sm font-bold hover:bg-[#0958D9]"
+                    >
+                      <Upload size={16} /> Upload inventory sheet
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -581,9 +776,82 @@ function LiveShelfView() {
           </div>
         </div>
 
-        {/* Selected Shelf Details */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4">
-           <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm flex-1">
+        {/* Product catalog */}
+        <div className="col-span-12 lg:col-span-5 flex flex-col gap-4 min-h-[560px]">
+          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col flex-1 min-h-0">
+            <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]">
+              <h3 className="font-bold text-[#212121] mb-1">Product catalog</h3>
+              <p className="text-[10px] text-[#9E9E9E] mb-3">From your latest uploaded sheet only</p>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search SKU, name, shelf..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-[#F0F0F0]">
+              {loading ? (
+                <div className="p-8 text-center text-[#9E9E9E]">Loading products...</div>
+              ) : filteredCatalog.length === 0 ? (
+                <div className="p-8 text-center text-[#9E9E9E] text-sm">
+                  {catalogItems.length === 0
+                    ? 'No sheet products yet. Upload a CSV/Excel sheet to populate this list.'
+                    : 'No matches for your search'}
+                </div>
+              ) : (
+                filteredCatalog.map((item) => {
+                  const isSelected = selectedShelf && item.location === selectedShelf;
+                  const stock = item.stock ?? 0;
+                  return (
+                    <button
+                      key={item.sku}
+                      type="button"
+                      onClick={() => handleCatalogItemClick(item)}
+                      className={cn(
+                        'w-full text-left px-4 py-3 hover:bg-[#F8F8F8] transition-colors',
+                        isSelected && 'bg-[#F0F7FF] border-l-4 border-l-[#1677FF]'
+                      )}
+                    >
+                      <div className="flex justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-bold text-sm text-[#212121] truncate">
+                            {item.name || item.product_name || item.sku}
+                          </div>
+                          <div className="text-xs text-[#9E9E9E] font-mono">{item.sku}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div
+                            className={cn(
+                              'text-sm font-bold',
+                              stock === 0 ? 'text-[#EF4444]' : 'text-[#212121]'
+                            )}
+                          >
+                            {stock} units
+                          </div>
+                          {item.location && (
+                            <div className="text-[10px] text-[#1677FF] font-bold flex items-center justify-end gap-0.5 mt-0.5">
+                              <MapPin size={10} /> {item.location}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Shelf detail strip */}
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 lg:col-span-12">
+           <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
               {loading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-[#9E9E9E]">Loading shelf details...</div>
@@ -703,8 +971,10 @@ function LiveShelfView() {
                   </div>
                 </>
               ) : (
-                <div className="flex items-center justify-center h-full text-[#9E9E9E]">
-                  Select a shelf to view details
+                <div className="flex items-center justify-center py-8 text-[#9E9E9E]">
+                  {selectedShelf
+                    ? `No details for shelf ${selectedShelf}`
+                    : 'Select a shelf on the map or a product to view shelf details'}
                 </div>
               )}
            </div>
@@ -1099,22 +1369,47 @@ function InventoryAdjustments() {
   const [mode, setMode] = useState<'add' | 'remove' | 'damage'>('add');
   const [adjustments, setAdjustments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [skuInput, setSkuInput] = useState('');
   const [quantityInput, setQuantityInput] = useState('');
   const [reasonInput, setReasonInput] = useState('Restock');
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
 
   useEffect(() => {
     loadAdjustments();
+    loadInventoryItems();
   }, [storeId]);
+
+  useEffect(() => {
+    if (mode === 'damage' && reasonInput === 'Restock') {
+      setReasonInput('Damaged');
+    }
+  }, [mode]);
+
+  const loadInventoryItems = async () => {
+    try {
+      const response = await fetchStockLevels({ storeId, page: 1, limit: 100 });
+      const items =
+        response?.items && Array.isArray(response.items)
+          ? response.items
+          : Array.isArray(response)
+            ? response
+            : [];
+      setInventoryItems(items);
+    } catch {
+      setInventoryItems([]);
+    }
+  };
 
   const loadAdjustments = async () => {
     try {
       setLoading(true);
       const response = await fetchAdjustments({ storeId, page: 1, limit: 50 });
-      // Backend returns { success: true, adjustments: [], pagination: {} }
-      if (response && response.adjustments && Array.isArray(response.adjustments)) {
+      if (response?.adjustments && Array.isArray(response.adjustments)) {
         setAdjustments(response.adjustments);
       } else if (response && Array.isArray(response)) {
         setAdjustments(response);
@@ -1123,44 +1418,66 @@ function InventoryAdjustments() {
       }
     } catch (error: any) {
       console.error('Failed to load adjustments:', error);
-      // Silent fail - don't disrupt UI
+      toast.error(error.message || 'Failed to load adjustment history');
       setAdjustments([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateAdjustment = async () => {
-    if (!skuInput || !quantityInput) {
-      toast.error('Please enter SKU and quantity');
+  const skuSuggestions = React.useMemo(() => {
+    const q = skuInput.trim().toLowerCase();
+    if (!q || q.length < 1) return [];
+    return inventoryItems
+      .filter((item) => {
+        const sku = (item.sku || '').toLowerCase();
+        const name = ((item.name || item.product_name) || '').toLowerCase();
+        return sku.includes(q) || name.includes(q);
+      })
+      .slice(0, 8);
+  }, [skuInput, inventoryItems]);
+
+  const pickItem = (item: any) => {
+    setSelectedItem(item);
+    setSkuInput(item.sku);
+    setShowSuggestions(false);
+  };
+
+  const handleCreateAdjustment = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const qty = parseInt(quantityInput, 10);
+    if (!skuInput.trim()) {
+      toast.error('Enter a SKU or product name');
+      return;
+    }
+    if (Number.isNaN(qty) || qty <= 0) {
+      toast.error('Enter a valid quantity greater than 0');
       return;
     }
 
+    setSubmitting(true);
     try {
       const result = await createAdjustment({
-        sku: skuInput,
-        mode: mode,
-        quantity: parseInt(quantityInput),
+        sku: skuInput.trim(),
+        mode,
+        quantity: qty,
         reason_code: reasonInput,
         notes: `${mode} adjustment`,
+        storeId,
       });
-      toast.success('Adjustment created successfully');
+      const label = result?.product_name || skuInput;
+      toast.success(
+        `${label}: stock ${result?.old_stock ?? '?'} → ${result?.new_stock ?? '?'}`
+      );
       setSkuInput('');
       setQuantityInput('');
-      const newAdj = {
-        adjustment_id: result?.adjustment_id || `adj-${Date.now()}`,
-        sku: skuInput,
-        product_name: skuInput,
-        action: mode,
-        quantity: parseInt(quantityInput),
-        reason: reasonInput,
-        user: 'You',
-        created_at: new Date().toISOString(),
-      };
-      setAdjustments((prev) => [newAdj, ...prev]);
-      // Don't refetch here so the new adjustment stays visible in history
+      setSelectedItem(null);
+      await loadAdjustments();
+      await loadInventoryItems();
     } catch (error: any) {
       toast.error(error.message || 'Failed to create adjustment');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1191,36 +1508,78 @@ function InventoryAdjustments() {
                 </button>
              </div>
 
-             <div className="space-y-4">
+             <form className="space-y-4" onSubmit={handleCreateAdjustment}>
                 <div>
                    <label className="block text-xs font-bold text-[#616161] mb-1">SKU / Product Name</label>
                    <div className="relative">
-                      <Scan className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
-                      <input 
-                        type="text" 
-                        placeholder="Scan or type SKU..." 
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
+                      <input
+                        type="text"
+                        placeholder="Search SKU or product name..."
                         value={skuInput}
-                        onChange={(e) => setSkuInput(e.target.value)}
-                        className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm" 
+                        onChange={(e) => {
+                          setSkuInput(e.target.value);
+                          setSelectedItem(null);
+                          setShowSuggestions(true);
+                        }}
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                        className="w-full pl-9 pr-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                        disabled={submitting}
+                        autoComplete="off"
                       />
+                      {showSuggestions && skuSuggestions.length > 0 && (
+                        <ul className="absolute z-20 mt-1 w-full bg-white border border-[#E0E0E0] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {skuSuggestions.map((item) => (
+                            <li key={item.sku}>
+                              <button
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-[#F0F7FF] border-b border-[#F0F0F0] last:border-0"
+                                onMouseDown={(ev) => {
+                                  ev.preventDefault();
+                                  pickItem(item);
+                                }}
+                              >
+                                <span className="font-bold text-[#212121]">{item.name || item.product_name}</span>
+                                <span className="block text-xs text-[#9E9E9E] font-mono">{item.sku} · {item.stock ?? 0} in stock</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                    </div>
                 </div>
+
+                {selectedItem && (
+                  <div className="p-3 rounded-lg bg-[#F0F7FF] border border-[#BAE7FF] text-sm">
+                    <div className="font-bold text-[#212121]">{selectedItem.name || selectedItem.product_name}</div>
+                    <div className="text-xs text-[#616161] mt-1">
+                      Current stock: <span className="font-bold">{selectedItem.stock ?? 0}</span>
+                      {selectedItem.location ? ` · Shelf ${selectedItem.location}` : ''}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                    <label className="block text-xs font-bold text-[#616161] mb-1">Quantity</label>
-                   <input 
-                     type="number" 
-                     placeholder="0" 
+                   <input
+                     type="number"
+                     min={1}
+                     placeholder="0"
                      value={quantityInput}
                      onChange={(e) => setQuantityInput(e.target.value)}
-                     className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm" 
+                     className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                     disabled={submitting}
+                     required
                    />
                 </div>
                 <div>
                    <label className="block text-xs font-bold text-[#616161] mb-1">Reason Code</label>
-                   <select 
+                   <select
                      value={reasonInput}
                      onChange={(e) => setReasonInput(e.target.value)}
-                     className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+                     className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                     disabled={submitting}
                    >
                       <option>Restock</option>
                       <option>Return</option>
@@ -1229,25 +1588,35 @@ function InventoryAdjustments() {
                       <option>Expired</option>
                    </select>
                 </div>
-                
-                <button 
-                  onClick={handleCreateAdjustment}
+
+                <button
+                  type="submit"
+                  disabled={submitting || !skuInput.trim() || !quantityInput}
                   className={cn(
-                    "w-full py-3 rounded-lg text-white font-bold mt-4 shadow-md transition-colors",
-                    mode === 'add' ? "bg-[#22C55E] hover:bg-[#16A34A]" : 
+                    "w-full py-3 rounded-lg text-white font-bold mt-4 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2",
+                    mode === 'add' ? "bg-[#22C55E] hover:bg-[#16A34A]" :
                     mode === 'remove' ? "bg-[#EF4444] hover:bg-[#DC2626]" : "bg-[#F97316] hover:bg-[#EA580C]"
                   )}
                 >
-                   Confirm Adjustment
+                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                  {submitting ? 'Saving...' : 'Confirm Adjustment'}
                 </button>
-             </div>
+             </form>
           </div>
        </div>
 
        <div className="col-span-12 md:col-span-7">
           <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden flex flex-col h-full">
-             <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]">
+             <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
                 <h3 className="font-bold text-[#212121]">Adjustment History (Audit Trail)</h3>
+                <button
+                  type="button"
+                  onClick={loadAdjustments}
+                  disabled={loading}
+                  className="text-xs font-bold text-[#1677FF] hover:underline flex items-center gap-1"
+                >
+                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+                </button>
              </div>
              <div className="flex-1 overflow-y-auto">
                 {loading ? (
@@ -1294,11 +1663,12 @@ function InventoryAdjustments() {
                               <td className="px-4 py-3">
                                 <span className={cn(
                                   "text-xs font-bold px-2 py-0.5 rounded uppercase",
-                                  log.action === 'add' ? "bg-[#F0FDF4] text-[#16A34A]" : 
-                                  log.action === 'remove' ? "bg-[#FEE2E2] text-[#EF4444]" : 
+                                  log.action === 'add' ? "bg-[#F0FDF4] text-[#16A34A]" :
+                                  log.action === 'remove' ? "bg-[#FEE2E2] text-[#EF4444]" :
                                   log.action === 'damage' ? "bg-[#FFF7ED] text-[#C2410C]" : "bg-[#F3F4F6] text-[#4B5563]"
                                 )}>
-                                  {log.action === 'add' ? '+' : ''}{log.quantity} ({log.reason || log.reason_code || 'N/A'})
+                                  {log.action === 'add' ? '+' : '−'}
+                                  {Math.abs(Number(log.quantity) || 0)} ({log.reason || log.reason_code || 'N/A'})
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-[#616161]">{log.user || 'System'}</td>
@@ -1347,6 +1717,8 @@ const DEFAULT_CYCLE_DATA = {
 function CycleCount() {
   const [cycleCountData, setCycleCountData] = useState<any>(DEFAULT_CYCLE_DATA);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [reportDate, setReportDate] = useState<string | undefined>();
   const { activeStoreId } = useAuth();
   const storeId = activeStoreId || '';
 
@@ -1378,6 +1750,7 @@ function CycleCount() {
             : def.variance_report,
         };
         setCycleCountData(merged);
+        if (raw?.report_date) setReportDate(raw.report_date);
       } catch (_) {
         if (!cancelled) setCycleCountData(DEFAULT_CYCLE_DATA);
       } finally {
@@ -1508,31 +1881,41 @@ function CycleCount() {
           <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col">
              <div className="p-4 border-b border-[#E0E0E0] flex justify-between items-center">
                 <h3 className="font-bold text-[#212121]">Variance Report</h3>
-                <button 
+                <button
                   type="button"
+                  disabled={downloading || loading}
                   onClick={async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    setDownloading(true);
                     try {
-                      const { downloadCycleCountReport } = await import('../../api/inventory-management');
-                      const blob = await downloadCycleCountReport(storeId);
+                      const { blob, fileName } = await downloadCycleCountReport(
+                        storeId,
+                        reportDate,
+                        'pdf'
+                      );
                       const url = window.URL.createObjectURL(blob);
                       const a = document.createElement('a');
                       a.href = url;
-                      a.download = `cycle-count-report-${new Date().toISOString().split('T')[0]}.pdf`;
+                      a.download =
+                        fileName ||
+                        `cycle-count-report-${reportDate || new Date().toISOString().split('T')[0]}.pdf`;
                       a.rel = 'noopener noreferrer';
                       document.body.appendChild(a);
                       a.click();
                       window.URL.revokeObjectURL(url);
                       document.body.removeChild(a);
-                      toast.success('Report downloaded');
+                      toast.success('Cycle count PDF downloaded');
                     } catch (error: any) {
                       toast.error(error.message || 'Failed to download report');
+                    } finally {
+                      setDownloading(false);
                     }
                   }}
-                  className="text-[#1677FF] text-xs font-bold hover:underline"
+                  className="text-[#1677FF] text-xs font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                 >
-                  Download PDF
+                  {downloading ? <RefreshCw size={12} className="animate-spin" /> : null}
+                  {downloading ? 'Generating...' : 'Download PDF'}
                 </button>
              </div>
              <div className="flex-1 overflow-y-auto">

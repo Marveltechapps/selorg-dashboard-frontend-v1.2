@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   AlertTriangle, 
   Bell, 
@@ -23,70 +24,107 @@ import {
 } from '../../../api/productionApi';
 import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
+function resolveIncidentId(incident: ProductionIncident): string {
+  return (incident.id || '').trim();
+}
+
+function formatLoadError(err: unknown): string {
+  if (err instanceof Error) {
+    if (/failed to fetch|network|load failed/i.test(err.message)) {
+      return 'Cannot reach the API. Start the backend (port 3333) and refresh this page.';
+    }
+    return err.message;
+  }
+  return 'Failed to load alerts';
+}
+
+function formatStatusLabel(status: string | undefined): string {
+  if (!status) return 'Unknown';
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 export function ProductionAlerts() {
-  const { selectedFactoryId } = useProductionFactory();
+  const queryClient = useQueryClient();
+  const { selectedFactoryId, loading: factoriesLoading, error: factoriesError, refreshFactories } =
+    useProductionFactory();
   const [activeTab, setActiveTab] = useState<'alerts' | 'incidents' | 'history'>('alerts');
   const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState<ProductionAlert | null>(null);
+  const [alertToDelete, setAlertToDelete] = useState<ProductionAlert | null>(null);
+  const [assigneeModal, setAssigneeModal] = useState<{
+    alertId: string;
+    action: 'acknowledge' | 'dispatch';
+    name: string;
+  } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
 
-  const [alerts, setAlerts] = useState<ProductionAlert[]>([]);
-  const [incidents, setIncidents] = useState<ProductionIncident[]>([]);
-  const [summary, setSummary] = useState({ criticalCount: 0, warningCount: 0, activeAlertsCount: 0, openIncidentsCount: 0 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const alertStatus = activeTab === 'alerts' ? 'active' : activeTab === 'history' ? 'history' : undefined;
 
-  const loadAlerts = useCallback(async () => {
-    try {
-      setError(null);
-      const status = activeTab === 'alerts' ? 'active' : activeTab === 'history' ? 'history' : undefined;
-      const res = await fetchProductionAlerts({
-        status,
+  const {
+    data: alertsData,
+    isLoading: loadingAlerts,
+    isFetching: fetchingAlerts,
+    error: alertsError,
+    refetch: refetchAlerts,
+  } = useQuery({
+    queryKey: [
+      'production',
+      'alerts',
+      selectedFactoryId,
+      alertStatus,
+      filterSeverity,
+      filterCategory,
+      searchTerm,
+    ],
+    queryFn: () =>
+      fetchProductionAlerts({
+        status: alertStatus,
         severity: filterSeverity === 'all' ? undefined : filterSeverity,
         category: filterCategory === 'all' ? undefined : filterCategory,
         search: searchTerm || undefined,
         factoryId: selectedFactoryId || undefined,
-      });
-      setAlerts(res.alerts ?? []);
-      setSummary(prev => ({
-        ...prev,
-        criticalCount: res.summary?.criticalCount ?? 0,
-        warningCount: res.summary?.warningCount ?? 0,
-        activeAlertsCount: res.summary?.activeAlertsCount ?? 0,
-      }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load alerts');
-      setAlerts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab, filterSeverity, filterCategory, searchTerm, selectedFactoryId]);
+      }),
+    enabled: !!selectedFactoryId,
+  });
 
-  const loadIncidents = useCallback(async () => {
-    try {
-      const res = await fetchProductionIncidents({ factoryId: selectedFactoryId || undefined });
-      setIncidents(res.incidents ?? []);
-      setSummary(prev => ({ ...prev, openIncidentsCount: res.openIncidentsCount ?? 0 }));
-    } catch (e) {
-      setIncidents([]);
-    }
-  }, [selectedFactoryId]);
+  const {
+    data: incidentsData,
+    isLoading: loadingIncidents,
+    isFetching: fetchingIncidents,
+    error: incidentsError,
+    refetch: refetchIncidents,
+  } = useQuery({
+    queryKey: ['production', 'incidents', selectedFactoryId],
+    queryFn: () => fetchProductionIncidents({ factoryId: selectedFactoryId || undefined }),
+    enabled: !!selectedFactoryId,
+  });
 
-  useEffect(() => {
-    setLoading(true);
-    const load = async () => {
-      await loadAlerts(); // always load alerts for summary + alerts/history tabs
-      if (activeTab === 'incidents') await loadIncidents();
-    };
-    load().finally(() => setLoading(false));
-  }, [activeTab, loadAlerts, loadIncidents]);
+  const alerts = alertsData?.alerts ?? [];
+  const incidents = incidentsData?.incidents ?? [];
+  const summary = {
+    criticalCount: alertsData?.summary?.criticalCount ?? 0,
+    warningCount: alertsData?.summary?.warningCount ?? 0,
+    activeAlertsCount: alertsData?.summary?.activeAlertsCount ?? 0,
+    openIncidentsCount: incidentsData?.openIncidentsCount ?? 0,
+  };
+  const loading =
+    factoriesLoading ||
+    (activeTab === 'incidents'
+      ? loadingIncidents || fetchingIncidents
+      : loadingAlerts || fetchingAlerts);
+  const alertsLoadError = alertsError ? formatLoadError(alertsError) : null;
+  const incidentsLoadError = incidentsError ? formatLoadError(incidentsError) : null;
+  const displayError =
+    factoriesError || (activeTab === 'incidents' ? incidentsLoadError : alertsLoadError);
 
-  const refreshAll = useCallback(() => {
-    setLoading(true);
-    Promise.all([loadAlerts(), loadIncidents()]).finally(() => setLoading(false));
-  }, [loadAlerts, loadIncidents]);
+  const invalidateAlerts = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['production', 'alerts', selectedFactoryId] }),
+      queryClient.invalidateQueries({ queryKey: ['production', 'incidents', selectedFactoryId] }),
+    ]);
+  };
 
   const [newIncident, setNewIncident] = useState({
     title: '',
@@ -97,69 +135,151 @@ export function ProductionAlerts() {
     reportedBy: '',
   });
 
-  const reportIncident = async () => {
-    if (!newIncident.title || !newIncident.description || !newIncident.reportedBy) return;
-    try {
-      await createProductionIncident({
-        title: newIncident.title,
-        description: newIncident.description,
-        severity: newIncident.severity,
-        category: newIncident.category || undefined,
-        reportedBy: newIncident.reportedBy,
-        location: newIncident.location || undefined,
-      }, selectedFactoryId || undefined);
+  const createIncidentMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (!newIncident.title || !newIncident.description || !newIncident.reportedBy) {
+        throw new Error('Title, description, and reported by are required');
+      }
+      return createProductionIncident(
+        {
+          title: newIncident.title,
+          description: newIncident.description,
+          severity: newIncident.severity,
+          category: newIncident.category || undefined,
+          reportedBy: newIncident.reportedBy,
+          location: newIncident.location || undefined,
+        },
+        selectedFactoryId
+      );
+    },
+    onSuccess: async () => {
+      await invalidateAlerts();
       setNewIncident({ title: '', description: '', severity: 'medium', category: '', location: '', reportedBy: '' });
       setShowIncidentModal(false);
       toast.success('Incident reported successfully');
-      refreshAll();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to report incident');
-    }
-  };
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to report incident'),
+  });
 
-  const updateAlertStatus = async (id: string, newStatus: ProductionAlert['status'], assignee?: string) => {
-    try {
-      const actionType = newStatus === 'resolved' ? 'resolved' : newStatus === 'dismissed' ? 'dismissed' : 'acknowledge';
-      const asn = assignee ?? (newStatus === 'acknowledged' ? prompt('Assign to (enter name):') : undefined);
-      await updateProductionAlertStatus(id, actionType, asn || undefined, selectedFactoryId || undefined);
-      toast.success(`Alert ${newStatus}`);
-      refreshAll();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to update alert');
-    }
-  };
+  const updateAlertMutation = useMutation({
+    mutationFn: ({
+      alertId,
+      actionType,
+      assignee,
+    }: {
+      alertId: string;
+      actionType: 'acknowledge' | 'resolved' | 'dismissed' | 'dispatch';
+      assignee?: string;
+    }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (!alertId) throw new Error('Invalid alert id');
+      return updateProductionAlertStatus(alertId, actionType, assignee, selectedFactoryId);
+    },
+    onSuccess: async (_, vars) => {
+      await invalidateAlerts();
+      setAssigneeModal(null);
+      if (vars.actionType === 'resolved') toast.success('Alert resolved');
+      else if (vars.actionType === 'dismissed') toast.success('Alert dismissed');
+      else if (vars.actionType === 'dispatch') toast.success('Maintenance dispatched');
+      else toast.success('Alert acknowledged');
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update alert'),
+  });
 
-  const updateIncidentStatus = async (id: string, newStatus: ProductionIncident['status']) => {
-    try {
-      await updateProductionIncidentStatus(id, newStatus, selectedFactoryId || undefined);
-      toast.success(`Incident ${newStatus}`);
-      refreshAll();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to update incident');
-    }
-  };
+  const updateIncidentMutation = useMutation({
+    mutationFn: ({
+      incidentId,
+      status,
+    }: {
+      incidentId: string;
+      status: ProductionIncident['status'];
+    }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (!incidentId) throw new Error('Invalid incident id');
+      return updateProductionIncidentStatus(incidentId, status, selectedFactoryId);
+    },
+    onSuccess: async (_, vars) => {
+      await invalidateAlerts();
+      if (vars.status === 'investigating') toast.success('Incident marked as investigating');
+      else if (vars.status === 'resolved') toast.success('Incident resolved');
+      else toast.success('Incident updated');
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update incident'),
+  });
 
-  const deleteAlert = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this alert?')) return;
-    try {
-      await deleteProductionAlert(id, selectedFactoryId || undefined);
+  const deleteAlertMutation = useMutation({
+    mutationFn: (alertId: string) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (!alertId) throw new Error('Invalid alert id');
+      return deleteProductionAlert(alertId, selectedFactoryId);
+    },
+    onSuccess: async (_data, alertId) => {
+      await invalidateAlerts();
+      setAlertToDelete(null);
+      setShowDetailsModal((prev) => (prev?.id === alertId ? null : prev));
       toast.success('Alert deleted');
-      refreshAll();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to delete alert');
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to delete alert'),
+  });
+
+  const handleUpdateAlertStatus = (alert: ProductionAlert, newStatus: ProductionAlert['status']) => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
     }
+    const alertId = alert.id?.trim();
+    if (!alertId) {
+      toast.error('Invalid alert id');
+      return;
+    }
+    if (newStatus === 'acknowledged') {
+      setAssigneeModal({ alertId, action: 'acknowledge', name: alert.assignedTo || '' });
+      return;
+    }
+    const actionType =
+      newStatus === 'resolved' ? 'resolved' : newStatus === 'dismissed' ? 'dismissed' : 'acknowledge';
+    updateAlertMutation.mutate({ alertId, actionType });
   };
 
-  const dispatchMaintenance = async (alertId: string) => {
-    const assignee = prompt('Assign maintenance to (enter name):');
-    if (!assignee) return;
-    try {
-      await updateProductionAlertStatus(alertId, 'dispatch', assignee, selectedFactoryId || undefined);
-      toast.success(`Maintenance dispatched to ${assignee}`);
-      refreshAll();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to dispatch');
+  const submitAssignee = () => {
+    if (!assigneeModal) return;
+    const name = assigneeModal.name.trim();
+    if (!name) {
+      toast.error('Enter assignee name');
+      return;
     }
+    updateAlertMutation.mutate({
+      alertId: assigneeModal.alertId,
+      actionType: assigneeModal.action,
+      assignee: name,
+    });
+  };
+
+  const handleDispatchMaintenance = (alert: ProductionAlert) => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    const alertId = alert.id?.trim();
+    if (!alertId) {
+      toast.error('Invalid alert id');
+      return;
+    }
+    setAssigneeModal({ alertId, action: 'dispatch', name: alert.assignedTo || '' });
+  };
+
+  const handleUpdateIncidentStatus = (incident: ProductionIncident, status: ProductionIncident['status']) => {
+    const incidentId = resolveIncidentId(incident);
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    if (!incidentId) {
+      toast.error('Invalid incident id');
+      return;
+    }
+    updateIncidentMutation.mutate({ incidentId, status });
   };
 
   const exportData = () => {
@@ -241,8 +361,10 @@ export function ProductionAlerts() {
   };
 
   const filteredAlerts = alerts.filter(a => {
-    const matchesSearch = a.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         a.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const q = searchTerm.toLowerCase();
+    const title = (a.title ?? '').toLowerCase();
+    const description = (a.description ?? '').toLowerCase();
+    const matchesSearch = !q || title.includes(q) || description.includes(q);
     const matchesSeverity = filterSeverity === 'all' || a.severity === filterSeverity;
     const matchesCategory = filterCategory === 'all' || a.category === filterCategory;
     
@@ -265,9 +387,34 @@ export function ProductionAlerts() {
         title="Production Alerts"
         subtitle="Real-time notifications and critical issues"
       />
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800 text-sm">
-          {error}
+      {factoriesLoading && (
+        <div className="flex items-center gap-2 text-sm text-[#757575] py-2">
+          <Loader2 className="animate-spin text-[#16A34A]" size={18} />
+          Loading factories…
+        </div>
+      )}
+      {!factoriesLoading && !selectedFactoryId && !factoriesError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900 text-sm">
+          Select a factory to view and manage alerts and incidents.
+        </div>
+      )}
+      {displayError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800 text-sm flex flex-wrap items-center justify-between gap-3">
+          <span>{displayError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (factoriesError) {
+                void refreshFactories();
+                return;
+              }
+              if (activeTab === 'incidents') void refetchIncidents();
+              else void refetchAlerts();
+            }}
+            className="px-3 py-1.5 bg-white border border-red-200 text-red-800 text-xs font-bold rounded hover:bg-red-50 shrink-0"
+          >
+            Retry
+          </button>
         </div>
       )}
       {/* Stats Cards */}
@@ -440,10 +587,12 @@ export function ProductionAlerts() {
                     <p className="text-xs mt-1 font-medium text-[#16A34A]">✓ Assigned to {alert.assignedTo}</p>
                   )}
                   <div className="flex gap-3 mt-3">
-                    {alert.status === 'active' && alert.severity === 'critical' && (
-                      <button 
-                        onClick={() => dispatchMaintenance(alert.id)}
-                        className={`px-3 py-1.5 text-white text-xs font-bold rounded ${
+                    {alert.status === 'active' && alert.severity === 'critical' && alert.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleDispatchMaintenance(alert)}
+                        disabled={updateAlertMutation.isPending || !selectedFactoryId}
+                        className={`px-3 py-1.5 text-white text-xs font-bold rounded disabled:opacity-50 ${
                           alert.severity === 'critical' ? 'bg-[#EF4444] hover:bg-[#DC2626]' :
                           'bg-[#F59E0B] hover:bg-[#D97706]'
                         }`}
@@ -451,10 +600,12 @@ export function ProductionAlerts() {
                         Dispatch Maintenance
                       </button>
                     )}
-                    {alert.status === 'active' && (
-                      <button 
-                        onClick={() => updateAlertStatus(alert.id, 'acknowledged')}
-                        className={`px-3 py-1.5 bg-white border text-xs font-bold rounded ${
+                    {alert.status === 'active' && alert.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAlertStatus(alert, 'acknowledged')}
+                        disabled={updateAlertMutation.isPending || !selectedFactoryId}
+                        className={`px-3 py-1.5 bg-white border text-xs font-bold rounded disabled:opacity-50 ${
                           alert.severity === 'critical' ? 'border-red-200 text-[#991B1B] hover:bg-red-50' :
                           alert.severity === 'warning' ? 'border-yellow-200 text-[#92400E] hover:bg-yellow-50' :
                           'border-blue-200 text-[#1E40AF] hover:bg-blue-50'
@@ -463,10 +614,12 @@ export function ProductionAlerts() {
                         Acknowledge
                       </button>
                     )}
-                    {alert.status === 'acknowledged' && (
-                      <button 
-                        onClick={() => updateAlertStatus(alert.id, 'resolved')}
-                        className="px-3 py-1.5 bg-[#16A34A] text-white text-xs font-bold rounded hover:bg-[#15803D]"
+                    {alert.status === 'acknowledged' && alert.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAlertStatus(alert, 'resolved')}
+                        disabled={updateAlertMutation.isPending || !selectedFactoryId}
+                        className="px-3 py-1.5 bg-[#16A34A] text-white text-xs font-bold rounded hover:bg-[#15803D] disabled:opacity-50"
                       >
                         Mark Resolved
                       </button>
@@ -481,12 +634,16 @@ export function ProductionAlerts() {
                     >
                       View Details
                     </button>
-                    <button 
-                      onClick={() => updateAlertStatus(alert.id, 'dismissed')}
-                      className="px-3 py-1.5 bg-white border border-[#E0E0E0] text-[#757575] text-xs font-bold rounded hover:bg-[#F5F5F5]"
-                    >
-                      Dismiss
-                    </button>
+                    {alert.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAlertStatus(alert, 'dismissed')}
+                        disabled={updateAlertMutation.isPending || !selectedFactoryId}
+                        className="px-3 py-1.5 bg-white border border-[#E0E0E0] text-[#757575] text-xs font-bold rounded hover:bg-[#F5F5F5] disabled:opacity-50"
+                      >
+                        Dismiss
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -500,8 +657,10 @@ export function ProductionAlerts() {
         <div className="space-y-4">
           <div className="flex justify-end">
             <button
+              type="button"
               onClick={() => setShowIncidentModal(true)}
-              className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626]"
+              disabled={!selectedFactoryId || createIncidentMutation.isPending}
+              className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-50"
             >
               Report Incident
             </button>
@@ -532,8 +691,10 @@ export function ProductionAlerts() {
                   </td>
                 </tr>
               ) : (
-              incidents.map(incident => (
-                <tr key={incident.id} className="hover:bg-[#FAFAFA]">
+              incidents.map(incident => {
+                const incidentId = resolveIncidentId(incident);
+                return (
+                <tr key={incidentId || incident.id} className="hover:bg-[#FAFAFA]">
                   <td className="px-6 py-4">
                     <div>
                       <p className="font-medium text-[#212121]">{incident.title}</p>
@@ -560,23 +721,27 @@ export function ProductionAlerts() {
                       incident.status === 'investigating' ? 'bg-[#FEF9C3] text-[#854D0E]' :
                       'bg-[#FEE2E2] text-[#991B1B]'
                     }`}>
-                      {incident.status.charAt(0).toUpperCase() + incident.status.slice(1)}
+                      {formatStatusLabel(incident.status)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      {incident.status === 'open' && (
-                        <button 
-                          onClick={() => updateIncidentStatus(incident.id, 'investigating')}
-                          className="text-[#F59E0B] hover:text-[#D97706] font-medium text-xs"
+                      {incident.status === 'open' && incidentId && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateIncidentStatus(incident, 'investigating')}
+                          disabled={updateIncidentMutation.isPending || !selectedFactoryId}
+                          className="text-[#F59E0B] hover:text-[#D97706] font-medium text-xs disabled:opacity-50"
                         >
                           Investigate
                         </button>
                       )}
-                      {incident.status === 'investigating' && (
-                        <button 
-                          onClick={() => updateIncidentStatus(incident.id, 'resolved')}
-                          className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs"
+                      {incident.status === 'investigating' && incidentId && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateIncidentStatus(incident, 'resolved')}
+                          disabled={updateIncidentMutation.isPending || !selectedFactoryId}
+                          className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs disabled:opacity-50"
                         >
                           Resolve
                         </button>
@@ -584,7 +749,8 @@ export function ProductionAlerts() {
                     </div>
                   </td>
                 </tr>
-              ))
+              );
+              })
               )}
             </tbody>
           </table>
@@ -645,7 +811,7 @@ export function ProductionAlerts() {
                       alert.status === 'resolved' ? 'bg-[#DCFCE7] text-[#166534]' :
                       'bg-[#F3F4F6] text-[#6B7280]'
                     }`}>
-                      {alert.status.charAt(0).toUpperCase() + alert.status.slice(1)}
+                      {formatStatusLabel(alert.status)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-[#616161]">{alert.resolvedBy || 'N/A'}</td>
@@ -653,12 +819,16 @@ export function ProductionAlerts() {
                     {alert.resolvedAt ? new Date(alert.resolvedAt).toLocaleString() : 'N/A'}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => deleteAlert(alert.id)}
-                      className="text-[#EF4444] hover:text-[#DC2626] font-medium text-xs"
-                    >
-                      Delete
-                    </button>
+                    {alert.id && (
+                      <button
+                        type="button"
+                        onClick={() => setAlertToDelete(alert)}
+                        disabled={!selectedFactoryId}
+                        className="text-[#EF4444] hover:text-[#DC2626] font-medium text-xs disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -672,7 +842,7 @@ export function ProductionAlerts() {
 
       {/* Report Incident Modal */}
       {showIncidentModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Report Incident</h3>
@@ -756,9 +926,11 @@ export function ProductionAlerts() {
               >
                 Cancel
               </button>
-              <button 
-                onClick={reportIncident}
-                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626]"
+              <button
+                type="button"
+                onClick={() => createIncidentMutation.mutate()}
+                disabled={createIncidentMutation.isPending || !selectedFactoryId}
+                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-50"
               >
                 Report Incident
               </button>
@@ -767,9 +939,88 @@ export function ProductionAlerts() {
         </div>
       )}
 
+      {/* Delete Alert Confirmation */}
+      {alertToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete alert?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              Permanently remove{' '}
+              <span className="font-medium text-[#212121]">{alertToDelete.title}</span> from alert
+              history? This cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setAlertToDelete(null)}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteAlertMutation.mutate(alertToDelete.id)}
+                disabled={deleteAlertMutation.isPending}
+                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleteAlertMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assignee Modal */}
+      {assigneeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {assigneeModal.action === 'dispatch' ? 'Dispatch Maintenance' : 'Assign Alert'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAssigneeModal(null)}
+                className="text-[#757575] hover:text-[#212121]"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-[#212121] mb-2">Assignee name</label>
+              <input
+                type="text"
+                value={assigneeModal.name}
+                onChange={(e) => setAssigneeModal({ ...assigneeModal, name: e.target.value })}
+                placeholder="Technician or team member"
+                className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              />
+            </div>
+            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setAssigneeModal(null)}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitAssignee}
+                disabled={updateAlertMutation.isPending}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Alert Details Modal */}
       {showDetailsModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Alert Details</h3>

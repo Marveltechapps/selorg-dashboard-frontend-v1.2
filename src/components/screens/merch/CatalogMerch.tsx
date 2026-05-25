@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Loader2, Database } from 'lucide-react';
 import { toast } from "sonner";
 import { catalogApi } from '../../../api/merch/catalogApi';
@@ -12,6 +12,7 @@ import { SKUEditDrawer } from './catalog/SKUEditDrawer';
 import { AddSKUModal } from './catalog/AddSKUModal';
 import { CollectionsListModal } from './catalog/CollectionsListModal';
 import { Collection, SKU, Region, SKUVisibilityStatus } from './catalog/types';
+import { mapApiSkuToCatalogSku, CATALOG_REGIONS } from './catalog/skuMapper';
 
 export function CatalogMerch({ searchQuery = "" }: { searchQuery?: string }) {
   // Data State - Using Real API
@@ -27,10 +28,11 @@ export function CatalogMerch({ searchQuery = "" }: { searchQuery?: string }) {
         catalogApi.getSKUs(),
       ]);
       setCollections(collectionsResp.success && collectionsResp.data ? collectionsResp.data : []);
-      setSkus(skusResp.success && skusResp.data ? skusResp.data.map((s: any) => ({
-        ...s,
-        code: s.code ?? s.sku ?? s.id ?? '',
-      })) : []);
+      setSkus(
+        skusResp.success && skusResp.data
+          ? skusResp.data.map((s) => mapApiSkuToCatalogSku(s as unknown as Record<string, unknown>))
+          : []
+      );
     } catch (err) {
       console.error('Failed to load catalog data', err);
       toast.error('Failed to load catalog data');
@@ -45,6 +47,15 @@ export function CatalogMerch({ searchQuery = "" }: { searchQuery?: string }) {
     loadData();
   }, []);
   const [isLoading, setIsLoading] = useState(false);
+  const [togglingSkuId, setTogglingSkuId] = useState<string | null>(null);
+
+  const liveCollectionSkuIds = useMemo(() => {
+    const ids = new Set<string>();
+    collections
+      .filter((c) => c.status === 'Live')
+      .forEach((c) => c.skus.forEach((id) => ids.add(id)));
+    return ids;
+  }, [collections]);
 
   // UI State
   const [filters, setFilters] = useState<FilterState>({
@@ -201,21 +212,53 @@ export function CatalogMerch({ searchQuery = "" }: { searchQuery?: string }) {
   };
 
   const handleToggleVisibility = async (sku: SKU, region: Region | 'Global') => {
-    const newStatus: SKUVisibilityStatus = sku.visibility[region as Region] === 'Visible' ? 'Hidden' : 'Visible';
-    const newVisibility = { ...sku.visibility, [region as Region]: newStatus };
-    setSkus(skus.map(s => (s.id === sku.id ? { ...s, visibility: newVisibility } : s)));
+    const targetRegion = region === 'Global' ? CATALOG_REGIONS[0] : (region as Region);
+    const currentStatus = sku.visibility[targetRegion] ?? 'Hidden';
+    const newStatus: SKUVisibilityStatus = currentStatus === 'Visible' ? 'Hidden' : 'Visible';
+
+    const optimisticVisibility = { ...sku.visibility };
+    if (region === 'Global') {
+      CATALOG_REGIONS.forEach((r) => {
+        optimisticVisibility[r] = newStatus;
+      });
+    } else {
+      optimisticVisibility[region as Region] = newStatus;
+    }
+
+    setTogglingSkuId(sku.id);
+    setSkus((prev) =>
+      prev.map((s) => (s.id === sku.id ? { ...s, visibility: optimisticVisibility } : s))
+    );
+
     try {
-      const response = await catalogApi.updateSKU(sku.id, { visibility: newVisibility });
-      if (response.success) {
-        toast.success("SKU visibility updated successfully");
+      const response = await catalogApi.patchSKUVisibility(sku.id, {
+        region,
+        status: newStatus,
+      });
+      if (response.success && response.data) {
+        const updated = mapApiSkuToCatalogSku(
+          response.data as unknown as Record<string, unknown>
+        );
+        setSkus((prev) => prev.map((s) => (s.id === sku.id ? updated : s)));
+        toast.success(
+          newStatus === 'Visible'
+            ? `${sku.name} is now visible${region === 'Global' ? ' in all regions' : ` in ${region}`}`
+            : `${sku.name} is now hidden${region === 'Global' ? ' in all regions' : ` in ${region}`}`
+        );
       } else {
-        toast.error("Failed to update visibility");
-        setSkus(skus);
+        setSkus((prev) =>
+          prev.map((s) => (s.id === sku.id ? { ...s, visibility: sku.visibility } : s))
+        );
+        toast.error('Failed to update visibility');
       }
     } catch (error) {
       console.error('Error updating SKU visibility:', error);
-      toast.error("Failed to update visibility");
-      setSkus(skus);
+      setSkus((prev) =>
+        prev.map((s) => (s.id === sku.id ? { ...s, visibility: sku.visibility } : s))
+      );
+      toast.error(error instanceof Error ? error.message : 'Failed to update visibility');
+    } finally {
+      setTogglingSkuId(null);
     }
   };
 
@@ -275,7 +318,9 @@ export function CatalogMerch({ searchQuery = "" }: { searchQuery?: string }) {
                 currentRegion={currentRegion}
                 onToggleVisibility={handleToggleVisibility}
                 onEditSKU={setSelectedSKU}
-                isLoading={isLoading}
+                isLoading={loading || isLoading}
+                togglingSkuId={togglingSkuId}
+                liveCollectionSkuIds={liveCollectionSkuIds}
             />
           </div>
       </div>

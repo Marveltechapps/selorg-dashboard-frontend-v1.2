@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,6 @@ import {
   fetchAgents,
   fetchSLAMetrics,
   fetchLiveChats,
-  acceptLiveChat,
   updateTicket,
   assignTicket,
   addTicketNote,
@@ -63,7 +62,6 @@ import {
   User,
   Send,
   Eye,
-  UserPlus,
   MessageCircle,
   Activity,
   Target,
@@ -80,6 +78,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { getCurrentUser } from '@/api/authApi';
+import { AdminLiveChatPanel } from './AdminLiveChatPanel';
 
 export function SupportCenter() {
   const [searchParams] = useSearchParams();
@@ -134,10 +133,27 @@ export function SupportCenter() {
 
   // Inbox selection state (P1-37)
   const [inboxSelectedTicketId, setInboxSelectedTicketId] = useState<string | null>(null);
+  const [supportTab, setSupportTab] = useState('all-tickets');
+  const liveChatWaitingCount = useMemo(
+    () => liveChats.filter((c) => c.status === 'waiting').length,
+    [liveChats],
+  );
 
   useEffect(() => {
     loadData();
   }, [statusFilter, priorityFilter, categoryFilter]);
+
+  useEffect(() => {
+    const poll = setInterval(async () => {
+      try {
+        const chatsData = await fetchLiveChats();
+        setLiveChats(chatsData);
+      } catch {
+        // ignore background poll errors
+      }
+    }, 5000);
+    return () => clearInterval(poll);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -162,6 +178,10 @@ export function SupportCenter() {
       setLiveChats(chatsData);
       setFaqs(faqsData);
       setFeedback(feedbackData);
+      const waiting = chatsData.filter((c) => c.status === 'waiting').length;
+      if (waiting > 0 && supportTab === 'all-tickets') {
+        setSupportTab('live-chats');
+      }
     } catch (error) {
       toast.error('Failed to load support data');
     } finally {
@@ -547,7 +567,7 @@ export function SupportCenter() {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="all-tickets" className="space-y-4 min-w-0">
+      <Tabs value={supportTab} onValueChange={setSupportTab} className="space-y-4 min-w-0">
         <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden whitespace-nowrap">
           <TabsTrigger value="all-tickets" className="shrink-0">
             <MessageSquare size={14} className="mr-1.5" /> All Tickets
@@ -555,8 +575,17 @@ export function SupportCenter() {
           <TabsTrigger value="my-tickets" className="shrink-0">
             <User size={14} className="mr-1.5" /> My Tickets
           </TabsTrigger>
-          <TabsTrigger value="live-chats" className="shrink-0">
-            <MessageCircle size={14} className="mr-1.5" /> Live Chats ({liveChats.length})
+          <TabsTrigger value="live-chats" className="shrink-0 relative">
+            <MessageCircle size={14} className="mr-1.5" />
+            Live Chats
+            {liveChats.length > 0 && (
+              <span className="ml-1.5 tabular-nums text-[#71717a]">({liveChats.length})</span>
+            )}
+            {liveChatWaitingCount > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse">
+                {liveChatWaitingCount}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="faqs" className="shrink-0">
             <HelpCircle size={14} className="mr-1.5" /> FAQs
@@ -818,70 +847,8 @@ export function SupportCenter() {
         </TabsContent>
 
         {/* Live Chats Tab */}
-        <TabsContent value="live-chats">
-          <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm h-[90vh] flex flex-col">
-            <div className="p-4 border-b border-[#e4e4e7] bg-[#fcfcfc]">
-              <h3 className="font-bold text-[#18181b]">Active Chat Sessions</h3>
-              <p className="text-xs text-[#71717a] mt-1">{liveChats.length} active conversations</p>
-            </div>
-
-            <div className="p-6 space-y-3 flex-1 min-h-0 overflow-y-auto">
-              {liveChats.length === 0 ? (
-                <div className="text-center py-12 text-[#71717a]">
-                  <MessageCircle className="mx-auto mb-3" size={48} />
-                  <p>No active chats</p>
-                </div>
-              ) : (
-                liveChats.map((chat) => (
-                  <div key={chat.id} className="border border-[#e4e4e7] rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-bold text-[#18181b]">{chat.customerName}</h4>
-                        <p className="text-xs text-[#71717a]">
-                          {chat.status === 'waiting' ? (
-                            <span className="text-amber-600">Waiting for {chat.waitTime}s</span>
-                          ) : (
-                            <span className="text-emerald-600">Handled by {chat.agentName}</span>
-                          )}
-                        </p>
-                      </div>
-                      <Badge className={chat.status === 'waiting' ? 'bg-amber-500' : 'bg-emerald-500'}>
-                        {chat.status}
-                      </Badge>
-                    </div>
-
-                    <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-                      {chat.messages.map((msg) => (
-                        <div key={msg.id} className={`p-2 rounded ${msg.senderType === 'customer' ? 'bg-[#f4f4f5]' : 'bg-blue-50'}`}>
-                          <p className="text-xs font-medium text-[#52525b]">{msg.senderName}</p>
-                          <p className="text-sm text-[#18181b]">{msg.message}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {chat.status === 'waiting' && (
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        onClick={async () => {
-                          try {
-                            const user = getCurrentUser();
-                            await acceptLiveChat(chat.id, user?.id, user?.name);
-                            toast.success('Chat accepted');
-                            await loadData();
-                          } catch {
-                            toast.error('Failed to accept chat');
-                          }
-                        }}
-                      >
-                        <UserPlus size={14} className="mr-1.5" /> Accept Chat
-                      </Button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+        <TabsContent value="live-chats" className="w-full min-w-0 mt-0">
+          <AdminLiveChatPanel chats={liveChats} onChatsChange={setLiveChats} />
         </TabsContent>
 
         {/* FAQs Tab */}

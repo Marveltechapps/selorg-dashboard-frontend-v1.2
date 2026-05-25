@@ -85,7 +85,7 @@ export const NAVIGATION_STRUCTURE: NavSection[] = [
     defaultOpen: true,
     items: [
       { id: 'overview', label: 'Store Overview', icon: LayoutDashboard, permission: 'orders.read' },
-      { id: 'pickpack', label: 'Pick & Pack', icon: Package, permission: 'orders.read' },
+      { id: 'pickpackops', label: 'Pick & Pack', icon: Package, permission: 'orders.read' },
       { id: 'delivery', label: 'Delivery & Riders', icon: Truck, permission: 'delivery.track.read' },
       { id: 'slamonitor', label: 'SLA Monitor', icon: Clock, permission: 'analytics.reports.read' },
     ],
@@ -138,7 +138,6 @@ export const OLD_NAVIGATION_ITEMS = [
   { id: 'overview', label: 'Store Overview', icon: LayoutDashboard },
   { id: 'liveorders', label: 'Live Orders', icon: ShoppingCart },
   { id: 'cancelledorders', label: 'Cancelled Orders', icon: AlertTriangle },
-  { id: 'pickpack', label: 'Pick Tasks & Pack', icon: Package },
   { id: 'pickpackops', label: 'Pick & Pack Ops', icon: Package },
   { id: 'livepickingmonitor', label: 'Live Picking Monitor', icon: Package },
   { id: 'slamonitor', label: 'SLA Monitor', icon: Clock },

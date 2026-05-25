@@ -25,13 +25,22 @@ interface DashboardHomeProps {
   setActiveTab?: (tab: string) => void;
 }
 
+type OrderBoardTab = 'new' | 'returns' | 'cancelled';
+
+const WS_STATUS_BY_TAB: Record<OrderBoardTab, string> = {
+  new: 'new',
+  returns: 'returns',
+  cancelled: 'cancelled',
+};
+
 export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   const handleNavigate = (tab: string) => {
     if (setActiveTab) {
       setActiveTab(tab);
     }
   };
-  const [orderTab, setOrderTab] = useState('new');
+  const [orderTab, setOrderTab] = useState<OrderBoardTab>('new');
+  const orderTabRef = useRef<OrderBoardTab>('new');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +52,8 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   const [stats, setStats] = useState({
     queue: 0,
     newOrders: 0,
+    returnsOrders: 0,
+    cancelledOrders: 0,
     slaThreat: 0,
     capacity: 0,
     riderWait: '0m 0s',
@@ -71,18 +82,51 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   const [historyData, setHistoryData] = useState<Map<string, any[]>>(new Map());
   const [loadingHistory, setLoadingHistory] = useState<Set<string>>(new Set());
 
-  const loadOrders = () => {
-    if (!isWsConnected) return;
-    websocketService.emit('get:live_orders', { storeId, status: 'new', limit: 5 });
+  const applyOrdersSnapshot = (orders: any[]) => {
+    const ordersWithDeadline = orders.map((o: any) => ({
+      ...o,
+      sla_deadline: o.sla_deadline || null,
+    })).slice(0, 5);
+    setLiveOrders(ordersWithDeadline);
   };
+
+  const loadOrdersForTab = async (tab: OrderBoardTab = orderTabRef.current) => {
+    const status = WS_STATUS_BY_TAB[tab];
+    if (isWsConnected) {
+      websocketService.emit('get:live_orders', { storeId, status, limit: 5 });
+      return;
+    }
+    try {
+      setIsLoading(true);
+      const data = await getLiveOrders(storeId, status, 5);
+      if (data?.orders) {
+        applyOrdersSnapshot(data.orders);
+      } else {
+        setLiveOrders([]);
+      }
+    } catch {
+      setLiveOrders([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  orderTabRef.current = orderTab;
 
   // Load dashboard data on mount and when storeId changes
   useEffect(() => {
     loadDashboardData(true);
-    if (isWsConnected) {
-      loadOrders();
-    }
-  }, [storeId, isWsConnected]);
+    loadOrdersForTab(orderTab);
+  }, [storeId]);
+
+  const loadOrdersForTabRef = useRef(loadOrdersForTab);
+  loadOrdersForTabRef.current = loadOrdersForTab;
+
+  // Reload orders when tab changes or WebSocket connects
+  useEffect(() => {
+    setLiveOrders([]);
+    loadOrdersForTab(orderTab);
+  }, [orderTab, isWsConnected, storeId]);
 
   // Clock effect
   useEffect(() => {
@@ -103,23 +147,18 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     websocketService.connect();
 
     const onSnapshot = (data: any) => {
-      console.log('DEBUG: DashboardHome received live_orders:snapshot', { 
-        ordersCount: data?.orders?.length, 
-        status: data?.status 
-      });
       if (!data || !Array.isArray(data.orders)) return;
       if (storeId && data.store_id && data.store_id !== storeId) return;
-      
-      const ordersWithDeadline = data.orders.map((o: any) => ({
-        ...o,
-        sla_deadline: o.sla_deadline || null,
-      })).slice(0, 5); // Dashboard widget only shows 5
-      setLiveOrders(ordersWithDeadline);
+      const expectedStatus = WS_STATUS_BY_TAB[orderTabRef.current];
+      if (data.status && data.status !== expectedStatus) return;
+
+      applyOrdersSnapshot(data.orders);
     };
 
     const onCreated = (data: any) => {
       if (!data || !data.order_id) return;
       if (storeId && data.store_id && data.store_id !== storeId) return;
+      if (orderTabRef.current !== 'new') return;
 
       const newOrder = {
         order_id: data.order_id,
@@ -154,25 +193,77 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       if (!data || !data.order_id) return;
       if (storeId && data.store_id && data.store_id !== storeId) return;
 
-      setLiveOrders(prev => prev.map(o => {
-        if (o.order_id !== data.order_id) return o;
-        return {
-          ...o,
-          ...(data.status ? { status: data.status } : {}),
-          ...(data.sla_status ? { sla_status: data.sla_status } : {}),
-        };
-      }));
+      const tab = orderTabRef.current;
+      const status = (data.status || '').toLowerCase();
+
+      if (tab === 'new' && (status === 'rto' || status === 'cancelled')) {
+        setLiveOrders(prev => prev.filter(o => o.order_id !== data.order_id));
+        if (status === 'rto') {
+          setStats(s => ({ ...s, returnsOrders: s.returnsOrders + 1 }));
+        } else {
+          setStats(s => ({ ...s, cancelledOrders: s.cancelledOrders + 1 }));
+        }
+        return;
+      }
+
+      if (tab === 'returns' && status === 'rto') {
+        setLiveOrders(prev => {
+          const idx = prev.findIndex(o => o.order_id === data.order_id);
+          const updated = {
+            order_id: data.order_id,
+            customer_name: data.customer_name || 'Customer',
+            item_count: data.item_count || 1,
+            sla_timer: data.sla_timer || '--:--',
+            sla_deadline: data.sla_deadline,
+            sla_status: data.sla_status || 'safe',
+            status: 'rto',
+            order_type: data.order_type || 'Normal',
+            assignee: data.assignee || null,
+            created_at: data.created_at || new Date().toISOString(),
+            payment_status: data.payment_status || 'pending',
+            payment_method: data.payment_method || 'cash',
+            total_bill: data.total_bill || 0,
+          };
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...updated };
+            return next;
+          }
+          return [updated, ...prev].slice(0, 5);
+        });
+        return;
+      }
+
+      if (tab === 'new') {
+        setLiveOrders(prev => prev.map(o => {
+          if (o.order_id !== data.order_id) return o;
+          return {
+            ...o,
+            ...(data.status ? { status: data.status } : {}),
+            ...(data.sla_status ? { sla_status: data.sla_status } : {}),
+          };
+        }));
+      }
     };
 
     const onCancelled = (data: any) => {
       if (!data || !data.order_id) return;
       if (storeId && data.store_id && data.store_id !== storeId) return;
 
-      setLiveOrders(prev => prev.filter(o => o.order_id !== data.order_id));
-      setStats(prev => ({
-        ...prev,
-        queue: Math.max(0, prev.queue - 1),
-      }));
+      if (orderTabRef.current === 'new') {
+        setLiveOrders(prev => prev.filter(o => o.order_id !== data.order_id));
+        setStats(prev => ({
+          ...prev,
+          queue: Math.max(0, prev.queue - 1),
+          newOrders: Math.max(0, prev.newOrders - 1),
+          cancelledOrders: prev.cancelledOrders + 1,
+        }));
+      } else if (orderTabRef.current === 'cancelled') {
+        loadOrdersForTabRef.current('cancelled');
+        setStats(prev => ({ ...prev, cancelledOrders: prev.cancelledOrders + 1 }));
+      } else {
+        setStats(prev => ({ ...prev, cancelledOrders: prev.cancelledOrders + 1 }));
+      }
     };
 
     const onPaymentCreated = (data: any) => {
@@ -287,6 +378,8 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
         setStats({
           queue: calculatedTotal, // Use calculated total instead of API total
           newOrders: summary.queue?.new_orders || 0,
+          returnsOrders: summary.queue?.returns_count ?? 0,
+          cancelledOrders: summary.queue?.cancelled_count ?? 0,
           slaThreat: summary.sla_threat?.percentage || 0,
           capacity: summary.store_capacity?.percentage || 0,
           riderWait: summary.rider_wait_times?.average || '0m 0s',
@@ -331,7 +424,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   useEffect(() => {
     if (isWsConnected && !prevWsRef.current) {
       loadDashboardRef.current(false);
-      loadOrders();
+      loadOrdersForTab(orderTabRef.current);
     }
     prevWsRef.current = isWsConnected;
   }, [isWsConnected]);
@@ -341,7 +434,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     try {
       await refreshDashboard(storeId);
       await loadDashboardData(false);
-      loadOrders();
+      loadOrdersForTab(orderTab);
       toast.success('Dashboard refreshed');
     } catch (error: any) {
       toast.error('Failed to refresh dashboard');
@@ -539,6 +632,13 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       if (response && response.success) {
         toast.success(`Order ${orderId} marked as RTO`);
         
+        setStats((prev) => ({ ...prev, returnsOrders: prev.returnsOrders + 1 }));
+        if (orderTabRef.current === 'returns') {
+          loadOrdersForTabRef.current('returns');
+        } else if (orderTabRef.current === 'new') {
+          setLiveOrders((prev) => prev.filter((o) => o.order_id !== orderId));
+        }
+
         // Remove from RTO alerts list immediately
         setRTOAlerts((prev) => prev.filter((alert: any) => alert.order_id !== orderId));
         
@@ -585,10 +685,10 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     }
   };
 
-  const orderTabs = [
-    { id: 'new', label: 'New Orders', count: stats.newOrders || liveOrders.length, color: 'text-[#1677FF]', bg: 'bg-[#E6F7FF]' },
-    { id: 'returns', label: 'Returns', count: 0, color: 'text-[#F97316]', bg: 'bg-[#FFF7E6]' },
-    { id: 'cancelled', label: 'Cancelled', count: 0, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2]' },
+  const orderTabs: { id: OrderBoardTab; label: string; count: number; color: string; bg: string }[] = [
+    { id: 'new', label: 'New Orders', count: stats.newOrders, color: 'text-[#1677FF]', bg: 'bg-[#E6F7FF]' },
+    { id: 'returns', label: 'Returns', count: stats.returnsOrders, color: 'text-[#F97316]', bg: 'bg-[#FFF7E6]' },
+    { id: 'cancelled', label: 'Cancelled', count: stats.cancelledOrders, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2]' },
   ];
 
   return (
@@ -996,7 +1096,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
                  {orderTabs.map(tab => (
                    <button
                      key={tab.id}
-                     onClick={() => setOrderTab(tab.id)}
+                     onClick={() => setOrderTab(tab.id as OrderBoardTab)}
                      className={cn(
                        "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border",
                        orderTab === tab.id 
@@ -1032,7 +1132,9 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
                    </tr>
                  ) : liveOrders.length === 0 ? (
                    <tr>
-                     <td colSpan={5} className="px-6 py-8 text-center text-[#9E9E9E]">No orders found</td>
+                     <td colSpan={5} className="px-6 py-8 text-center text-[#9E9E9E]">
+                       No {orderTabs.find(t => t.id === orderTab)?.label.toLowerCase() || 'orders'} found
+                     </td>
                    </tr>
                  ) : (
                    liveOrders.map((order: any) => {

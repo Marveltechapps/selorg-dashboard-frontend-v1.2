@@ -43,6 +43,12 @@ export interface AuditLogEntry {
   ipAddress?: string;
 }
 
+export interface BulkUploadRowError {
+  row: number;
+  vendorCode?: string;
+  error: string;
+}
+
 export interface BulkUploadResponse {
   success: boolean;
   uploadId: string;
@@ -50,7 +56,44 @@ export interface BulkUploadResponse {
   recordsProcessed: number;
   totalRows: number;
   failedRows: number;
+  errors?: BulkUploadRowError[];
   message: string;
+}
+
+export const VENDOR_BULK_UPLOAD_COLUMNS = [
+  'vendorCode',
+  'vendorName',
+  'status',
+  'gstin',
+  'pan',
+  'paymentTerms',
+  'currencyCode',
+  'contactName',
+  'contactPhone',
+  'contactEmail',
+  'addressLine1',
+  'addressLine2',
+  'addressCity',
+  'addressState',
+  'addressCountry',
+  'zipCode',
+  'creditLimit',
+  'leadTimeDays',
+  'minimumOrderValue',
+] as const;
+
+
+export async function downloadBulkUploadTemplate(): Promise<Blob> {
+  const token = getAuthToken() || '';
+  const res = await fetch(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.utilities.bulkUploadTemplate}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || 'Failed to download template');
+  }
+  return res.blob();
 }
 
 export async function fetchUploadHistory(limit?: number): Promise<UploadHistory[]> {

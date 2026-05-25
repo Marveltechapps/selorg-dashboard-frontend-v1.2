@@ -3,27 +3,37 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Switch } from "../../../ui/switch";
 import { Button } from "../../../ui/button";
 import { Badge } from "../../../ui/badge";
-import { Separator } from "../../../ui/separator";
 import { Input } from "../../../ui/input";
 import { Label } from "../../../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
-import { Zap, Clock, TrendingUp, AlertCircle, Plus, Trash2, Edit2, Play, Pause } from "lucide-react";
+import { Zap, TrendingUp, AlertCircle, Plus, Trash2, Edit2, Play, Pause } from "lucide-react";
 import { Card, CardContent } from "../../../ui/card";
 import { toast } from "sonner";
-import { pricingApi } from './pricingApi';
+import { pricingApi, buildSurgeRulePayload, toSurgeRuleDisplay } from './pricingApi';
 
 interface SurgePricingDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+const defaultForm = {
+  name: '',
+  type: 'demand_based',
+  multiplier: '1.2',
+  zoneId: '',
+  priority: '5',
+  startDate: new Date().toISOString().split('T')[0],
+};
+
 export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerProps) {
   const [isEnabled, setIsEnabled] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingRule, setEditingRule] = useState<any | null>(null);
   const [rules, setRules] = useState<any[]>([]);
+  const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
+  const [form, setForm] = useState(defaultForm);
+  const [previewSku, setPreviewSku] = useState<{ name: string; base: number } | null>(null);
 
-  // Load data when drawer opens
   useEffect(() => {
     if (open) {
       loadData();
@@ -32,14 +42,24 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
 
   const loadData = async () => {
     try {
-      const enabled = await pricingApi.getSurgeEnabled();
+      const [enabled, rulesResp, zonesResp, skusResp] = await Promise.all([
+        pricingApi.getSurgeEnabled(),
+        pricingApi.getSurgeRules(),
+        pricingApi.getReferencesZones(),
+        pricingApi.getPricingSKUs(),
+      ]);
       setIsEnabled(enabled);
-
-      const response = await pricingApi.getSurgeRules();
-      if (response.success && Array.isArray(response.data)) {
-        setRules(response.data);
+      if (rulesResp.success && Array.isArray(rulesResp.data)) {
+        setRules(rulesResp.data.map(toSurgeRuleDisplay));
       } else {
         setRules([]);
+      }
+      if (zonesResp.success && Array.isArray(zonesResp.data)) {
+        setZones(zonesResp.data);
+      }
+      if (skusResp.success && Array.isArray(skusResp.data) && skusResp.data.length > 0) {
+        const sku = skusResp.data[0];
+        setPreviewSku({ name: sku.name, base: sku.sell ?? sku.base ?? 0 });
       }
     } catch (error) {
       console.error('Error loading surge pricing data:', error);
@@ -47,16 +67,15 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
     }
   };
 
-  const [newRule, setNewRule] = useState({
-    zone: 'downtown',
-    trigger: 'demand',
-    minMult: '1.1x',
-    maxMult: '1.5x'
-  });
+  const resetForm = () => {
+    setForm(defaultForm);
+    setEditingRule(null);
+    setShowCreateForm(false);
+  };
 
   const handleDelete = async (id: string | number) => {
     try {
-      await pricingApi.deleteSurgeRule(id);
+      await pricingApi.deleteSurgeRule(String(id));
       setRules(rules.filter(r => r.id !== id));
       toast.success("Surge rule deleted");
     } catch (error) {
@@ -65,14 +84,18 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
     }
   };
 
-  const toggleRule = async (id: string | number) => {
+  const toggleRule = async (rule: any) => {
     try {
-      const rule = rules.find(r => r.id === id);
-      if (rule) {
-        await pricingApi.updateSurgeRule(id, { ...rule, active: !rule.active });
-        setRules(rules.map(r => r.id === id ? { ...r, active: !r.active } : r));
-        toast.success(`Rule ${!rule.active ? 'activated' : 'paused'}`);
-      }
+      const nextStatus = rule.active ? 'inactive' : 'active';
+      const payload = buildSurgeRulePayload({
+        name: rule.name,
+        type: rule.type,
+        multiplier: rule.multiplier,
+        status: nextStatus,
+      });
+      await pricingApi.updateSurgeRule(String(rule.id), payload);
+      await loadData();
+      toast.success(`Rule ${nextStatus === 'active' ? 'activated' : 'paused'}`);
     } catch (error) {
       console.error('Error toggling rule:', error);
       toast.error("Failed to update rule");
@@ -80,51 +103,46 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
   };
 
   const handleCreateOrUpdate = async () => {
+    if (!form.name.trim()) {
+      toast.error('Rule name is required');
+      return;
+    }
+    if (form.type === 'zone_based' && !form.zoneId) {
+      toast.error('Please select a zone');
+      return;
+    }
     try {
+      const payload = buildSurgeRulePayload(form);
       if (editingRule) {
-        const updatedRule = {
-          ...editingRule,
-          zone: newRule.zone.charAt(0).toUpperCase() + newRule.zone.slice(1),
-          trigger: newRule.trigger === 'demand' ? 'Orders > 500/hr' : 'Condition Met',
-          multiplier: newRule.maxMult,
-          minMult: newRule.minMult,
-          maxMult: newRule.maxMult
-        };
-        await pricingApi.updateSurgeRule(editingRule.id, updatedRule);
-        setRules(rules.map(r => r.id === editingRule.id ? updatedRule : r));
+        await pricingApi.updateSurgeRule(String(editingRule.id), payload);
         toast.success("Surge rule updated");
       } else {
-        const rule = {
-          id: Date.now(),
-          zone: newRule.zone.charAt(0).toUpperCase() + newRule.zone.slice(1),
-          trigger: newRule.trigger === 'demand' ? 'Orders > 500/hr' : 'Condition Met',
-          multiplier: newRule.maxMult,
-          active: true,
-          minMult: newRule.minMult,
-          maxMult: newRule.maxMult
-        };
-        await pricingApi.createSurgeRule(rule);
-        setRules([...rules, rule]);
+        await pricingApi.createSurgeRule(payload);
         toast.success("Surge rule created");
       }
-      setShowCreateForm(false);
-      setEditingRule(null);
+      resetForm();
+      await loadData();
     } catch (error) {
       console.error('Error creating/updating rule:', error);
-      toast.error("Failed to save rule");
+      toast.error(error instanceof Error ? error.message : "Failed to save rule");
     }
   };
 
   const handleEditClick = (rule: any) => {
     setEditingRule(rule);
-    setNewRule({
-        zone: rule.zone.toLowerCase(),
-        trigger: 'demand', // Simplified for mock
-        minMult: rule.minMult,
-        maxMult: rule.maxMult
+    setForm({
+      name: rule.name || '',
+      type: rule.type || 'demand_based',
+      multiplier: String(rule.multiplier ?? '1.2').replace(/x/gi, ''),
+      zoneId: rule.conditions?.zones?.[0] || '',
+      priority: String(rule.priority ?? 5),
+      startDate: rule.startDate ? rule.startDate.split('T')[0] : defaultForm.startDate,
     });
     setShowCreateForm(true);
   };
+
+  const previewMultiplier = parseFloat(form.multiplier) || 1.2;
+  const previewBase = previewSku?.base ?? 12;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -148,9 +166,14 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
                     <Switch 
                       checked={isEnabled} 
                       onCheckedChange={async (checked) => {
-                        setIsEnabled(checked);
-                        pricingApi.setSurgeEnabled(checked);
-                        toast.success(`Surge pricing ${checked ? 'enabled' : 'disabled'}`);
+                        try {
+                          setIsEnabled(checked);
+                          await pricingApi.setSurgeEnabled(checked);
+                          toast.success(`Surge pricing ${checked ? 'enabled' : 'disabled'}`);
+                        } catch {
+                          setIsEnabled(!checked);
+                          toast.error('Failed to update surge config');
+                        }
                       }} 
                     />
                 </div>
@@ -158,18 +181,21 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
                 <div>
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-lg">Active Rules</h3>
-                        <Button type="button" size="sm" onClick={() => setShowCreateForm(true)}>
+                        <Button type="button" size="sm" onClick={() => { setForm(defaultForm); setShowCreateForm(true); }}>
                             <Plus size={16} className="mr-2" /> Add Rule
                         </Button>
                     </div>
 
                     <div className="space-y-3">
+                        {rules.length === 0 && (
+                          <p className="text-sm text-slate-500 py-4 text-center">No surge rules yet. Add one to get started.</p>
+                        )}
                         {rules.map(rule => (
                             <Card key={rule.id}>
                                 <CardContent className="p-4 flex items-center justify-between">
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
-                                            <span className="font-medium">{rule.zone}</span>
+                                            <span className="font-medium">{rule.name || rule.zone}</span>
                                             <Badge variant={rule.active ? "default" : "secondary"}>
                                                 {rule.active ? "Active" : "Paused"}
                                             </Badge>
@@ -182,7 +208,7 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleRule(rule.id)}>
+                                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleRule(rule)}>
                                             {rule.active ? <Pause size={16} /> : <Play size={16} />}
                                         </Button>
                                         <Button type="button" variant="ghost" size="icon" onClick={() => handleEditClick(rule)}>
@@ -202,45 +228,52 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
             <div className="space-y-4 animate-in slide-in-from-right duration-300">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-lg">{editingRule ? "Edit Surge Rule" : "New Surge Rule"}</h3>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => {
-                        setShowCreateForm(false);
-                        setEditingRule(null);
-                    }}>Cancel</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={resetForm}>Cancel</Button>
+                </div>
+
+                <div className="space-y-2">
+                    <Label>Rule Name</Label>
+                    <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Evening Demand Surge" />
                 </div>
                 
                 <div className="space-y-2">
-                    <Label>Zone/Region</Label>
-                    <Select value={newRule.zone} onValueChange={(v) => setNewRule({...newRule, zone: v})}>
-                        <SelectTrigger><SelectValue placeholder="Select zone" /></SelectTrigger>
+                    <Label>Trigger Type</Label>
+                    <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+                        <SelectTrigger><SelectValue placeholder="Select trigger" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="downtown">Downtown</SelectItem>
-                            <SelectItem value="northend">North End</SelectItem>
-                            <SelectItem value="westside">West Side</SelectItem>
+                            <SelectItem value="demand_based">High Demand</SelectItem>
+                            <SelectItem value="time_based">Time of Day</SelectItem>
+                            <SelectItem value="zone_based">Zone Based</SelectItem>
+                            <SelectItem value="event_based">Special Event</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
 
-                <div className="space-y-2">
-                    <Label>Trigger Type</Label>
-                    <Select value={newRule.trigger} onValueChange={(v) => setNewRule({...newRule, trigger: v})}>
-                        <SelectTrigger><SelectValue placeholder="Select trigger" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="demand">High Demand</SelectItem>
-                            <SelectItem value="weather">Bad Weather</SelectItem>
-                            <SelectItem value="traffic">Heavy Traffic</SelectItem>
-                            <SelectItem value="time">Time of Day</SelectItem>
-                        </SelectContent>
+                {form.type === 'zone_based' && (
+                  <div className="space-y-2">
+                    <Label>Zone</Label>
+                    <Select value={form.zoneId} onValueChange={(v) => setForm({ ...form, zoneId: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select zone" /></SelectTrigger>
+                      <SelectContent>
+                        {zones.map(z => (
+                          <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>
+                        ))}
+                        {zones.length === 0 && (
+                          <SelectItem value="none" disabled>No zones configured</SelectItem>
+                        )}
+                      </SelectContent>
                     </Select>
-                </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label>Min Multiplier</Label>
-                        <Input value={newRule.minMult} onChange={(e) => setNewRule({...newRule, minMult: e.target.value})} placeholder="1.1x" />
+                        <Label>Multiplier (1.0 – 5.0)</Label>
+                        <Input value={form.multiplier} onChange={(e) => setForm({ ...form, multiplier: e.target.value })} placeholder="1.2" type="number" min="1" max="5" step="0.1" />
                     </div>
                     <div className="space-y-2">
-                        <Label>Max Multiplier</Label>
-                        <Input value={newRule.maxMult} onChange={(e) => setNewRule({...newRule, maxMult: e.target.value})} placeholder="1.5x" />
+                        <Label>Priority</Label>
+                        <Input value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} placeholder="5" type="number" min="1" max="10" />
                     </div>
                 </div>
 
@@ -249,9 +282,9 @@ export function SurgePricingDrawer({ open, onOpenChange }: SurgePricingDrawerPro
                         <TrendingUp size={14} /> Preview Impact
                     </h4>
                     <div className="text-xs space-y-1 text-slate-600">
-                        <p>Sample SKU: Burger Combo</p>
-                        <p>Base Price: ₹12.00</p>
-                        <p className="font-bold text-slate-900">Surge Price: ₹13.20 - ₹18.00</p>
+                        <p>Sample SKU: {previewSku?.name ?? '—'}</p>
+                        <p>Base Price: ₹{previewBase.toFixed(2)}</p>
+                        <p className="font-bold text-slate-900">Surge Price: ₹{(previewBase * previewMultiplier).toFixed(2)}</p>
                     </div>
                 </div>
 

@@ -179,55 +179,22 @@ export function AutoRebalanceWizard({ open, onOpenChange, onComplete }: AutoReba
           <div className="space-y-4 py-4">
              <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="p-3 bg-green-50 rounded-lg text-center border border-green-100">
-                    <p className="text-xs text-green-800 uppercase font-bold">Stockouts Prevented</p>
-                    <p className="text-2xl font-bold text-green-700">14</p>
+                    <p className="text-xs text-green-800 uppercase font-bold">SKUs Rebalanced</p>
+                    <p className="text-2xl font-bold text-green-700">—</p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg text-center border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase font-bold">Total Transfers</p>
-                    <p className="text-2xl font-bold text-gray-700">43</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold">Location Updates</p>
+                    <p className="text-2xl font-bold text-gray-700">—</p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg text-center border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase font-bold">Cost Estimate</p>
-                    <p className="text-2xl font-bold text-gray-700">₹240</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold">Est. Cost</p>
+                    <p className="text-2xl font-bold text-gray-700">—</p>
                 </div>
              </div>
 
-             <div className="border rounded-md">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>SKU</TableHead>
-                            <TableHead>From</TableHead>
-                            <TableHead>To</TableHead>
-                            <TableHead className="text-right">Qty</TableHead>
-                            <TableHead className="text-right">ETA</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        <TableRow>
-                            <TableCell className="font-medium">Cola Can 330ml</TableCell>
-                            <TableCell>Central Warehouse</TableCell>
-                            <TableCell>North Hub</TableCell>
-                            <TableCell className="text-right">500</TableCell>
-                            <TableCell className="text-right">4h</TableCell>
-                        </TableRow>
-                        <TableRow>
-                            <TableCell className="font-medium">Chips Party Pack</TableCell>
-                            <TableCell>South Hub</TableCell>
-                            <TableCell>Westside Hub</TableCell>
-                            <TableCell className="text-right">120</TableCell>
-                            <TableCell className="text-right">2h</TableCell>
-                        </TableRow>
-                         <TableRow>
-                            <TableCell className="font-medium">Milk (Full Cream)</TableCell>
-                            <TableCell>Main Dairy Depot</TableCell>
-                            <TableCell>City Center</TableCell>
-                            <TableCell className="text-right">50</TableCell>
-                            <TableCell className="text-right">1h</TableCell>
-                        </TableRow>
-                    </TableBody>
-                </Table>
-             </div>
+             <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-md border">
+               Review your scope and constraints, then click <strong>Confirm &amp; Execute</strong> to rebalance high-priority SKUs across locations using live allocation data.
+             </p>
           </div>
         );
         
@@ -290,8 +257,12 @@ export function AutoRebalanceWizard({ open, onOpenChange, onComplete }: AutoReba
                onClick={async () => {
                  try {
                    setLoading(true);
-                   await allocationApi.autoRebalance();
-                   toast.success('Auto rebalance executed', { description: 'Rebalancing stock across selected locations' });
+                   const result = await allocationApi.autoRebalance({ scope: 'high-priority', strategy: 'minimize-stockouts' });
+                   const updated = result?.updated ?? result?.totalTransfers ?? 0;
+                   const prevented = result?.stockoutsPrevented ?? 0;
+                   toast.success('Auto rebalance executed', {
+                     description: `Updated ${updated} location(s); ${prevented} stockout risk(s) addressed`,
+                   });
                    onComplete?.();
                    onOpenChange(false);
                  } catch (err) {

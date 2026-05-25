@@ -64,8 +64,8 @@ export function SKUEditDrawer({ sku, isOpen, onClose, onSave }: SKUEditDrawerPro
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
-        <SheetHeader className="mb-6">
+      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto px-6 py-6">
+        <SheetHeader className="mb-6 p-0 pr-10">
            <SheetTitle className="text-2xl font-bold text-[#212121]">Edit SKU</SheetTitle>
            <SheetDescription>
                 {formData.code} • {formData.name}
@@ -185,7 +185,7 @@ export function SKUEditDrawer({ sku, isOpen, onClose, onSave }: SKUEditDrawerPro
             </TabsContent>
         </Tabs>
         
-        <SheetFooter className="mt-8 pt-6 border-t border-[#E0E0E0]">
+        <SheetFooter className="mt-8 pt-6 border-t border-[#E0E0E0] p-0 flex-row justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Discard</Button>
             <Button className="bg-[#7C3AED] hover:bg-[#6D28D9]" onClick={() => onSave(formData)}>Save Changes</Button>
         </SheetFooter>

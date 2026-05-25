@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert } from './types';
+import { alertsApi } from './alertsApi';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 interface PauseCampaignDialogProps {
   isOpen: boolean;
@@ -15,13 +17,24 @@ interface PauseCampaignDialogProps {
 
 export function PauseCampaignDialog({ isOpen, onClose, onResolve, alert }: PauseCampaignDialogProps) {
   const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleConfirm = () => {
-    toast.success("Campaign Paused", {
-      description: "The campaign has been paused for the selected region."
-    });
-    onResolve();
-    onClose();
+  const handleConfirm = async () => {
+    const alertId = alert.id || (alert as { _id?: string })._id;
+    if (!alertId) return;
+    setSubmitting(true);
+    try {
+      await alertsApi.pauseCampaign(String(alertId), { reason });
+      toast.success('Campaign Paused', {
+        description: 'The campaign has been paused for the selected region.',
+      });
+      onResolve();
+      onClose();
+    } catch {
+      toast.error('Failed to pause campaign');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -45,7 +58,9 @@ export function PauseCampaignDialog({ isOpen, onClose, onResolve, alert }: Pause
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button variant="destructive" onClick={handleConfirm}>Pause Campaign</Button>
+          <Button variant="destructive" onClick={handleConfirm} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Pause Campaign'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

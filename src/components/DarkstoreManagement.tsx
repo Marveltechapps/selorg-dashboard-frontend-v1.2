@@ -6,8 +6,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from './TopBar';
 import { DashboardHome } from './screens/DashboardHome';
 import { LiveOrders } from './screens/LiveOrders';
-import { PickTasks } from './screens/PickTasks';
-import { PackStation } from './screens/PackStation';
 import { InventoryOps } from './screens/InventoryOps';
 import { StaffShifts } from './screens/StaffShifts';
 import { HSDManagement } from './screens/HSDManagement';
@@ -61,6 +59,13 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
+  // Legacy route removed — redirect bookmarks to Pick & Pack Ops
+  useEffect(() => {
+    if (activeTab === 'pickpack') {
+      setActiveTab('pickpackops');
+    }
+  }, [activeTab, setActiveTab]);
+
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
       {ENABLE_NEW_NAV ? (
@@ -69,22 +74,14 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
       )}
       
-      <div className={ENABLE_NEW_NAV ? "pl-[260px]" : "pl-[220px]"}>
-        <TopBar setActiveTab={setActiveTab} />
+      <div className={ENABLE_NEW_NAV ? 'darkstore-content-area darkstore-content-area--v2' : 'darkstore-content-area'}>
+        <TopBar setActiveTab={setActiveTab} wideSidebar={ENABLE_NEW_NAV} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
             <DashboardBreadcrumbs dashboard="darkstore" activeTab={activeTab} />
             {activeTab === 'overview' && <DashboardHome setActiveTab={setActiveTab} />}
             {activeTab === 'liveorders' && <LiveOrders />}
             {activeTab === 'cancelledorders' && <CancelledOrders />}
-            {activeTab === 'pickpack' && (
-              <div className="space-y-12">
-                <PickTasks />
-                <div className="border-t border-[#E0E0E0] pt-12">
-                   <PackStation />
-                </div>
-              </div>
-            )}
             {activeTab === 'pickpackops' && <PickPackOpsScreen />}
             {activeTab === 'livepickingmonitor' && <LivePickingMonitor />}
             {activeTab === 'slamonitor' && <SLAMonitor />}

@@ -9,7 +9,9 @@ import {
   Activity,
   Monitor,
   Search,
-  Loader2
+  Loader2,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
@@ -18,6 +20,8 @@ import {
   createProductionEquipment,
   fetchProductionMaintenanceTasks,
   createProductionMaintenanceTask,
+  updateProductionMaintenanceTask,
+  deleteProductionMaintenanceTask,
   updateProductionMaintenanceTaskStatus,
   fetchProductionIotDevices,
   type ProductionEquipment as Equipment,
@@ -26,14 +30,29 @@ import {
 } from '../../../api/productionApi';
 import { useProductionFactory } from '../../../contexts/ProductionFactoryContext';
 
+function resolveTaskId(task: MaintenanceTask): string {
+  return (task.taskId || task.id || '').trim();
+}
+
 export function MaintenanceAssets() {
   const queryClient = useQueryClient();
   const { selectedFactoryId } = useProductionFactory();
   const [activeTab, setActiveTab] = useState<'equipment' | 'maintenance' | 'iot'>('equipment');
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [taskFormMode, setTaskFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<MaintenanceTask | null>(null);
+  const [technicianModal, setTechnicianModal] = useState<{ taskId: string; name: string } | null>(null);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState<Equipment | MaintenanceTask | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const invalidateMaintenance = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId] }),
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks', selectedFactoryId] }),
+      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'iot', selectedFactoryId] }),
+    ]);
+  };
 
   const { data: equipment = [] } = useQuery({
     queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId],
@@ -63,42 +82,80 @@ export function MaintenanceAssets() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to add equipment'),
   });
 
-  const createTaskMutation = useMutation({
-    mutationFn: (body: {
-      equipmentId: string;
-      equipmentName: string;
-      taskType: 'preventive' | 'corrective' | 'breakdown';
-      priority: 'low' | 'medium' | 'high' | 'critical';
-      scheduledDate: string;
-      description: string;
-      estimatedHours?: number;
-    }) => createProductionMaintenanceTask(body, selectedFactoryId || undefined),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks', selectedFactoryId] });
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId] });
-      toast.success('Maintenance scheduled');
+  const saveTaskMutation = useMutation({
+    mutationFn: async (payload: {
+      mode: 'create' | 'edit';
+      taskId?: string;
+      body: {
+        equipmentId: string;
+        equipmentName: string;
+        taskType: 'preventive' | 'corrective' | 'breakdown';
+        priority: 'low' | 'medium' | 'high' | 'critical';
+        scheduledDate: string;
+        description: string;
+        estimatedHours?: number;
+        status?: MaintenanceTask['status'];
+        technician?: string;
+      };
+    }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (payload.mode === 'create') {
+        return createProductionMaintenanceTask(payload.body, selectedFactoryId);
+      }
+      if (!payload.taskId) throw new Error('Missing task id');
+      return updateProductionMaintenanceTask(payload.taskId, payload.body, selectedFactoryId);
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to schedule maintenance'),
+    onSuccess: async (_, vars) => {
+      await invalidateMaintenance();
+      toast.success(vars.mode === 'create' ? 'Maintenance scheduled' : 'Maintenance task updated');
+      setTaskFormMode(null);
+      setEditingTaskId(null);
+      setNewMaintenance(emptyMaintenanceForm());
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to save maintenance task'),
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId: string) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      return deleteProductionMaintenanceTask(taskId, selectedFactoryId);
+    },
+    onSuccess: async () => {
+      await invalidateMaintenance();
+      toast.success('Maintenance task deleted');
+      setTaskToDelete(null);
+      setShowDetailsModal(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to delete task'),
   });
 
   const updateTaskStatusMutation = useMutation({
-    mutationFn: ({ taskId, status, technician }: { taskId: string; status: 'scheduled' | 'in-progress' | 'completed' | 'overdue'; technician?: string }) =>
-      updateProductionMaintenanceTaskStatus(taskId, status, technician, selectedFactoryId || undefined),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'tasks', selectedFactoryId] });
-      queryClient.invalidateQueries({ queryKey: ['production', 'maintenance', 'equipment', selectedFactoryId] });
+    mutationFn: ({ taskId, status, technician }: { taskId: string; status: MaintenanceTask['status']; technician?: string }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (!taskId) throw new Error('Invalid task id');
+      return updateProductionMaintenanceTaskStatus(taskId, status, technician, selectedFactoryId);
+    },
+    onSuccess: async (_, vars) => {
+      await invalidateMaintenance();
+      if (vars.status === 'in-progress') toast.success('Task started');
+      else if (vars.status === 'completed') toast.success('Task completed');
+      setTechnicianModal(null);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update task'),
   });
 
-  const [newMaintenance, setNewMaintenance] = useState({
+  const emptyMaintenanceForm = () => ({
     equipmentId: '',
-    taskType: 'preventive' as const,
-    priority: 'medium' as const,
+    taskType: 'preventive' as MaintenanceTask['taskType'],
+    priority: 'medium' as MaintenanceTask['priority'],
     scheduledDate: '',
     description: '',
     estimatedHours: '',
+    status: 'scheduled' as MaintenanceTask['status'],
+    technician: '',
   });
+
+  const [newMaintenance, setNewMaintenance] = useState(emptyMaintenanceForm);
 
   const [newEquipment, setNewEquipment] = useState({
     name: '',
@@ -107,29 +164,68 @@ export function MaintenanceAssets() {
     location: '',
   });
 
-  const handleScheduleMaintenance = () => {
-    const equip = equipment.find((e: Equipment) => e.id === newMaintenance.equipmentId);
-    if (newMaintenance.equipmentId && newMaintenance.scheduledDate && newMaintenance.description && equip) {
-      createTaskMutation.mutate(
-        {
-          equipmentId: newMaintenance.equipmentId,
-          equipmentName: equip.name,
-          taskType: newMaintenance.taskType,
-          priority: newMaintenance.priority,
-          scheduledDate: newMaintenance.scheduledDate,
-          description: newMaintenance.description,
-          estimatedHours: newMaintenance.estimatedHours ? parseInt(newMaintenance.estimatedHours, 10) : undefined,
-        },
-        {
-          onSuccess: () => {
-            setNewMaintenance({ equipmentId: '', taskType: 'preventive', priority: 'medium', scheduledDate: '', description: '', estimatedHours: '' });
-            setShowScheduleModal(false);
-          },
-        }
-      );
-    } else {
-      toast.error('Please select equipment, date, and description');
+  const openCreateTask = () => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
     }
+    setActiveTab('maintenance');
+    setEditingTaskId(null);
+    setNewMaintenance(emptyMaintenanceForm());
+    setTaskFormMode('create');
+  };
+
+  const openEditTask = (task: MaintenanceTask) => {
+    const taskId = resolveTaskId(task);
+    if (!taskId) {
+      toast.error('Invalid task id');
+      return;
+    }
+    setEditingTaskId(taskId);
+    setNewMaintenance({
+      equipmentId: task.equipmentId,
+      taskType: task.taskType,
+      priority: task.priority,
+      scheduledDate: task.scheduledDate,
+      description: task.description,
+      estimatedHours: task.estimatedHours != null ? String(task.estimatedHours) : '',
+      status: task.status,
+      technician: task.technician ?? '',
+    });
+    setTaskFormMode('edit');
+    setShowDetailsModal(null);
+  };
+
+  const handleSaveMaintenanceTask = () => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    const equip = equipment.find((e: Equipment) => e.id === newMaintenance.equipmentId);
+    if (!newMaintenance.equipmentId || !newMaintenance.scheduledDate || !newMaintenance.description.trim() || !equip) {
+      toast.error('Please select equipment, date, and description');
+      return;
+    }
+    const body = {
+      equipmentId: newMaintenance.equipmentId,
+      equipmentName: equip.name,
+      taskType: newMaintenance.taskType,
+      priority: newMaintenance.priority,
+      scheduledDate: newMaintenance.scheduledDate,
+      description: newMaintenance.description.trim(),
+      estimatedHours: newMaintenance.estimatedHours ? parseInt(newMaintenance.estimatedHours, 10) : undefined,
+      ...(taskFormMode === 'edit'
+        ? {
+            status: newMaintenance.status,
+            technician: newMaintenance.technician.trim() || undefined,
+          }
+        : {}),
+    };
+    saveTaskMutation.mutate({
+      mode: taskFormMode === 'edit' ? 'edit' : 'create',
+      taskId: editingTaskId ?? undefined,
+      body,
+    });
   };
 
   const handleAddEquipment = () => {
@@ -148,18 +244,39 @@ export function MaintenanceAssets() {
     }
   };
 
-  const handleUpdateTaskStatus = (taskId: string, newStatus: MaintenanceTask['status']) => {
-    const task = maintenanceTasks.find((t: MaintenanceTask) => t.id === taskId);
-    if (newStatus === 'in-progress' && task && !task.technician) {
-      const techName = prompt('Enter technician name:');
-      if (techName) {
-        updateTaskStatusMutation.mutate({ taskId, status: newStatus, technician: techName });
-      } else {
-        return;
-      }
-    } else {
-      updateTaskStatusMutation.mutate({ taskId, status: newStatus });
+  const handleUpdateTaskStatus = (task: MaintenanceTask, newStatus: MaintenanceTask['status']) => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
     }
+    const taskId = resolveTaskId(task);
+    if (!taskId) {
+      toast.error('Invalid task id');
+      return;
+    }
+    if (newStatus === 'in-progress' && !task.technician?.trim()) {
+      setTechnicianModal({ taskId, name: '' });
+      return;
+    }
+    updateTaskStatusMutation.mutate({
+      taskId,
+      status: newStatus,
+      technician: task.technician?.trim() || undefined,
+    });
+  };
+
+  const submitTechnicianAndStart = () => {
+    if (!technicianModal) return;
+    const name = technicianModal.name.trim();
+    if (!name) {
+      toast.error('Enter technician name');
+      return;
+    }
+    updateTaskStatusMutation.mutate({
+      taskId: technicianModal.taskId,
+      status: 'in-progress',
+      technician: name,
+    });
   };
 
   const exportData = () => {
@@ -265,9 +382,11 @@ export function MaintenanceAssets() {
               <Download size={16} />
               Export
             </button>
-            <button 
-              onClick={() => setShowScheduleModal(true)}
-              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2"
+            <button
+              type="button"
+              onClick={openCreateTask}
+              disabled={!selectedFactoryId}
+              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={16} />
               Schedule Maintenance
@@ -473,8 +592,16 @@ export function MaintenanceAssets() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E0E0E0]">
-                  {filteredTasks.map(task => (
-                    <tr key={task.id} className="hover:bg-[#FAFAFA]">
+                  {filteredTasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-[#757575]">
+                        No maintenance tasks yet. Schedule maintenance to get started.
+                      </td>
+                    </tr>
+                  ) : filteredTasks.map(task => {
+                    const taskId = resolveTaskId(task);
+                    return (
+                    <tr key={taskId || task.id} className="hover:bg-[#FAFAFA]">
                       <td className="px-6 py-4">
                         <div>
                           <p className="font-medium text-[#212121]">{task.equipmentName}</p>
@@ -514,24 +641,45 @@ export function MaintenanceAssets() {
                       <td className="px-6 py-4 text-[#616161]">{task.scheduledDate}</td>
                       <td className="px-6 py-4 text-[#616161]">{task.technician || 'Unassigned'}</td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          {task.status === 'scheduled' && (
-                            <button 
-                              onClick={() => handleUpdateTaskStatus(task.id, 'in-progress')}
-                              className="text-blue-600 hover:text-blue-700 font-medium text-xs"
+                        <div className="flex justify-end items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditTask(task)}
+                            className="p-1.5 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg"
+                            aria-label={`Edit task ${task.id}`}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTaskToDelete(task)}
+                            className="p-1.5 text-[#EF4444] hover:text-[#DC2626] hover:bg-red-50 rounded-lg"
+                            aria-label={`Delete task ${task.id}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          {(task.status === 'scheduled' || task.status === 'overdue') && taskId && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateTaskStatus(task, 'in-progress')}
+                              disabled={updateTaskStatusMutation.isPending || !selectedFactoryId}
+                              className="text-blue-600 hover:text-blue-700 font-medium text-xs disabled:opacity-50"
                             >
                               Start
                             </button>
                           )}
-                          {task.status === 'in-progress' && (
-                            <button 
-                              onClick={() => handleUpdateTaskStatus(task.id, 'completed')}
-                              className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs"
+                          {task.status === 'in-progress' && taskId && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateTaskStatus(task, 'completed')}
+                              disabled={updateTaskStatusMutation.isPending || !selectedFactoryId}
+                              className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs disabled:opacity-50"
                             >
                               Complete
                             </button>
                           )}
-                          <button 
+                          <button
+                            type="button"
                             onClick={() => setShowDetailsModal(task)}
                             className="text-[#757575] hover:text-[#212121] font-medium text-xs"
                           >
@@ -540,7 +688,8 @@ export function MaintenanceAssets() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -641,13 +790,23 @@ export function MaintenanceAssets() {
         )}
       </div>
 
-      {/* Schedule Maintenance Modal */}
-      {showScheduleModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[#212121]">Schedule Maintenance Task</h3>
-              <button onClick={() => setShowScheduleModal(false)} className="text-[#757575] hover:text-[#212121]">
+      {/* Schedule / Edit Maintenance Modal */}
+      {taskFormMode && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center sticky top-0 bg-white">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {taskFormMode === 'create' ? 'Schedule Maintenance Task' : 'Edit Maintenance Task'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setTaskFormMode(null);
+                  setEditingTaskId(null);
+                  setNewMaintenance(emptyMaintenanceForm());
+                }}
+                className="text-[#757575] hover:text-[#212121]"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -675,21 +834,52 @@ export function MaintenanceAssets() {
                   >
                     <option value="preventive">Preventive</option>
                     <option value="corrective">Corrective</option>
+                    <option value="breakdown">Breakdown</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#212121] mb-2">Priority</label>
                   <select 
                     value={newMaintenance.priority}
-                    onChange={(e) => setNewMaintenance({...newMaintenance, priority: e.target.value as any})}
+                    onChange={(e) => setNewMaintenance({...newMaintenance, priority: e.target.value as MaintenanceTask['priority']})}
                     className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
+                    <option value="critical">Critical</option>
                   </select>
                 </div>
               </div>
+              {taskFormMode === 'edit' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-[#212121] mb-2">Status</label>
+                    <select
+                      value={newMaintenance.status}
+                      onChange={(e) =>
+                        setNewMaintenance({ ...newMaintenance, status: e.target.value as MaintenanceTask['status'] })
+                      }
+                      className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    >
+                      <option value="scheduled">Scheduled</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="overdue">Overdue</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[#212121] mb-2">Technician</label>
+                    <input
+                      type="text"
+                      placeholder="Technician name"
+                      value={newMaintenance.technician}
+                      onChange={(e) => setNewMaintenance({ ...newMaintenance, technician: e.target.value })}
+                      className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-[#212121] mb-2">Scheduled Date</label>
@@ -722,18 +912,81 @@ export function MaintenanceAssets() {
                 />
               </div>
             </div>
-            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowScheduleModal(false)}
+            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end sticky bottom-0 bg-white">
+              <button
+                type="button"
+                onClick={() => {
+                  setTaskFormMode(null);
+                  setEditingTaskId(null);
+                  setNewMaintenance(emptyMaintenanceForm());
+                }}
                 className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleScheduleMaintenance}
-                className="px-4 py-2 bg-[#3B82F6] text-white font-medium rounded-lg hover:bg-[#2563EB]"
+              <button
+                type="button"
+                onClick={handleSaveMaintenanceTask}
+                disabled={saveTaskMutation.isPending}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50 flex items-center gap-2"
               >
-                Schedule Task
+                {saveTaskMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                {taskFormMode === 'create' ? 'Schedule Task' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {taskToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete maintenance task?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              Remove task for <span className="font-medium text-[#212121]">{taskToDelete.equipmentName}</span>?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setTaskToDelete(null)} className="px-4 py-2 bg-white border border-[#E0E0E0] rounded-lg">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteTaskMutation.mutate(resolveTaskId(taskToDelete))}
+                disabled={deleteTaskMutation.isPending}
+                className="px-4 py-2 bg-[#EF4444] text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleteTaskMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {technicianModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Assign technician</h3>
+            <p className="text-sm text-[#757575] mb-4">Enter the technician name to start this task.</p>
+            <input
+              type="text"
+              placeholder="Technician name"
+              value={technicianModal.name}
+              onChange={(e) => setTechnicianModal({ ...technicianModal, name: e.target.value })}
+              className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A] mb-6"
+            />
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setTechnicianModal(null)} className="px-4 py-2 bg-white border border-[#E0E0E0] rounded-lg">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitTechnicianAndStart}
+                disabled={updateTaskStatusMutation.isPending}
+                className="px-4 py-2 bg-[#16A34A] text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {updateTaskStatusMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Start Task
               </button>
             </div>
           </div>
@@ -911,6 +1164,22 @@ export function MaintenanceAssets() {
                   <div className="bg-[#F5F5F5] p-3 rounded-lg">
                     <span className="text-xs text-[#757575] block mb-1">Description</span>
                     <p className="text-sm text-[#212121]">{showDetailsModal.description}</p>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditTask(showDetailsModal)}
+                      className="flex-1 px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTaskToDelete(showDetailsModal)}
+                      className="flex-1 px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626]"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </>
               )}

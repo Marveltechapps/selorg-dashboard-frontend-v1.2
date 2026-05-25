@@ -128,7 +128,10 @@ export function SKUAllocationPanel({ searchQuery = "" }: { searchQuery?: string 
               <button
                 onClick={async () => {
                   try {
-                    await allocationApi.seedAllocationData();
+                    const result = await allocationApi.seedAllocationData();
+                    toast.success('Allocation data seeded', {
+                      description: `${result?.data?.skuCount ?? ''} SKUs, ${result?.data?.allocationCount ?? ''} locations`,
+                    });
                     await loadSkus();
                   } catch (err) {
                     toast.error(err instanceof Error ? err.message : 'Failed to seed');

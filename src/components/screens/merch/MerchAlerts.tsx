@@ -201,9 +201,15 @@ export function MerchAlerts({ searchQuery = "", onNavigate }: MerchAlertsProps) 
       }
   };
 
-  const handleClearResolved = () => {
-      setResolvedAlerts([]);
-      toast.success("Resolved alerts cleared from view");
+  const handleClearResolved = async () => {
+      try {
+        await alertsApi.clearResolved();
+        setResolvedAlerts([]);
+        await loadAlerts();
+        toast.success('Resolved alerts cleared');
+      } catch {
+        toast.error('Failed to clear resolved alerts');
+      }
       setIsClearConfirmOpen(false);
   };
 

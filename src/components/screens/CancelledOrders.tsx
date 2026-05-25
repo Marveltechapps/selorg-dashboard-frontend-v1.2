@@ -349,8 +349,8 @@ export function CancelledOrders() {
 
       {/* Order Details Sheet */}
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
-          <SheetHeader className="pb-4 border-b border-slate-200">
+        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto px-6 pb-8 pr-12">
+          <SheetHeader className="px-0 pb-4 border-b border-slate-200">
             <SheetTitle className="flex items-center gap-2">
               <XCircle className="w-5 h-5 text-red-500" />
               Cancelled Order Details

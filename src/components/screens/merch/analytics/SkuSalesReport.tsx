@@ -29,14 +29,14 @@ export function SkuSalesReport() {
           setSkuData(resp.data.map((item: any) => ({
             id: item.entityId,
             name: item.entityName,
-            code: item.entityId,
-            category: 'General',
+            code: item.metadata?.code ?? item.entityId,
+            category: item.metadata?.category ?? 'General',
             unitsSold: item.unitsSold || 0,
             revenue: item.revenue || 0,
-            margin: 30,
-            stock: 100,
-            daysCover: 5,
-            promoImpact: 10
+            margin: item.metadata?.margin ?? 30,
+            stock: item.metadata?.stock ?? 100,
+            daysCover: item.metadata?.daysCover ?? 5,
+            promoImpact: item.metadata?.promoImpact ?? 10,
           })));
         } else {
           setSkuData([]);

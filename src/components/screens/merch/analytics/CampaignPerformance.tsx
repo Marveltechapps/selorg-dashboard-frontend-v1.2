@@ -31,12 +31,14 @@ export function CampaignPerformance() {
           setCampaignData(resp.data.map((item: any) => ({
             id: item.entityId,
             name: item.entityName,
-            type: 'Discount',
-            status: 'Active',
+            type: item.metadata?.campaignType || 'Discount',
+            status: item.metadata?.status || 'Active',
             revenue: item.revenue || 0,
             uplift: item.uplift || 0,
-            redemptionRate: 0,
-            roi: item.roi || 0
+            redemptionRate: item.metadata?.redemptionRate ?? 0,
+            redemptions: item.metadata?.redemptions ?? 0,
+            discountDepth: item.metadata?.discountDepth ?? 0,
+            roi: item.roi || 0,
           })));
         } else {
           setCampaignData([]);
@@ -78,10 +80,31 @@ export function CampaignPerformance() {
     return filteredData.map(c => ({ name: c.name, revenue: c.revenue ?? 0, uplift: c.uplift ?? 0 }));
   }, [filteredData]);
 
-  const handleSavePreset = () => {
-    toast.success("Preset Saved", {
-        description: `Your filters for ${campaignType} campaigns over ${dateRange} have been saved.`
-    });
+  const kpiTotals = useMemo(() => {
+    const totalRevenue = filteredData.reduce((acc, c) => acc + (c.revenue ?? 0), 0);
+    const totalRedemptions = filteredData.reduce((acc, c) => acc + (c.redemptions ?? 0), 0);
+    const upliftValues = filteredData.map((c) => c.uplift ?? 0).filter((v) => v > 0);
+    const avgUplift =
+      upliftValues.length > 0
+        ? upliftValues.reduce((a, b) => a + b, 0) / upliftValues.length
+        : 0;
+    const depthValues = filteredData.map((c) => c.discountDepth ?? 0).filter((v) => v > 0);
+    const avgDiscountDepth =
+      depthValues.length > 0
+        ? depthValues.reduce((a, b) => a + b, 0) / depthValues.length
+        : 0;
+    return { totalRevenue, totalRedemptions, avgUplift, avgDiscountDepth };
+  }, [filteredData]);
+
+  const handleSavePreset = async () => {
+    try {
+      await analyticsApi.savePreset(`${campaignType}-${dateRange}`, { campaignType, dateRange });
+      toast.success('Preset Saved', {
+        description: `Your filters for ${campaignType} campaigns over ${dateRange} have been saved.`,
+      });
+    } catch {
+      toast.error('Failed to save preset');
+    }
   };
 
   if (loading && campaignData.length === 0) {
@@ -158,9 +181,9 @@ export function CampaignPerformance() {
                  <p className="text-sm font-medium text-gray-500">Total Promo Revenue</p>
                  <IndianRupee className="h-4 w-4 text-green-600" />
              </div>
-             <p className="text-2xl font-bold">₹{filteredData.reduce((acc, c) => acc + c.revenue, 0).toLocaleString()}</p>
-             <div className="flex items-center text-xs text-green-600 mt-1">
-                 <TrendingUp className="h-3 w-3 mr-1" /> +12.5% vs baseline
+             <p className="text-2xl font-bold">₹{kpiTotals.totalRevenue.toLocaleString()}</p>
+             <div className="text-xs text-gray-500 mt-1">
+                 {filteredData.length} campaign{filteredData.length === 1 ? '' : 's'} in range
              </div>
           </div>
           <div className="bg-white p-4 rounded-lg border shadow-sm">
@@ -168,25 +191,23 @@ export function CampaignPerformance() {
                  <p className="text-sm font-medium text-gray-500">Avg Uplift</p>
                  <TrendingUp className="h-4 w-4 text-blue-600" />
              </div>
-             <p className="text-2xl font-bold">{(filteredData.reduce((acc, c) => acc + c.uplift, 0) / (filteredData.length || 1)).toFixed(1)}%</p>
-             <div className="flex items-center text-xs text-green-600 mt-1">
-                 <TrendingUp className="h-3 w-3 mr-1" /> +2.1%
-             </div>
+             <p className="text-2xl font-bold">{kpiTotals.avgUplift.toFixed(1)}%</p>
+             <div className="text-xs text-gray-500 mt-1">vs non-promo order baseline</div>
           </div>
           <div className="bg-white p-4 rounded-lg border shadow-sm">
              <div className="flex justify-between items-start mb-2">
                  <p className="text-sm font-medium text-gray-500">Avg Discount Depth</p>
                  <Percent className="h-4 w-4 text-orange-600" />
              </div>
-             <p className="text-2xl font-bold">14.5%</p>
-             <div className="text-xs text-gray-500 mt-1">Target: &lt;15%</div>
+             <p className="text-2xl font-bold">{kpiTotals.avgDiscountDepth.toFixed(1)}%</p>
+             <div className="text-xs text-gray-500 mt-1">Discount ÷ promo revenue</div>
           </div>
           <div className="bg-white p-4 rounded-lg border shadow-sm">
              <div className="flex justify-between items-start mb-2">
                  <p className="text-sm font-medium text-gray-500">Total Redemptions</p>
                  <ShoppingBag className="h-4 w-4 text-purple-600" />
              </div>
-             <p className="text-2xl font-bold">4,520</p>
+             <p className="text-2xl font-bold">{kpiTotals.totalRedemptions.toLocaleString()}</p>
              <div className="text-xs text-gray-500 mt-1">Across {filteredData.length} campaigns</div>
           </div>
       </div>
@@ -277,7 +298,9 @@ export function CampaignPerformance() {
           setIsDetailsOpen(false);
           setSelectedCampaign(null);
         }}
-        campaignName={selectedCampaign || "Campaign"}
+        campaignName={selectedCampaign || 'Campaign'}
+        campaignId={filteredData.find((c) => c.name === selectedCampaign)?.id}
+        dateRange={dateRange}
       />
     </div>
   );

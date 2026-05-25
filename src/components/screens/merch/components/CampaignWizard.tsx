@@ -21,9 +21,10 @@ import { catalogApi } from '@/api/merch/catalogApi';
 interface CampaignWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialData?: any;
-  onComplete?: (data: any) => void;
-  onSave?: (data: any) => void;
+  initialData?: Record<string, unknown> | null;
+  isSubmitting?: boolean;
+  onComplete?: (data: Record<string, unknown>) => Promise<boolean> | boolean | void;
+  onSave?: (data: Record<string, unknown>) => Promise<boolean> | boolean | void;
 }
 
 const STEPS = [
@@ -36,41 +37,70 @@ const STEPS = [
   { id: 'review', label: 'Review' },
 ];
 
-export function CampaignWizard({ open, onOpenChange, initialData, onComplete, onSave }: CampaignWizardProps) {
+export function CampaignWizard({ open, onOpenChange, initialData, isSubmitting = false, onComplete, onSave }: CampaignWizardProps) {
   const [step, setStep] = useState(0);
 
   const getInitialFormData = React.useCallback(() => {
     if (initialData) {
-      // Parse period to extract dates if available
       let startDate = new Date();
-      let endDate = new Date();
-      if (initialData.period) {
-        const parts = initialData.period.split(' - ');
+      let endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      if (initialData.period && typeof initialData.period === 'string') {
+        const parts = initialData.period.split(/\s*[-–]\s*/);
         if (parts.length === 2) {
-          try {
-            startDate = new Date(parts[0]);
-            endDate = new Date(parts[1]);
-          } catch (e) {
-            // Use defaults if parsing fails
-          }
+          const s = new Date(parts[0]);
+          const e = new Date(parts[1]);
+          if (!Number.isNaN(s.getTime())) startDate = s;
+          if (!Number.isNaN(e.getTime())) endDate = e;
         }
       }
+      if (initialData.endsAt) {
+        const e = new Date(String(initialData.endsAt));
+        if (!Number.isNaN(e.getTime())) endDate = e;
+      }
+
+      const rules = initialData.rules as { discountLogic?: string; minOrder?: string } | undefined;
+      const perf = initialData.performance as { discountDepth?: number } | undefined;
+      let discountType = 'percentage';
+      let discountValue = '';
+      if (perf?.discountDepth != null) {
+        discountValue = String(perf.discountDepth);
+      }
+      const logic = rules?.discountLogic || '';
+      if (logic.toLowerCase().includes('bogo')) discountType = 'bogo';
+      else if (logic.includes('₹')) discountType = 'flat';
+
+      const regionCode = String(initialData.region || '');
+      const regionLabel =
+        regionCode === 'eu' ? 'Europe' : regionCode === 'all' ? 'APAC' : (initialData.scope as string) || 'North America';
+
+      const skuList = Array.isArray(initialData.skus)
+        ? initialData.skus.map((sku: unknown) => {
+            if (typeof sku === 'string') return sku;
+            if (sku && typeof sku === 'object') {
+              const s = sku as Record<string, unknown>;
+              return String(s._id ?? s.id ?? s.sku ?? '');
+            }
+            return '';
+          }).filter(Boolean)
+        : [];
+
+      const owner = initialData.owner as { name?: string } | undefined;
       
       return {
-        name: initialData.name || '',
-        type: initialData.type?.toLowerCase() || '',
-        description: initialData.tagline || initialData.description || '',
-        owner: initialData.owner?.name || 'Alice L.',
-        startDate: initialData.startDate ? new Date(initialData.startDate) : startDate,
-        endDate: initialData.endDate ? new Date(initialData.endDate) : endDate,
-        region: initialData.scope || initialData.region || 'North America',
-        zones: initialData.zones || [],
-        skus: initialData.skus ?? [],
-        discountType: initialData.discountType || 'percentage',
-        discountValue: initialData.discountValue || '',
-        minOrderValue: initialData.minOrderValue || '',
-        approvers: initialData.approvers || ['Pricing Manager', 'Regional Head'],
-        target: initialData.target || ''
+        name: String(initialData.name || ''),
+        type: String(initialData.type || '').toLowerCase(),
+        description: String(initialData.tagline || initialData.description || ''),
+        owner: owner?.name || 'Alice L.',
+        startDate: initialData.startDate ? new Date(String(initialData.startDate)) : startDate,
+        endDate: initialData.endDate ? new Date(String(initialData.endDate)) : endDate,
+        region: regionLabel,
+        zones: (initialData.zones as string[]) || [],
+        skus: skuList,
+        discountType,
+        discountValue,
+        minOrderValue: rules?.minOrder?.replace(/[^\d.]/g, '') || '',
+        approvers: (initialData.approvers as string[]) || ['Pricing Manager', 'Regional Head'],
+        target: String(initialData.target || '')
       };
     }
     
@@ -103,8 +133,20 @@ export function CampaignWizard({ open, onOpenChange, initialData, onComplete, on
     if (!open) {
       setStep(0);
       setFormData(getInitialFormData());
-    } else if (initialData) {
+    } else {
       setFormData(getInitialFormData());
+      if (initialData && Array.isArray(initialData.skus) && initialData.skus.length > 0) {
+        catalogApi.getSKUs().then((resp) => {
+          const list = resp?.data ?? [];
+          if (Array.isArray(list)) {
+            setAvailableSkus(list.map((s: Record<string, unknown>) => ({
+              id: String(s.id ?? s._id ?? ''),
+              name: String(s.name ?? ''),
+              code: String(s.code ?? s.sku ?? ''),
+            })).filter((s: { id: string }) => s.id));
+          }
+        }).catch(() => {});
+      }
     }
   }, [open, initialData, getInitialFormData]);
 
@@ -142,22 +184,51 @@ export function CampaignWizard({ open, onOpenChange, initialData, onComplete, on
     (s.code ?? '').toLowerCase().includes(skuSearch.toLowerCase())
   );
 
-  const handleSubmit = () => {
-    toast.success("Campaign Submitted", {
-        description: `"${formData.name || 'Campaign'}" has been sent for approval.`
-    });
-    onComplete?.(formData);
-    onOpenChange(false);
-    setStep(0);
+  const validateForm = (): boolean => {
+    if (!formData.name?.trim()) {
+      toast.error('Campaign name is required');
+      setStep(0);
+      return false;
+    }
+    if (!formData.type) {
+      toast.error('Select a campaign type');
+      setStep(0);
+      return false;
+    }
+    if (!formData.endDate || !formData.startDate) {
+      toast.error('Set start and end dates');
+      setStep(1);
+      return false;
+    }
+    if (formData.endDate < formData.startDate) {
+      toast.error('End date must be after start date');
+      setStep(1);
+      return false;
+    }
+    return true;
   };
 
-  const handleSaveDraft = () => {
-    toast.info("Draft Saved", {
-        description: "You can find this campaign in your drafts."
-    });
-    onSave?.(formData);
-    onOpenChange(false);
-    setStep(0);
+  const handleSubmit = async () => {
+    if (!validateForm() || isSubmitting) return;
+    const ok = await onComplete?.(formData);
+    if (ok !== false) {
+      onOpenChange(false);
+      setStep(0);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!formData.name?.trim()) {
+      toast.error('Enter a campaign name to save a draft');
+      setStep(0);
+      return;
+    }
+    if (isSubmitting) return;
+    const ok = await onSave?.(formData);
+    if (ok !== false) {
+      onOpenChange(false);
+      setStep(0);
+    }
   };
 
   const handleNext = () => {
@@ -652,23 +723,32 @@ export function CampaignWizard({ open, onOpenChange, initialData, onComplete, on
                                 <Button 
                                     type="button"
                                     variant="outline" 
+                                    disabled={isSubmitting}
                                     onClick={(e) => {
                                         e.preventDefault();
-                                        handleSaveDraft();
+                                        void handleSaveDraft();
                                     }}
                                     className="h-11 px-6 font-black text-gray-600 border-2 border-gray-100 hover:bg-gray-50 rounded-xl"
                                 >
-                                    Save Draft
+                                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Draft'}
                                 </Button>
                                 <Button 
                                     type="button"
+                                    disabled={isSubmitting}
                                     className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white h-11 px-8 font-black shadow-lg shadow-purple-200 rounded-xl transition-all active:scale-95" 
                                     onClick={(e) => {
                                         e.preventDefault();
-                                        handleSubmit();
+                                        void handleSubmit();
                                     }}
                                 >
-                                    Launch Now
+                                    {isSubmitting ? (
+                                      <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving...
+                                      </>
+                                    ) : (
+                                      initialData ? 'Update Campaign' : 'Launch Now'
+                                    )}
                                 </Button>
                             </>
                         ) : (

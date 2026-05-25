@@ -99,35 +99,45 @@ export function MarginRiskView({ open, onOpenChange }: MarginRiskViewProps) {
     }, 1000);
   };
 
-  const handleSmartFix = () => {
-    const fixedRisks = risks.filter(r => !selectedSkus.includes(r.id));
-    setRisks(fixedRisks);
-    pricingApi.updateMarginRisks(fixedRisks);
-    toast.success(`Smart recommendations applied to ${selectedSkus.length} SKUs. Margins restored to >15% targets.`);
-    setSelectedSkus([]);
+  const handleSmartFix = async () => {
+    if (selectedSkus.length === 0) return;
+    try {
+      let fixed = 0;
+      for (const id of selectedSkus) {
+        const sku = risks.find(r => r.id === id);
+        if (!sku) continue;
+        await pricingApi.fixMarginRisk(sku, 15);
+        fixed += 1;
+      }
+      await loadRisks();
+      toast.success(`Smart fix applied to ${fixed} SKU(s). Margins restored to 15% target.`);
+      setSelectedSkus([]);
+    } catch (error) {
+      console.error('Error applying smart fix:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to apply smart fix');
+    }
   };
 
-  const handleAdjust = (sku: any) => {
-    // Calculate new price to achieve 15% margin
-    const targetMargin = 15;
-    const newPrice = sku.cost / (1 - targetMargin / 100);
-    const updatedRisk = {
-      ...sku,
-      sell: parseFloat(newPrice.toFixed(2)),
-      margin: targetMargin,
-      status: 'Fixed'
-    };
-    const updatedRisks = risks.map(r => r.id === sku.id ? updatedRisk : r);
-    setRisks(updatedRisks);
-    pricingApi.updateMarginRisks(updatedRisks);
-    toast.success(`Price adjusted for ${sku.name} to achieve ${targetMargin}% margin`);
+  const handleAdjust = async (sku: any) => {
+    try {
+      await pricingApi.fixMarginRisk(sku, 15);
+      await loadRisks();
+      toast.success(`Price adjusted for ${sku.name} to achieve 15% margin`);
+    } catch (error) {
+      console.error('Error adjusting price:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to adjust price');
+    }
   };
 
-  const handleMarkReviewed = (sku: any) => {
-    const updatedRisks = risks.filter(r => r.id !== sku.id);
-    setRisks(updatedRisks);
-    pricingApi.updateMarginRisks(updatedRisks);
-    toast.success(`${sku.name} marked as reviewed`);
+  const handleMarkReviewed = async (sku: any) => {
+    try {
+      await pricingApi.markMarginReviewed(sku.id ?? sku._id);
+      setRisks(risks.filter(r => r.id !== sku.id));
+      toast.success(`${sku.name} marked as reviewed`);
+    } catch (error) {
+      console.error('Error marking reviewed:', error);
+      toast.error('Failed to mark as reviewed');
+    }
   };
 
   return (

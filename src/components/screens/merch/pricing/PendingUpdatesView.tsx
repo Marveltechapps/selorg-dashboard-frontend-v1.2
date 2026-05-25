@@ -179,8 +179,8 @@ export function PendingUpdatesView({ open, onOpenChange }: PendingUpdatesViewPro
                                     <TableCell className="font-medium">{update.sku}</TableCell>
                                     <TableCell className="text-slate-500">₹{update.oldPrice.toFixed(2)}</TableCell>
                                     <TableCell className="font-bold text-slate-900">₹{update.newPrice.toFixed(2)}</TableCell>
-                                    <TableCell className={update.marginImpact.startsWith('+') ? "text-green-600" : "text-red-600"}>
-                                        {update.marginImpact}
+                                    <TableCell className={String(update.marginImpact ?? '').startsWith('+') ? "text-green-600" : "text-red-600"}>
+                                        {update.marginImpact ?? '—'}
                                     </TableCell>
                                     <TableCell>{update.date}</TableCell>
                                     <TableCell className="max-w-[200px] truncate" title={update.reason}>{update.reason}</TableCell>

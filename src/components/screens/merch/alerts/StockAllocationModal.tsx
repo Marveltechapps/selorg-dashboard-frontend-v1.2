@@ -5,8 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from './types';
+import { alertsApi } from './alertsApi';
 import { toast } from 'sonner';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 
 interface StockAllocationModalProps {
   isOpen: boolean;
@@ -15,21 +16,49 @@ interface StockAllocationModalProps {
   alert: Alert;
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  central: 'Central Warehouse',
+  north: 'North Hub',
+  east: 'East Hub',
+};
+
 export function StockAllocationModal({ isOpen, onClose, onResolve, alert }: StockAllocationModalProps) {
   const [quantity, setQuantity] = useState('500');
   const [source, setSource] = useState('central');
+  const [submitting, setSubmitting] = useState(false);
+  const destStore = alert.linkedEntities?.store ?? 'West End Hub';
 
-  const handleConfirm = () => {
-    if (!quantity || parseInt(quantity) <= 0) {
-        toast.error("Invalid Quantity", { description: "Please enter a valid number of units to transfer." });
-        return;
+  const handleConfirm = async () => {
+    if (!quantity || parseInt(quantity, 10) <= 0) {
+      toast.error('Invalid Quantity', { description: 'Please enter a valid number of units to transfer.' });
+      return;
     }
-
-    toast.success("Transfer Order Created", {
-      description: `${quantity} units requested from ${source === 'central' ? 'Central Warehouse' : source === 'north' ? 'North Hub' : 'East Hub'}. Order #${Math.floor(100000 + Math.random() * 900000)}`
-    });
-    onResolve();
-    onClose();
+    const alertId = alert.id || (alert as { _id?: string })._id;
+    if (!alertId) return;
+    setSubmitting(true);
+    try {
+      const resp = await alertsApi.allocateStock(String(alertId), {
+        source: SOURCE_LABELS[source] ?? source,
+        quantity: parseInt(quantity, 10),
+        toLocation: destStore,
+      });
+      const ref =
+        resp?.data?.transferOrder?.referenceNumber ??
+        resp?.data?.transferOrder?.transferId ??
+        '';
+      toast.success('Transfer Order Created', {
+        description: `${quantity} units from ${SOURCE_LABELS[source]} to ${destStore}${ref ? `. Ref: ${ref}` : ''}`,
+      });
+      onResolve();
+      onClose();
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+        : null;
+      toast.error(msg || 'Failed to create transfer order');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -46,7 +75,7 @@ export function StockAllocationModal({ isOpen, onClose, onResolve, alert }: Stoc
             <div className="bg-gray-50 p-3 rounded text-center">
                 <div className="text-xs text-gray-500 uppercase">Current Stock</div>
                 <div className="text-xl font-bold text-red-600">42</div>
-                <div className="text-xs text-gray-400">West End Hub</div>
+                <div className="text-xs text-gray-400">{destStore}</div>
             </div>
              <div className="flex justify-center text-gray-300">
                 <ArrowRight />
@@ -82,7 +111,9 @@ export function StockAllocationModal({ isOpen, onClose, onResolve, alert }: Stoc
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleConfirm}>Confirm Transfer</Button>
+          <Button onClick={handleConfirm} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm Transfer'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

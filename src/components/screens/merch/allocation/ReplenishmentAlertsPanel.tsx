@@ -59,8 +59,13 @@ export function ReplenishmentAlertsPanel() {
     loadAlerts();
   };
 
-  const handlePromoComplete = () => {
+  const handlePromoComplete = async () => {
     if (selectedAlert) {
+      try {
+        await allocationApi.dismissAlert(selectedAlert._id ?? selectedAlert.id ?? '');
+      } catch {
+        // modal may have already dismissed
+      }
       setAlerts(prev => prev.filter(a => (a._id ?? a.id) !== (selectedAlert._id ?? selectedAlert.id)));
       setSelectedAlert(null);
     }

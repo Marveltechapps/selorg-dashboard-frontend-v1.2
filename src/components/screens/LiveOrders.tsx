@@ -4,7 +4,8 @@ import { Filter, MoreHorizontal, Clock, Package, Bike, User, AlertCircle, ArrowR
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from "sonner";
-import { callCustomer, markRTO, updateOrder, cancelOrder, assignOrder, startPicking, completePicking, getOrderActionLogs } from '../../api/dashboard/orders.api';
+import { callCustomer, markRTO, updateOrder, cancelOrder, assignOrder, startPicking, completePicking, getOrderActionLogs, getOrderById } from '../../api/dashboard/orders.api';
+import { generateLabel } from '../../api/utilities/utilitiesApi';
 import { getAvailablePickers } from '../../api/darkstore/pickers.api';
 import { websocketService } from '../../utils/websocket';
 import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
@@ -43,6 +44,92 @@ const UI_TO_API_STATUS: Record<string, string> = {
 
 function toApiStatus(status: string): string {
   return UI_TO_API_STATUS[status] || status;
+}
+
+function resolveOrderId(order: { order_id?: string; id?: string }): string {
+  return String(order.order_id || order.id || '').replace(/^#/, '');
+}
+
+function mapBackendStatusToUi(status: string): string {
+  const statusMap: Record<string, string> = {
+    new: 'Queued',
+    queued: 'Queued',
+    processing: 'Assigned',
+    ASSIGNED: 'Assigned',
+    PICKING: 'Picking',
+    ready: 'Packing',
+    PICKED: 'Packing',
+    PACKED: 'Packing',
+    READY_FOR_DISPATCH: 'Ready for Dispatch',
+    cancelled: 'Cancelled',
+    rto: 'RTO',
+  };
+  return statusMap[status] || status;
+}
+
+function transformBackendOrder(order: any) {
+  return {
+    id: `#${order.order_id}`,
+    order_id: order.order_id,
+    customer: order.customer_name || 'Customer',
+    customerPhone: order.customer_phone || '',
+    deliveryAddress: order.delivery_address || 'Not available',
+    deliveryNotes: order.delivery_notes || '',
+    itemsList: (Array.isArray(order.items) ? order.items : []).map((it: any) => ({
+      productName: it.productName || 'Item',
+      quantity: it.quantity || 1,
+      price: it.price || 0,
+      image: it.image || '',
+      variantSize: it.variantSize || '',
+    })),
+    items: order.item_count ?? (Array.isArray(order.items) ? order.items.length : 0),
+    zone: order.zone || '',
+    sla: order.sla_timer,
+    sla_deadline: order.sla_deadline,
+    status: mapBackendStatusToUi(order.status),
+    bagId: order.bagId || '',
+    rackLocation: order.rackLocation || '',
+    readyForDispatch: !!(order.bagId && order.rackLocation),
+    urgency: order.sla_status === 'critical' ? 'critical' : order.sla_status === 'warning' ? 'warning' : 'normal',
+    assignee: order.assignee?.name || order.pickerAssignment?.pickerName || '-',
+    assigneeId: order.assignee?.id || order.pickerAssignment?.pickerId || '',
+    assigneeInitials: order.assignee?.initials || order.pickerAssignment?.pickerName?.slice(0, 2).toUpperCase() || 'UA',
+    order_type: order.order_type,
+    created_at: order.created_at,
+    timeline: order.timeline || [],
+    pickingData: order.pickingData || {},
+    pickerAssignment: order.pickerAssignment || {},
+    missingItems: (order.pickingData?.missingItems || order.missingItems || []).map((mi: any) => ({
+      productName: mi.productName || 'Item',
+      expectedQty: mi.orderedQty ?? mi.quantity ?? mi.expectedQty ?? '—',
+      quantity: mi.scannedQty ?? mi.quantity ?? '—',
+      status: (mi.orderedQty ?? 0) > (mi.scannedQty ?? 0) ? 'not_found' : (mi.status || 'not_found'),
+      pickerName: order.pickerAssignment?.pickerName || mi.pickerName || mi.markedBy || '—',
+    })),
+    supportTicketId: order.supportTicketId || '',
+    refundStatus: order.refundStatus || '',
+    cancellationReason: order.cancellationReason || '',
+    itemStatus: order.itemStatus || {},
+    payment_status: order.payment_status || 'pending',
+    payment_method: order.payment_method || 'cash',
+    total_bill: order.total_bill || 0,
+  };
+}
+
+function applyAssignResponseToOrder(order: any, res: any) {
+  const assigneeName = res.assignee?.name ?? res.pickerAssignment?.pickerName ?? order.assignee;
+  const assigneeId = res.assignee?.id ?? res.pickerAssignment?.pickerId ?? order.assigneeId ?? '';
+  const initials =
+    res.assignee?.initials ??
+    (assigneeName && assigneeName !== '-' ? assigneeName.split(/\s+/).map((s: string) => s[0]).join('').substring(0, 3).toUpperCase() : order.assigneeInitials);
+  return {
+    ...order,
+    status: res.status ? mapBackendStatusToUi(res.status) : order.status,
+    assignee: assigneeName || order.assignee,
+    assigneeId,
+    assigneeInitials: initials || 'UA',
+    pickerAssignment: res.pickerAssignment ?? order.pickerAssignment,
+  };
 }
 
 function AssignPickerContent({
@@ -130,6 +217,8 @@ export function LiveOrders() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [statusDialog, setStatusDialog] = useState({ open: false, orderId: '', currentStatus: '', newStatus: '' });
   const [assignDialog, setAssignDialog] = useState({ open: false, orderId: '', order: null as any });
+  const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -182,53 +271,7 @@ export function LiveOrders() {
           return;
         }
 
-        // Transform backend orders to frontend format
-        const transformedOrders = data.orders.map((order: any) => ({
-          id: `#${order.order_id}`,
-          order_id: order.order_id,
-          customer: order.customer_name || 'Customer',
-          customerPhone: order.customer_phone || '',
-          deliveryAddress: order.delivery_address || 'Not available',
-          deliveryNotes: order.delivery_notes || '',
-          itemsList: (Array.isArray(order.items) ? order.items : []).map((it: any) => ({
-            productName: it.productName || 'Item',
-            quantity: it.quantity || 1,
-            price: it.price || 0,
-            image: it.image || '',
-            variantSize: it.variantSize || '',
-          })),
-          items: order.item_count,
-          zone: order.zone || '',
-          sla: order.sla_timer,
-          sla_deadline: order.sla_deadline,
-          status: order.status === 'new' ? 'Queued' : order.status === 'processing' || order.status === 'ASSIGNED' ? 'Assigned' : order.status === 'PICKING' ? 'Picking' : order.status === 'ready' || order.status === 'PICKED' || order.status === 'PACKED' ? 'Packing' : order.status === 'READY_FOR_DISPATCH' ? 'Ready for Dispatch' : 'Queued',
-          bagId: order.bagId || '',
-          rackLocation: order.rackLocation || '',
-          readyForDispatch: !!(order.bagId && order.rackLocation),
-          urgency: order.sla_status === 'critical' ? 'critical' : order.sla_status === 'warning' ? 'warning' : 'normal',
-          assignee: order.assignee?.name || order.pickerAssignment?.pickerName || '-',
-          assigneeId: order.assignee?.id || order.pickerAssignment?.pickerId || '',
-          assigneeInitials: order.assignee?.initials || 'UA',
-          order_type: order.order_type,
-          created_at: order.created_at,
-          timeline: order.timeline || [],
-          pickingData: order.pickingData || {},
-          pickerAssignment: order.pickerAssignment || {},
-          missingItems: (order.pickingData?.missingItems || order.missingItems || []).map((mi: any) => ({
-            productName: mi.productName || 'Item',
-            expectedQty: mi.orderedQty ?? mi.quantity ?? mi.expectedQty ?? '—',
-            quantity: mi.scannedQty ?? mi.quantity ?? '—',
-            status: (mi.orderedQty ?? 0) > (mi.scannedQty ?? 0) ? 'not_found' : (mi.status || 'not_found'),
-            pickerName: order.pickerAssignment?.pickerName || mi.pickerName || mi.markedBy || '—',
-          })),
-          supportTicketId: order.supportTicketId || '',
-          refundStatus: order.refundStatus || '',
-          cancellationReason: order.cancellationReason || '',
-          itemStatus: order.itemStatus || {},
-          payment_status: order.payment_status || 'pending',
-          payment_method: order.payment_method || 'cash',
-          total_bill: order.total_bill || 0,
-        }));
+        const transformedOrders = data.orders.map((order: any) => transformBackendOrder(order));
         setOrders(transformedOrders);
         setIsLoading(false);
       } catch (err) {
@@ -478,7 +521,38 @@ export function LiveOrders() {
     setSelectedOrderIds(newSelected);
   };
 
-  const handleBulkAction = (action: string) => {
+  const handleBulkAction = async (action: string) => {
+    const selected = orders.filter((o) => selectedOrderIds.has(o.id));
+    if (selected.length === 0) {
+      setSelectedOrderIds(new Set());
+      return;
+    }
+    if (action === 'Print Labels') {
+      try {
+        for (const order of selected) {
+          const oid = resolveOrderId(order);
+          await generateLabel(
+            { searchTerm: oid, labelType: 'item_barcode', quantity: 1 },
+            storeId
+          );
+        }
+        toast.success(`Labels queued for ${selected.length} order(s)`);
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to print labels');
+      }
+      setSelectedOrderIds(new Set());
+      return;
+    }
+    if (action === 'Assign') {
+      if (selected.length === 1) {
+        const order = selected[0];
+        setAssignDialog({ open: true, orderId: resolveOrderId(order), order });
+      } else {
+        toast.info('Select one order for bulk assign, or assign individually from the row menu');
+      }
+      setSelectedOrderIds(new Set());
+      return;
+    }
     toast.success(`${action} applied to ${selectedOrderIds.size} orders`);
     setSelectedOrderIds(new Set());
   };
@@ -532,26 +606,58 @@ export function LiveOrders() {
     toast.info("All filters cleared");
   };
 
-  const handleViewDetails = (order: any) => {
+  const handleViewDetails = async (order: any) => {
     setSelectedOrder(order);
     setIsDetailsOpen(true);
+    const oid = resolveOrderId(order);
+    setLoadingOrderDetails(true);
+    try {
+      const res = await getOrderById(oid, storeId);
+      if (res?.order) {
+        const fresh = transformBackendOrder(res.order);
+        setSelectedOrder(fresh);
+        setOrders((prev) => prev.map((o) => (o.order_id === oid ? { ...o, ...fresh, sla: o.sla, urgency: o.urgency } : o)));
+      }
+    } catch {
+      /* keep list row data */
+    } finally {
+      setLoadingOrderDetails(false);
+    }
   };
 
-  const handlePrintLabel = (orderId: string) => {
-    toast.success(`Label printed for order ${orderId}`);
+  const handlePrintLabel = async (order: { order_id?: string; id?: string }) => {
+    const oid = resolveOrderId(order);
+    if (!oid) return;
+    try {
+      setPrintingOrderId(oid);
+      const res = await generateLabel(
+        { searchTerm: oid, labelType: 'item_barcode', quantity: 1 },
+        storeId
+      );
+      toast.success(res.message || `Label queued for order ${oid} (Job: ${res.printJobId})`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to print label');
+    } finally {
+      setPrintingOrderId(null);
+    }
   };
 
-  const handleCancelOrder = (orderId: string) => {
-    setCancelDialog({ open: true, orderId });
+  const openAssignPicker = (order: any) => {
+    setAssignDialog({ open: true, orderId: resolveOrderId(order), order });
+  };
+
+  const handleCancelOrder = (order: { order_id?: string; id?: string }) => {
+    const displayId = order.id || `#${resolveOrderId(order)}`;
+    setCancelDialog({ open: true, orderId: displayId });
   };
 
   const confirmCancelOrder = async () => {
-    const rawId = cancelDialog.orderId.replace(/^#/, '');
-    const orderIdToRemove = cancelDialog.orderId;
+    const rawId = resolveOrderId({ id: cancelDialog.orderId, order_id: cancelDialog.orderId });
+    const orderIdToRemove = cancelDialog.orderId.startsWith('#') ? cancelDialog.orderId : `#${rawId}`;
     try {
       setIsCancelling(true);
-      await cancelOrder(rawId);
-      setOrders(prev => prev.filter(o => o.id !== orderIdToRemove && o.order_id !== rawId));
+      await cancelOrder(rawId, 'Cancelled from live order board');
+      setOrders((prev) => prev.filter((o) => o.order_id !== rawId && o.id !== orderIdToRemove));
       if (selectedOrder?.id === orderIdToRemove || selectedOrder?.order_id === rawId) setIsDetailsOpen(false);
       toast.success(`Order ${orderIdToRemove} has been cancelled`);
       setCancelDialog({ open: false, orderId: '' });
@@ -903,7 +1009,7 @@ export function LiveOrders() {
                       ) : (
                         <button
                           className="text-[#1677FF] text-xs font-bold hover:underline"
-                          onClick={() => setAssignDialog({ open: true, orderId: order.order_id, order })}
+                          onClick={() => openAssignPicker(order)}
                         >
                           + Assign
                         </button>
@@ -950,21 +1056,41 @@ export function LiveOrders() {
                             <MoreHorizontal size={20} />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => handleViewDetails(order)}>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void handleViewDetails(order);
+                            }}
+                          >
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handlePrintLabel(order.id)}>
-                            Print Label
+                          <DropdownMenuItem
+                            disabled={printingOrderId === resolveOrderId(order)}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void handlePrintLabel(order);
+                            }}
+                          >
+                            {printingOrderId === resolveOrderId(order) ? 'Printing…' : 'Print Label'}
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setAssignDialog({ open: true, orderId: order.order_id, order })}>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              openAssignPicker(order);
+                            }}
+                          >
                             <User className="mr-2 h-4 w-4" /> Assign Picker
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                            onClick={() => handleCancelOrder(order.id)}
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={order.status === 'Cancelled' || order.status === 'cancelled'}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              handleCancelOrder(order);
+                            }}
                           >
                             Cancel Order
                           </DropdownMenuItem>
@@ -1423,13 +1549,18 @@ export function LiveOrders() {
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-4">
                   <button 
-                    onClick={() => {
-                      handlePrintLabel(selectedOrder.id);
-                      setIsDetailsOpen(false);
-                    }}
+                    onClick={() => void handlePrintLabel(selectedOrder)}
+                    disabled={printingOrderId === resolveOrderId(selectedOrder)}
+                    className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    {printingOrderId === resolveOrderId(selectedOrder) ? 'Printing…' : 'Print Label'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAssignPicker(selectedOrder)}
                     className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    Print Label
+                    Assign Picker
                   </button>
                   
                   <DropdownMenu>
@@ -1500,34 +1631,35 @@ export function LiveOrders() {
             storeId={storeId}
             onAssign={async (pickerId, pickerName) => {
               try {
-                await assignOrder(assignDialog.orderId, { pickerId, pickerName });
-                setOrders(prev => prev.map(o =>
-                  o.order_id === assignDialog.orderId
-                    ? { ...o, assignee: pickerName, assigneeId: pickerId, assigneeInitials: pickerName.split(/\s+/).map(s => s[0]).join('').substring(0, 3).toUpperCase() || 'UA' }
-                    : o
-                ));
+                const res = await assignOrder(assignDialog.orderId, { pickerId, pickerName });
+                setOrders((prev) =>
+                  prev.map((o) =>
+                    o.order_id === assignDialog.orderId ? applyAssignResponseToOrder(o, res) : o
+                  )
+                );
                 if (selectedOrder?.order_id === assignDialog.orderId) {
-                  setSelectedOrder((prev: any) => prev ? { ...prev, assignee: pickerName } : prev);
+                  setSelectedOrder((prev: any) => (prev ? applyAssignResponseToOrder(prev, res) : prev));
                 }
                 setAssignDialog({ open: false, orderId: '', order: null });
-                toast.success(`Order assigned to ${pickerName}`);
+                toast.success(res.message || `Order assigned to ${pickerName}`);
               } catch (err: any) {
                 toast.error(err.message || 'Failed to assign order');
               }
             }}
             onAutoAssign={async () => {
               try {
-                const available = await getAvailablePickers({ storeId });
-                if (!available?.data || available.data.length === 0) {
-                  throw new Error('No available picker in the selected store. Try manual assignment after picker login.');
-                }
-                await assignOrder(assignDialog.orderId, { autoAssign: true });
-                await loadOrders();
+                const res = await assignOrder(assignDialog.orderId, { autoAssign: true });
+                setOrders((prev) =>
+                  prev.map((o) =>
+                    o.order_id === assignDialog.orderId ? applyAssignResponseToOrder(o, res) : o
+                  )
+                );
                 if (selectedOrder?.order_id === assignDialog.orderId) {
-                  setSelectedOrder((prev: any) => prev ? { ...prev, assignee: 'Auto-assigned' } : prev);
+                  setSelectedOrder((prev: any) => (prev ? applyAssignResponseToOrder(prev, res) : prev));
                 }
                 setAssignDialog({ open: false, orderId: '', order: null });
-                toast.success('Order auto-assigned');
+                const name = res.assignee?.name ?? res.pickerAssignment?.pickerName ?? 'picker';
+                toast.success(res.message || `Order auto-assigned to ${name}`);
               } catch (err: any) {
                 toast.error(err.message || 'Failed to auto-assign order');
               }

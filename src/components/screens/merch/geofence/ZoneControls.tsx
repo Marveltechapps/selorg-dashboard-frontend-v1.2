@@ -66,7 +66,7 @@ export function ZoneControls({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onEditZone(zone)}>Edit Zone</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onZoneClick(zone)}>View Details</DropdownMenuItem>
-                  <DropdownMenuItem className="text-red-600" onClick={() => onArchiveZone(zone)}>Archive Zone</DropdownMenuItem>
+                  <DropdownMenuItem className="text-red-600" onClick={() => onArchiveZone(zone)}>Delete zone</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

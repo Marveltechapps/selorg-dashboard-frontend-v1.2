@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Bike, Truck, Clock, AlertTriangle, CheckCircle2, 
   MapPin, User, ArrowRight, Package, Search, Filter,
-  Share2, ClipboardList, Timer, Navigation, RefreshCw, History, ChevronRight, X, ShieldCheck, BadgeAlert
+  Timer, Navigation, RefreshCw, History, ChevronRight, X, ShieldCheck, BadgeAlert
 } from 'lucide-react';
 import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 import { cn } from "../../lib/utils";
@@ -80,7 +80,6 @@ function RiderMap({ riders }: { riders: outboundApi.Rider[] }) {
 }
 
 export function OutboundOps() {
-  const [activeTab, setActiveTab] = useState<'dispatch' | 'transfers'>('dispatch');
   const [summary, setSummary] = useState<outboundApi.OutboundSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const { activeStoreId } = useAuth();
@@ -120,7 +119,7 @@ export function OutboundOps() {
     <div className="space-y-6">
       <PageHeader
         title="Outbound Operations"
-        subtitle="Manage rider dispatch, fleet coordination, and store-to-store transfers."
+        subtitle="Manage rider dispatch and fleet coordination."
         actions={
           <div className="flex gap-4 items-center">
             <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
@@ -134,48 +133,14 @@ export function OutboundOps() {
                 </div>
               </div>
             </div>
-            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-[#FFF7E6] text-[#D46B08] rounded-lg">
-                <Share2 size={20} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-[#757575]">Transfer Reqs</div>
-                <div className="font-bold text-[#212121]">
-                  {loading ? '...' : `${summary?.summary.pending_transfers || 0} Pending`}
-                </div>
-              </div>
-            </div>
           </div>
         }
       />
 
-      <div className="flex items-center gap-1 border-b border-[#E0E0E0] mb-6 overflow-x-auto">
-        <TabButton id="dispatch" label="Dispatch Queue" icon={Navigation} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="transfers" label="Inter-Store Transfers" icon={Share2} active={activeTab} onClick={setActiveTab} />
-      </div>
-
       <div className="min-h-[500px]">
-        {activeTab === 'dispatch' && <DispatchTab summary={summary} reloadSummary={loadSummary} />}
-        {activeTab === 'transfers' && <OutboundTransfersTab reloadSummary={loadSummary} />}
+        <DispatchTab summary={summary} reloadSummary={loadSummary} />
       </div>
     </div>
-  );
-}
-
-function TabButton({ id, label, icon: Icon, active, onClick }: any) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      className={cn(
-        "flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 whitespace-nowrap",
-        active === id 
-          ? "border-[#1677FF] text-[#1677FF] bg-[#F0F7FF]" 
-          : "border-transparent text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5]"
-      )}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
   );
 }
 
@@ -483,264 +448,6 @@ function DispatchTab({ summary, reloadSummary }: { summary: outboundApi.Outbound
            onActionSuccess={() => setLastActionTime(new Date())}
          />
        )}
-    </div>
-  );
-}
-
-function OutboundTransfersTab({ reloadSummary }: { reloadSummary: () => void }) {
-  const [transfers, setTransfers] = useState<outboundApi.TransferRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [slaSummary, setSlaSummary] = useState<outboundApi.SLASummary | null>(null);
-  const [fulfillment, setFulfillment] = useState<outboundApi.FulfillmentStatus | null>(null);
-  const [showFulfillmentHistory, setShowFulfillmentHistory] = useState(false);
-  const [timerText, setTimerText] = useState('00:00');
-  const [startTime] = useState(new Date());
-
-  useEffect(() => {
-    loadTransfers();
-    loadSlaSummary();
-  }, []);
-
-  useEffect(() => {
-    websocketService.connect();
-
-    const handleTransfersUpdated = () => {
-      loadTransfers();
-      loadSlaSummary();
-      reloadSummary();
-    };
-
-    websocketService.on('outbound:transfers_updated', handleTransfersUpdated);
-
-    return () => {
-      websocketService.off('outbound:transfers_updated', handleTransfersUpdated);
-    };
-  }, [reloadSummary]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = new Date().getTime() - startTime.getTime();
-      const minutes = Math.floor(diff / 60000);
-      const seconds = Math.floor((diff % 60000) / 1000);
-      setTimerText(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [startTime]);
-
-  const loadTransfers = async () => {
-    setLoading(true);
-    try {
-      const data = await outboundApi.fetchTransferRequests();
-      const list = data.transfer_requests || [];
-      setTransfers(list);
-      const activeTransfer = list.find((t: any) => t.status === 'approved' || t.status === 'in_progress');
-      if (activeTransfer) {
-        loadFulfillment(activeTransfer.request_id);
-      }
-    } catch (error) {
-      console.error('Failed to load transfers:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadSlaSummary = async () => {
-    try {
-      const data = await outboundApi.fetchTransferSLASummary();
-      setSlaSummary(data);
-    } catch (error) {
-      console.error('Failed to load SLA summary:', error);
-    }
-  };
-
-  const loadFulfillment = async (requestId: string) => {
-    try {
-      const data = await outboundApi.fetchTransferFulfillmentStatus(requestId);
-      setFulfillment(data);
-    } catch (error) {
-      console.error('Failed to load fulfillment status:', error);
-    }
-  };
-
-  const handleApprove = async (requestId: string) => {
-    try {
-      await outboundApi.approveTransferRequest(requestId);
-      toast.success('Transfer request approved');
-      loadTransfers();
-      reloadSummary();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to approve');
-    }
-  };
-
-  const handleReject = async (requestId: string) => {
-    try {
-      await outboundApi.rejectTransferRequest(requestId);
-      toast.success('Transfer request rejected');
-      loadTransfers();
-      reloadSummary();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to reject');
-    }
-  };
-
-  return (
-    <div className="grid grid-cols-12 gap-6">
-       <div className="col-span-12 md:col-span-8 bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-             <h3 className="font-bold text-[#212121]">Transfer Requests</h3>
-             {transfers.filter((r: any) => r.status === 'pending').length > 0 && (
-              <span className="text-[10px] font-bold text-[#EF4444] bg-[#FEE2E2] px-2 py-1 rounded uppercase">
-                {transfers.filter((r: any) => r.status === 'pending').length} Pending
-              </span>
-            )}
-          </div>
-          
-          <div className="flex-1 overflow-y-auto min-h-[400px]">
-             {loading ? (
-               <LoadingState text="Loading transfers..." />
-             ) : transfers.length === 0 ? (
-               <EmptyState title="No transfer requests" description="No stores are currently requesting stock." icon={Share2} />
-             ) : (
-               <div className="divide-y divide-[#F0F0F0]">
-                 {transfers.map(request => (
-                   <div key={request.request_id} className="p-4 hover:bg-[#F9FAFB] transition-colors">
-                      <div className="flex justify-between items-start mb-2">
-                         <div>
-                            <div className="font-bold text-[#212121]">{request.to_store}</div>
-                            <div className="text-xs text-[#757575]">ID: {request.request_id} • {request.items_count} Items</div>
-                         </div>
-                         <div className="text-right">
-                            <span className={cn(
-                              "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                              request.priority === 'Critical' ? "bg-red-100 text-red-700" :
-                              request.priority === 'High' ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"
-                            )}>
-                               {request.priority}
-                            </span>
-                            <div className="text-[10px] text-[#EF4444] font-bold mt-1 flex items-center gap-1">
-                               <Clock size={10} /> {request.sla_remaining}
-                            </div>
-                         </div>
-                      </div>
-                      
-                      {request.status === 'pending' && (
-                        <div className="flex gap-2 mt-4">
-                           <Button 
-                            onClick={() => handleApprove(request.request_id)}
-                            className="flex-1 bg-[#1677FF] hover:bg-[#409EFF] text-white text-xs h-8"
-                           >
-                             Approve
-                           </Button>
-                           <Button 
-                            onClick={() => handleReject(request.request_id)}
-                            variant="outline"
-                            className="flex-1 text-xs h-8"
-                           >
-                             Reject
-                           </Button>
-                        </div>
-                      )}
-                      
-                      {request.status !== 'pending' && (
-                        <div className="mt-4 flex items-center gap-2">
-                           <span className="text-[10px] font-bold uppercase text-[#757575]">Status:</span>
-                           <span className="text-xs font-bold text-[#212121] capitalize">{request.status}</span>
-                        </div>
-                      )}
-                   </div>
-                 ))}
-               </div>
-             )}
-          </div>
-       </div>
-
-       <div className="col-span-12 md:col-span-4 space-y-6">
-          <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-[#212121] flex items-center gap-2">
-                   <ClipboardList size={18} /> Fulfillment Tracker
-                </h3>
-                {fulfillment && (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 bg-[#F5F5F5] px-2 py-0.5 rounded border border-[#E0E0E0]">
-                      <Timer size={12} className="text-[#757575]" />
-                      <span className="text-[10px] font-mono font-bold text-[#212121]">{timerText}</span>
-                    </div>
-                    <button 
-                      onClick={() => setShowFulfillmentHistory(!showFulfillmentHistory)}
-                      className={cn(
-                        "p-1 rounded transition-colors",
-                        showFulfillmentHistory ? "bg-[#1677FF] text-white" : "text-[#757575] hover:bg-[#F5F5F5]"
-                      )}
-                    >
-                      <History size={14} />
-                    </button>
-                  </div>
-                )}
-             </div>
-             
-             {showFulfillmentHistory ? (
-               <div className="min-h-[150px] max-h-[300px] overflow-y-auto">
-                 <ActionHistoryViewer module="outbound" action="APPROVE_TRANSFER" limit={5} />
-               </div>
-             ) : fulfillment ? (
-               <div className="space-y-4">
-                  <div className="p-3 bg-[#F0F7FF] rounded-lg border border-[#BAE7FF]">
-                     <div className="text-xs font-bold text-[#1677FF] mb-1">REQ: {fulfillment.request_id}</div>
-                     <div className="text-[10px] text-[#003A8C] mb-3">Status: {fulfillment.status.replace('_', ' ')}</div>
-                     
-                     <div className="space-y-1 mb-3">
-                        <div className="flex justify-between text-[10px] font-bold">
-                           <span>Picking Progress</span>
-                           <span>{fulfillment.picking_progress.picked}/{fulfillment.picking_progress.total}</span>
-                        </div>
-                        <div className="h-1.5 bg-white rounded-full overflow-hidden">
-                           <div 
-                            className="h-full bg-[#1677FF] transition-all" 
-                            style={{ width: `${fulfillment.picking_progress.percentage}%` }}
-                           />
-                        </div>
-                     </div>
-                     
-                     <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-[#BAE7FF]">
-                        <div>
-                           <div className="text-[9px] text-[#757575] uppercase font-bold">Picker</div>
-                           <div className="text-xs font-bold">{fulfillment.picker?.name || 'Assigned'}</div>
-                        </div>
-                        <div>
-                           <div className="text-[9px] text-[#757575] uppercase font-bold">Vehicle</div>
-                           <div className="text-xs font-bold">{fulfillment.vehicle_id || 'Van-04'}</div>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-             ) : (
-               <div className="py-8 text-center border-2 border-dashed border-[#F0F0F0] rounded-lg">
-                  <Package className="mx-auto text-[#D9D9D9] mb-2" size={24} />
-                  <p className="text-xs text-[#757575]">No active fulfillment</p>
-               </div>
-             )}
-          </div>
-
-          <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <h3 className="font-bold text-[#212121] mb-4">Today's Transfer SLA</h3>
-             <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                   <span className="text-xs text-[#616161]">On-Time Dispatch</span>
-                   <span className="text-sm font-bold text-[#16A34A]">{slaSummary?.on_time_dispatch_percentage || 0}%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                   <span className="text-xs text-[#616161]">Average Prep Time</span>
-                   <span className="text-sm font-bold text-[#212121]">{slaSummary?.average_prep_time || '0m'}</span>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-[#F0F0F0]">
-                   <span className="text-xs text-[#616161]">Total Transfers</span>
-                   <span className="text-sm font-bold text-[#212121]">{slaSummary?.total_transfers || 0}</span>
-                </div>
-             </div>
-          </div>
-       </div>
     </div>
   );
 }

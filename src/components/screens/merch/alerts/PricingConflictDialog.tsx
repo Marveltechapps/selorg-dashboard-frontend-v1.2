@@ -5,7 +5,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Alert } from './types';
+import { alertsApi } from './alertsApi';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 interface PricingConflictDialogProps {
   isOpen: boolean;
@@ -16,14 +18,32 @@ interface PricingConflictDialogProps {
 
 export function PricingConflictDialog({ isOpen, onClose, onResolve, alert }: PricingConflictDialogProps) {
   const [resolutionType, setResolutionType] = useState('adjust');
-  const [marginAdjustment, setMarginAdjustment] = useState(10); // Dummy value for slider
+  const [marginAdjustment, setMarginAdjustment] = useState(10);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleConfirm = () => {
-    toast.success("Pricing conflict resolved", {
-      description: "Campaign parameters have been updated successfully."
-    });
-    onResolve();
-    onClose();
+  const campaigns = alert.linkedEntities?.campaigns ?? [];
+  const campA = campaigns[0];
+  const campB = campaigns[1];
+
+  const handleConfirm = async () => {
+    const alertId = alert.id || (alert as { _id?: string })._id;
+    if (!alertId) return;
+    setSubmitting(true);
+    try {
+      await alertsApi.resolvePricingConflict(String(alertId), {
+        resolutionType,
+        marginCap: marginAdjustment,
+      });
+      toast.success('Pricing conflict resolved', {
+        description: 'Campaign parameters have been updated successfully.',
+      });
+      onResolve();
+      onClose();
+    } catch {
+      toast.error('Failed to resolve pricing conflict');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -40,13 +60,13 @@ export function PricingConflictDialog({ isOpen, onClose, onResolve, alert }: Pri
           <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
             <div className="border p-3 rounded bg-white shadow-sm">
               <div className="font-bold text-sm text-gray-900">Campaign A</div>
-              <div className="text-[11px] text-gray-500 font-medium">Summer Sale</div>
+              <div className="text-[11px] text-gray-500 font-medium">{campA?.name ?? 'Campaign A'}</div>
               <div className="text-sm font-black text-red-600 mt-1.5">-20% Discount</div>
               <div className="text-[10px] text-gray-400 mt-2 font-bold uppercase tracking-wider">Priority: High</div>
             </div>
             <div className="border p-3 rounded bg-white shadow-sm">
               <div className="font-bold text-sm text-gray-900">Campaign B</div>
-              <div className="text-[11px] text-gray-500 font-medium">Dairy Promo</div>
+              <div className="text-[11px] text-gray-500 font-medium">{campB?.name ?? 'Campaign B'}</div>
               <div className="text-sm font-black text-red-600 mt-1.5">-15% Discount</div>
               <div className="text-[10px] text-gray-400 mt-2 font-bold uppercase tracking-wider">Priority: Medium</div>
             </div>
@@ -107,7 +127,9 @@ export function PricingConflictDialog({ isOpen, onClose, onResolve, alert }: Pri
 
         <DialogFooter className="p-6 border-t bg-gray-50/50">
           <Button variant="outline" onClick={onClose} className="h-9 text-xs font-bold">Cancel</Button>
-          <Button onClick={handleConfirm} className="h-9 text-xs font-bold bg-[#7C3AED] hover:bg-[#6D28D9]">Apply Resolution</Button>
+          <Button onClick={handleConfirm} disabled={submitting} className="h-9 text-xs font-bold bg-[#7C3AED] hover:bg-[#6D28D9]">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply Resolution'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

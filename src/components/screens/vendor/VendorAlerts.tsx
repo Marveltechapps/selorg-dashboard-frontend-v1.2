@@ -62,8 +62,27 @@ export function VendorAlerts() {
       setLoading(true);
       setError(null);
       const resp = await vendorInventoryApi.getGlobalAlerts({ status: 'all', page: 1, limit: 30 });
-      const items = (resp?.items ?? resp?.alerts ?? []) as VendorAlertItem[];
-      setAlerts(Array.isArray(items) ? items : []);
+      const raw = (resp?.alerts ?? resp?.items ?? []) as Array<Record<string, unknown>>;
+      const items: VendorAlertItem[] = Array.isArray(raw)
+        ? raw.map((row) => ({
+            id: String(row.id ?? row._id ?? ''),
+            type: String(row.type ?? 'other'),
+            title: String(row.title ?? row.productName ?? row.type ?? 'Alert'),
+            description: String(row.description ?? row.message ?? ''),
+            priority: row.priority != null ? String(row.priority) : undefined,
+            status: row.status != null ? String(row.status) : undefined,
+            createdAt: row.createdAt != null ? String(row.createdAt) : undefined,
+            lastUpdatedAt:
+              row.lastUpdatedAt != null
+                ? String(row.lastUpdatedAt)
+                : row.updatedAt != null
+                  ? String(row.updatedAt)
+                  : undefined,
+            timeline: Array.isArray(row.timeline) ? (row.timeline as VendorAlertItem['timeline']) : undefined,
+            source: row.source && typeof row.source === 'object' ? (row.source as Record<string, unknown>) : undefined,
+          }))
+        : [];
+      setAlerts(items.filter((a) => a.id));
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Failed to load alerts';
       setError(message);

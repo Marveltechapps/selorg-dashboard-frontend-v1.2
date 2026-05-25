@@ -9,7 +9,9 @@ import {
   TestTube,
   Search,
   Loader2,
-  Plus
+  Plus,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
@@ -17,8 +19,12 @@ import { cn } from '../../../lib/utils';
 import {
   fetchQCInspections,
   createQCInspection,
+  updateQCInspection,
+  deleteQCInspection,
   fetchQCLabTests,
   createQCLabTest,
+  updateQCLabTest,
+  deleteQCLabTest,
   updateQCLabTestStatus,
   type QCInspection as Inspection,
   type QCLabTest as LabTest,
@@ -29,8 +35,13 @@ export function ProductionQC() {
   const queryClient = useQueryClient();
   const { selectedFactoryId } = useProductionFactory();
   const [activeTab, setActiveTab] = useState<'inspections' | 'lab_tests'>('inspections');
-  const [showInspectionModal, setShowInspectionModal] = useState(false);
-  const [showLabTestModal, setShowLabTestModal] = useState(false);
+  const [inspectionFormMode, setInspectionFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
+  const [inspectionToDelete, setInspectionToDelete] = useState<Inspection | null>(null);
+  const [labFormMode, setLabFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editingLabSampleId, setEditingLabSampleId] = useState<string | null>(null);
+  const [labTestToDelete, setLabTestToDelete] = useState<LabTest | null>(null);
+  const [labResultModal, setLabResultModal] = useState<{ sampleId: string; result: string } | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState<Inspection | LabTest | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -46,85 +57,257 @@ export function ProductionQC() {
     enabled: !!selectedFactoryId,
   });
 
-  const createInspectionMutation = useMutation({
-    mutationFn: (body: { batch: string; checkType: string; result: 'pass' | 'fail' | 'pending'; inspector: string; notes?: string }) =>
-      createQCInspection(body, selectedFactoryId || undefined),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'inspections', selectedFactoryId] });
-      toast.success('Inspection logged successfully');
+  const invalidateQC = () => {
+    queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'inspections', selectedFactoryId] });
+    queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests', selectedFactoryId] });
+  };
+
+  const saveInspectionMutation = useMutation({
+    mutationFn: async (payload: {
+      mode: 'create' | 'edit';
+      id?: string;
+      body: { batch: string; checkType: string; result: 'pass' | 'fail' | 'pending'; inspector: string; notes?: string };
+    }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (payload.mode === 'create') {
+        return createQCInspection(payload.body, selectedFactoryId);
+      }
+      if (!payload.id) throw new Error('Missing inspection id');
+      return updateQCInspection(payload.id, payload.body, selectedFactoryId);
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to log inspection'),
+    onSuccess: (_, vars) => {
+      invalidateQC();
+      toast.success(vars.mode === 'create' ? 'Inspection logged successfully' : 'Inspection updated');
+      setInspectionFormMode(null);
+      setEditingInspectionId(null);
+      setInspectionForm(emptyInspectionForm());
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to save inspection'),
+  });
+
+  const deleteInspectionMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      return deleteQCInspection(id, selectedFactoryId);
+    },
+    onSuccess: () => {
+      invalidateQC();
+      toast.success('Inspection deleted');
+      setInspectionToDelete(null);
+      setShowDetailsModal(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to delete inspection'),
   });
 
   const createLabTestMutation = useMutation({
     mutationFn: (body: { product: string; source: string; testType: string; priority?: 'low' | 'normal' | 'high' }) =>
       createQCLabTest(body, selectedFactoryId || undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests', selectedFactoryId] });
+      invalidateQC();
       toast.success('Lab test requested');
+      setLabFormMode(null);
+      setEditingLabSampleId(null);
+      setLabTestForm(emptyLabTestForm());
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to request lab test'),
   });
 
-  const updateLabTestStatusMutation = useMutation({
-    mutationFn: ({ sampleId, status, result }: { sampleId: string; status: 'pending' | 'in-progress' | 'completed'; result?: string }) =>
-      updateQCLabTestStatus(sampleId, status, result, selectedFactoryId || undefined),
+  const saveLabTestMutation = useMutation({
+    mutationFn: async (payload: {
+      mode: 'create' | 'edit';
+      sampleId?: string;
+      body: {
+        product: string;
+        source: string;
+        testType: string;
+        priority?: 'low' | 'normal' | 'high';
+        status?: LabTest['status'];
+        result?: string;
+      };
+    }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (payload.mode === 'create') {
+        return createQCLabTest(payload.body, selectedFactoryId);
+      }
+      if (!payload.sampleId) throw new Error('Missing sample id');
+      return updateQCLabTest(payload.sampleId, payload.body, selectedFactoryId);
+    },
+    onSuccess: (_, vars) => {
+      invalidateQC();
+      toast.success(vars.mode === 'create' ? 'Lab test saved' : 'Lab test updated');
+      setLabFormMode(null);
+      setEditingLabSampleId(null);
+      setLabTestForm(emptyLabTestForm());
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to save lab test'),
+  });
+
+  const deleteLabTestMutation = useMutation({
+    mutationFn: (sampleId: string) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      return deleteQCLabTest(sampleId, selectedFactoryId);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production', 'qc', 'labTests', selectedFactoryId] });
+      invalidateQC();
+      toast.success('Lab test deleted');
+      setLabTestToDelete(null);
+      setShowDetailsModal(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to delete lab test'),
+  });
+
+  const updateLabTestStatusMutation = useMutation({
+    mutationFn: ({ sampleId, status, result }: { sampleId: string; status: 'pending' | 'in-progress' | 'completed'; result?: string }) => {
+      if (!selectedFactoryId) throw new Error('Select a factory first');
+      if (!sampleId) throw new Error('Invalid sample id');
+      return updateQCLabTestStatus(sampleId, status, result, selectedFactoryId);
+    },
+    onSuccess: (_, vars) => {
+      invalidateQC();
+      if (vars.status === 'in-progress') toast.success('Lab test started');
+      else if (vars.status === 'completed') toast.success('Test result saved');
+      setLabResultModal(null);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to update test'),
   });
 
-  const [newInspection, setNewInspection] = useState({
+  const emptyInspectionForm = () => ({
     batch: '',
     checkType: '',
-    result: 'pass' as const,
+    result: 'pass' as Inspection['result'],
     inspector: '',
     notes: '',
   });
 
-  const [newLabTest, setNewLabTest] = useState({
+  const emptyLabTestForm = () => ({
     product: '',
     source: '',
     testType: '',
-    priority: 'normal' as const,
+    priority: 'normal' as LabTest['priority'],
+    status: 'pending' as LabTest['status'],
+    result: '',
   });
 
-  const handleCreateInspection = () => {
-    if (newInspection.batch && newInspection.checkType && newInspection.inspector) {
-      createInspectionMutation.mutate(newInspection, {
-        onSuccess: () => {
-          setNewInspection({ batch: '', checkType: '', result: 'pass', inspector: '', notes: '' });
-          setShowInspectionModal(false);
-        },
-      });
-    } else {
-      toast.error('Please fill batch, check type, and inspector');
-    }
+  const [inspectionForm, setInspectionForm] = useState(emptyInspectionForm);
+  const [labTestForm, setLabTestForm] = useState(emptyLabTestForm);
+
+  const openCreateInspection = () => {
+    setEditingInspectionId(null);
+    setInspectionForm(emptyInspectionForm());
+    setInspectionFormMode('create');
   };
 
-  const handleCreateLabTest = () => {
-    if (newLabTest.product && newLabTest.source && newLabTest.testType) {
-      createLabTestMutation.mutate(newLabTest, {
-        onSuccess: () => {
-          setNewLabTest({ product: '', source: '', testType: '', priority: 'normal' });
-          setShowLabTestModal(false);
-        },
-      });
-    } else {
-      toast.error('Please fill product, source, and test type');
+  const openEditInspection = (inspection: Inspection) => {
+    setEditingInspectionId(inspection.id);
+    setInspectionForm({
+      batch: inspection.batch,
+      checkType: inspection.checkType,
+      result: inspection.result,
+      inspector: inspection.inspector,
+      notes: inspection.notes ?? '',
+    });
+    setInspectionFormMode('edit');
+    setShowDetailsModal(null);
+  };
+
+  const handleSaveInspection = () => {
+    if (!inspectionForm.batch.trim() || !inspectionForm.checkType.trim() || !inspectionForm.inspector.trim()) {
+      toast.error('Please fill batch, check type, and inspector');
+      return;
     }
+    saveInspectionMutation.mutate({
+      mode: inspectionFormMode === 'edit' ? 'edit' : 'create',
+      id: editingInspectionId ?? undefined,
+      body: {
+        batch: inspectionForm.batch.trim(),
+        checkType: inspectionForm.checkType.trim(),
+        result: inspectionForm.result,
+        inspector: inspectionForm.inspector.trim(),
+        notes: inspectionForm.notes.trim() || undefined,
+      },
+    });
+  };
+
+  const openCreateLabTest = () => {
+    setEditingLabSampleId(null);
+    setLabTestForm(emptyLabTestForm());
+    setLabFormMode('create');
+  };
+
+  const openEditLabTest = (test: LabTest) => {
+    setEditingLabSampleId(test.sampleId);
+    setLabTestForm({
+      product: test.product,
+      source: test.source,
+      testType: test.testType,
+      priority: test.priority,
+      status: test.status,
+      result: test.result ?? '',
+    });
+    setLabFormMode('edit');
+    setShowDetailsModal(null);
+  };
+
+  const handleSaveLabTest = () => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    if (!labTestForm.product.trim() || !labTestForm.source.trim() || !labTestForm.testType.trim()) {
+      toast.error('Please fill product, source, and test type');
+      return;
+    }
+    if (labFormMode === 'create') {
+      createLabTestMutation.mutate({
+        product: labTestForm.product.trim(),
+        source: labTestForm.source.trim(),
+        testType: labTestForm.testType.trim(),
+        priority: labTestForm.priority,
+      });
+      return;
+    }
+    saveLabTestMutation.mutate({
+      mode: 'edit',
+      sampleId: editingLabSampleId ?? undefined,
+      body: {
+        product: labTestForm.product.trim(),
+        source: labTestForm.source.trim(),
+        testType: labTestForm.testType.trim(),
+        priority: labTestForm.priority,
+        status: labTestForm.status,
+        result: labTestForm.result.trim() || undefined,
+      },
+    });
   };
 
   const handleUpdateTestStatus = (sampleId: string, newStatus: 'in-progress' | 'completed') => {
-    if (newStatus === 'completed') {
-      const result = prompt('Enter test result:');
-      if (result != null && result.trim()) {
-        updateLabTestStatusMutation.mutate({ sampleId, status: 'completed', result: result.trim() });
-      }
-    } else {
-      updateLabTestStatusMutation.mutate({ sampleId, status: newStatus });
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
     }
+    if (!sampleId) {
+      toast.error('Invalid sample id');
+      return;
+    }
+    if (newStatus === 'completed') {
+      setLabResultModal({ sampleId, result: '' });
+      return;
+    }
+    updateLabTestStatusMutation.mutate({ sampleId, status: newStatus });
+  };
+
+  const submitLabResult = () => {
+    if (!labResultModal) return;
+    const trimmed = labResultModal.result.trim();
+    if (!trimmed) {
+      toast.error('Enter a test result');
+      return;
+    }
+    updateLabTestStatusMutation.mutate({
+      sampleId: labResultModal.sampleId,
+      status: 'completed',
+      result: trimmed,
+    });
   };
 
   const exportReport = () => {
@@ -271,8 +454,10 @@ export function ProductionQC() {
           <div className="px-4 flex items-center gap-3">
             {activeTab === 'inspections' && (
               <button
-                onClick={() => setShowInspectionModal(true)}
-                className="px-3 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 text-sm"
+                type="button"
+                onClick={openCreateInspection}
+                disabled={!selectedFactoryId}
+                className="px-3 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus size={14} />
                 Log Inspection
@@ -280,8 +465,10 @@ export function ProductionQC() {
             )}
             {activeTab === 'lab_tests' && (
               <button
-                onClick={() => setShowLabTestModal(true)}
-                className="px-3 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 text-sm"
+                type="button"
+                onClick={openCreateLabTest}
+                disabled={!selectedFactoryId}
+                className="px-3 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus size={14} />
                 Request Lab Test
@@ -316,7 +503,13 @@ export function ProductionQC() {
               {loadingInspections ? (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-[#757575]"><Loader2 className="animate-spin mx-auto" size={24} /> Loading...</td></tr>
               ) : filteredInspections.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-[#757575]">No inspections yet. Log an inspection to get started.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-[#757575]">
+                    {!selectedFactoryId
+                      ? 'Select a factory to view inspections.'
+                      : 'No inspections yet. Log an inspection to get started.'}
+                  </td>
+                </tr>
               ) : filteredInspections.map(inspection => (
                 <tr key={inspection.id} className="hover:bg-[#FAFAFA]">
                   <td className="px-6 py-4 text-[#616161]">{inspection.time}</td>
@@ -333,12 +526,31 @@ export function ProductionQC() {
                   </td>
                   <td className="px-6 py-4 text-[#616161]">{inspection.inspector}</td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => setShowDetailsModal(inspection)}
-                      className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs"
-                    >
-                      View Details
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditInspection(inspection)}
+                        className="p-1.5 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg"
+                        aria-label={`Edit inspection ${inspection.batch}`}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInspectionToDelete(inspection)}
+                        className="p-1.5 text-[#EF4444] hover:text-[#DC2626] hover:bg-red-50 rounded-lg"
+                        aria-label={`Delete inspection ${inspection.batch}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDetailsModal(inspection)}
+                        className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs px-1"
+                      >
+                        View
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -390,20 +602,38 @@ export function ProductionQC() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      {test.status === 'pending' && (
-                        <button 
+                    <div className="flex justify-end items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditLabTest(test)}
+                        className="p-1.5 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg"
+                        aria-label={`Edit lab test ${test.sampleId}`}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLabTestToDelete(test)}
+                        className="p-1.5 text-[#EF4444] hover:text-[#DC2626] hover:bg-red-50 rounded-lg"
+                        aria-label={`Delete lab test ${test.sampleId}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      {test.status === 'pending' && test.sampleId && (
+                        <button
+                          type="button"
                           onClick={() => handleUpdateTestStatus(test.sampleId, 'in-progress')}
-                          disabled={updateLabTestStatusMutation.isPending}
+                          disabled={updateLabTestStatusMutation.isPending || !selectedFactoryId}
                           className="text-blue-600 hover:text-blue-700 font-medium text-xs disabled:opacity-50"
                         >
                           Start
                         </button>
                       )}
-                      {test.status === 'in-progress' && (
-                        <button 
+                      {test.status === 'in-progress' && test.sampleId && (
+                        <button
+                          type="button"
                           onClick={() => handleUpdateTestStatus(test.sampleId, 'completed')}
-                          disabled={updateLabTestStatusMutation.isPending}
+                          disabled={updateLabTestStatusMutation.isPending || !selectedFactoryId}
                           className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs disabled:opacity-50"
                         >
                           Add Result
@@ -426,32 +656,41 @@ export function ProductionQC() {
         )}
       </div>
 
-      {/* Log Inspection Modal */}
-      {showInspectionModal && (
+      {inspectionFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[#212121]">Log QC Inspection</h3>
-              <button onClick={() => setShowInspectionModal(false)} className="text-[#757575] hover:text-[#212121]">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {inspectionFormMode === 'create' ? 'Log QC Inspection' : 'Edit QC Inspection'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setInspectionFormMode(null);
+                  setEditingInspectionId(null);
+                  setInspectionForm(emptyInspectionForm());
+                }}
+                className="text-[#757575] hover:text-[#212121]"
+              >
                 <X size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Batch / Item</label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g., Batch #9921"
-                  value={newInspection.batch}
-                  onChange={(e) => setNewInspection({...newInspection, batch: e.target.value})}
+                  value={inspectionForm.batch}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, batch: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Check Type</label>
-                <select 
-                  value={newInspection.checkType}
-                  onChange={(e) => setNewInspection({...newInspection, checkType: e.target.value})}
+                <select
+                  value={inspectionForm.checkType}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, checkType: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 >
                   <option value="">Select check type</option>
@@ -466,9 +705,11 @@ export function ProductionQC() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Result</label>
-                <select 
-                  value={newInspection.result}
-                  onChange={(e) => setNewInspection({...newInspection, result: e.target.value as any})}
+                <select
+                  value={inspectionForm.result}
+                  onChange={(e) =>
+                    setInspectionForm({ ...inspectionForm, result: e.target.value as Inspection['result'] })
+                  }
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 >
                   <option value="pass">PASS</option>
@@ -478,80 +719,96 @@ export function ProductionQC() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Inspector Name</label>
-                <input 
+                <input
                   type="text"
                   placeholder="Your name"
-                  value={newInspection.inspector}
-                  onChange={(e) => setNewInspection({...newInspection, inspector: e.target.value})}
+                  value={inspectionForm.inspector}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, inspector: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Notes (Optional)</label>
-                <textarea 
+                <textarea
                   placeholder="Additional observations..."
-                  value={newInspection.notes}
-                  onChange={(e) => setNewInspection({...newInspection, notes: e.target.value})}
+                  value={inspectionForm.notes}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, notes: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A] resize-none"
                   rows={3}
                 />
               </div>
             </div>
             <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowInspectionModal(false)}
+              <button
+                type="button"
+                onClick={() => {
+                  setInspectionFormMode(null);
+                  setEditingInspectionId(null);
+                  setInspectionForm(emptyInspectionForm());
+                }}
                 className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleCreateInspection}
-                disabled={createInspectionMutation.isPending}
-                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50"
+              <button
+                type="button"
+                onClick={handleSaveInspection}
+                disabled={saveInspectionMutation.isPending}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50 flex items-center gap-2"
               >
-                {createInspectionMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Log Inspection'}
+                {saveInspectionMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                {inspectionFormMode === 'create' ? 'Log Inspection' : 'Save Changes'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Request Lab Test Modal */}
-      {showLabTestModal && (
+      {labFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[#212121]">Request Lab Test</h3>
-              <button onClick={() => setShowLabTestModal(false)} className="text-[#757575] hover:text-[#212121]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center sticky top-0 bg-white">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {labFormMode === 'create' ? 'Request Lab Test' : 'Edit Lab Test'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setLabFormMode(null);
+                  setEditingLabSampleId(null);
+                  setLabTestForm(emptyLabTestForm());
+                }}
+                className="text-[#757575] hover:text-[#212121]"
+              >
                 <X size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Product</label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g., Raw Milk Tank B"
-                  value={newLabTest.product}
-                  onChange={(e) => setNewLabTest({...newLabTest, product: e.target.value})}
+                  value={labTestForm.product}
+                  onChange={(e) => setLabTestForm({ ...labTestForm, product: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Source</label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g., Batch #9921, Tank A, Supplier Lot"
-                  value={newLabTest.source}
-                  onChange={(e) => setNewLabTest({...newLabTest, source: e.target.value})}
+                  value={labTestForm.source}
+                  onChange={(e) => setLabTestForm({ ...labTestForm, source: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Test Type</label>
-                <select 
-                  value={newLabTest.testType}
-                  onChange={(e) => setNewLabTest({...newLabTest, testType: e.target.value})}
+                <select
+                  value={labTestForm.testType}
+                  onChange={(e) => setLabTestForm({ ...labTestForm, testType: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 >
                   <option value="">Select test type</option>
@@ -564,32 +821,160 @@ export function ProductionQC() {
                   <option>Nutritional Analysis</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-[#212121] mb-2">Priority</label>
-                <select 
-                  value={newLabTest.priority}
-                  onChange={(e) => setNewLabTest({...newLabTest, priority: e.target.value as any})}
-                  className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                >
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Priority</label>
+                  <select
+                    value={labTestForm.priority}
+                    onChange={(e) =>
+                      setLabTestForm({ ...labTestForm, priority: e.target.value as LabTest['priority'] })
+                    }
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                {labFormMode === 'edit' && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#212121] mb-2">Status</label>
+                    <select
+                      value={labTestForm.status}
+                      onChange={(e) =>
+                        setLabTestForm({ ...labTestForm, status: e.target.value as LabTest['status'] })
+                      }
+                      className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+                )}
               </div>
+              {labFormMode === 'edit' && (
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Result (optional)</label>
+                  <input
+                    type="text"
+                    placeholder="Test result notes"
+                    value={labTestForm.result}
+                    onChange={(e) => setLabTestForm({ ...labTestForm, result: e.target.value })}
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  />
+                </div>
+              )}
             </div>
-            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowLabTestModal(false)}
+            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end sticky bottom-0 bg-white">
+              <button
+                type="button"
+                onClick={() => {
+                  setLabFormMode(null);
+                  setEditingLabSampleId(null);
+                  setLabTestForm(emptyLabTestForm());
+                }}
                 className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleCreateLabTest}
-                disabled={createLabTestMutation.isPending}
-                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50"
+              <button
+                type="button"
+                onClick={handleSaveLabTest}
+                disabled={createLabTestMutation.isPending || saveLabTestMutation.isPending}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-50 flex items-center gap-2"
               >
-                {createLabTestMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Request Test'}
+                {(createLabTestMutation.isPending || saveLabTestMutation.isPending) && (
+                  <Loader2 className="animate-spin" size={16} />
+                )}
+                {labFormMode === 'create' ? 'Request Test' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inspectionToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete inspection?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              Remove inspection for <span className="font-medium text-[#212121]">{inspectionToDelete.batch}</span>?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setInspectionToDelete(null)} className="px-4 py-2 bg-white border border-[#E0E0E0] rounded-lg">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteInspectionMutation.mutate(inspectionToDelete.id)}
+                disabled={deleteInspectionMutation.isPending}
+                className="px-4 py-2 bg-[#EF4444] text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleteInspectionMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {labTestToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete lab test?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              Remove lab test <span className="font-medium text-[#212121]">{labTestToDelete.sampleId}</span>?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setLabTestToDelete(null)} className="px-4 py-2 bg-white border border-[#E0E0E0] rounded-lg">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteLabTestMutation.mutate(labTestToDelete.sampleId)}
+                disabled={deleteLabTestMutation.isPending}
+                className="px-4 py-2 bg-[#EF4444] text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleteLabTestMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {labResultModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Add test result</h3>
+            <p className="text-sm text-[#757575] mb-4">
+              Sample <span className="font-medium text-[#212121]">{labResultModal.sampleId}</span>
+            </p>
+            <textarea
+              placeholder="e.g., 3.2% moisture — within spec"
+              value={labResultModal.result}
+              onChange={(e) => setLabResultModal({ ...labResultModal, result: e.target.value })}
+              className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A] resize-none mb-6"
+              rows={3}
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setLabResultModal(null)}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitLabResult}
+                disabled={updateLabTestStatusMutation.isPending}
+                className="px-4 py-2 bg-[#16A34A] text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {updateLabTestStatusMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                Save Result
               </button>
             </div>
           </div>
@@ -649,6 +1034,25 @@ export function ProductionQC() {
                       <p className="text-sm text-[#212121]">{showDetailsModal.notes}</p>
                     </div>
                   )}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditInspection(showDetailsModal)}
+                      className="flex-1 px-4 py-2 border border-[#E0E0E0] rounded-lg flex items-center justify-center gap-2"
+                    >
+                      <Pencil size={16} /> Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDetailsModal(null);
+                        setInspectionToDelete(showDetailsModal);
+                      }}
+                      className="px-4 py-2 bg-[#EF4444] text-white rounded-lg flex items-center gap-2"
+                    >
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
@@ -694,6 +1098,25 @@ export function ProductionQC() {
                       <p className="text-sm font-bold text-green-900">{showDetailsModal.result}</p>
                     </div>
                   )}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditLabTest(showDetailsModal)}
+                      className="flex-1 px-4 py-2 border border-[#E0E0E0] rounded-lg flex items-center justify-center gap-2"
+                    >
+                      <Pencil size={16} /> Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDetailsModal(null);
+                        setLabTestToDelete(showDetailsModal);
+                      }}
+                      className="px-4 py-2 bg-[#EF4444] text-white rounded-lg flex items-center gap-2"
+                    >
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  </div>
                 </>
               )}
             </div>

@@ -35,7 +35,7 @@ export function ProductionManagement({ onLogout }: { onLogout: () => void }) {
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
       <ProductionSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
       
-      <div className="pl-[220px]">
+      <div className="production-content-area">
         <ProductionTopBar setActiveTab={setActiveTab} onOpenDowntime={() => { setActiveTab('overview'); setShowDowntimeModal(true); }} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">

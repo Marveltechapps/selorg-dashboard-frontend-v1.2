@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, Plus, Search, Filter, Download, X, Eye, Loader2 } from 'lucide-react';
+import { Plus, Search, Download, X, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
 import {
   fetchWorkOrders,
   createWorkOrder,
-  getWorkOrder,
+  updateWorkOrder,
+  deleteWorkOrder,
+  fetchProductionOverview,
   assignWorkOrderOperator,
   updateWorkOrderStatus,
   type WorkOrder,
@@ -14,12 +16,16 @@ import { useProductionFactory } from '../../../contexts/ProductionFactoryContext
 
 export function WorkOrders() {
   const { selectedFactoryId } = useProductionFactory();
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [orderFormMode, setOrderFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<WorkOrder | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState<WorkOrder | null>(null);
   const [showAssignModal, setShowAssignModal] = useState<WorkOrder | null>(null);
   const [assignOperatorName, setAssignOperatorName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [orders, setOrders] = useState<WorkOrder[]>([]);
+  const [lineOptions, setLineOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,10 +35,16 @@ export function WorkOrders() {
     try {
       if (!selectedFactoryId) {
         setOrders([]);
+        setLineOptions([]);
         return;
       }
-      const data = await fetchWorkOrders(undefined, selectedFactoryId);
+      const [data, overview] = await Promise.all([
+        fetchWorkOrders(undefined, selectedFactoryId),
+        fetchProductionOverview(selectedFactoryId).catch(() => ({ lines: [] })),
+      ]);
       setOrders(data ?? []);
+      const lines = (overview.lines ?? []).map((l) => l.name).filter(Boolean);
+      setLineOptions(lines);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load work orders');
       setOrders([]);
@@ -45,37 +57,101 @@ export function WorkOrders() {
     loadData();
   }, [loadData]);
 
-  const [newOrder, setNewOrder] = useState({
+  const emptyOrderForm = () => ({
     product: '',
     quantity: '',
     line: '',
-    priority: 'medium' as const,
+    operator: '',
+    priority: 'medium' as WorkOrder['priority'],
+    status: 'pending' as WorkOrder['status'],
     dueDate: '',
   });
 
-  const createOrder = async () => {
-    if (!newOrder.product || !newOrder.quantity) {
+  const [orderForm, setOrderForm] = useState(emptyOrderForm);
+
+  const openCreateOrder = () => {
+    setEditingOrderId(null);
+    setOrderForm(emptyOrderForm());
+    setOrderFormMode('create');
+  };
+
+  const openEditOrder = (order: WorkOrder) => {
+    setEditingOrderId(order.id);
+    setOrderForm({
+      product: order.product,
+      quantity: String(order.quantity),
+      line: order.line || '',
+      operator: order.operator || '',
+      priority: order.priority,
+      status: order.status,
+      dueDate: order.dueDate || '',
+    });
+    setOrderFormMode('edit');
+    setShowDetailsModal(null);
+  };
+
+  const closeOrderForm = () => {
+    setOrderFormMode(null);
+    setEditingOrderId(null);
+    setOrderForm(emptyOrderForm());
+  };
+
+  const saveOrderForm = async () => {
+    if (!selectedFactoryId) {
+      toast.error('Select a factory first');
+      return;
+    }
+    if (!orderForm.product.trim() || !orderForm.quantity) {
       toast.error('Product and quantity are required');
       return;
     }
+    const quantity = parseInt(orderForm.quantity, 10);
+    if (isNaN(quantity) || quantity < 1) {
+      toast.error('Quantity must be a positive number');
+      return;
+    }
+
+    const payload = {
+      product: orderForm.product.trim(),
+      quantity,
+      line: orderForm.line.trim() || undefined,
+      operator: orderForm.operator.trim() || undefined,
+      priority: orderForm.priority,
+      status: orderForm.status,
+      dueDate: orderForm.dueDate || undefined,
+    };
+
+    setSavingOrder(true);
     try {
-      if (!selectedFactoryId) throw new Error('Select a factory first');
-      await createWorkOrder(
-        {
-        product: newOrder.product,
-        quantity: parseInt(newOrder.quantity, 10) || 0,
-        line: newOrder.line || undefined,
-        priority: newOrder.priority,
-        dueDate: newOrder.dueDate || undefined,
-        },
-        selectedFactoryId
-      );
-      setNewOrder({ product: '', quantity: '', line: '', priority: 'medium', dueDate: '' });
-      setShowCreateModal(false);
-      toast.success('Work order created');
-      loadData();
+      if (orderFormMode === 'create') {
+        await createWorkOrder(payload, selectedFactoryId);
+        toast.success('Work order created');
+      } else if (orderFormMode === 'edit' && editingOrderId) {
+        await updateWorkOrder(editingOrderId, payload, selectedFactoryId);
+        toast.success('Work order updated');
+      }
+      closeOrderForm();
+      await loadData();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to create work order');
+      toast.error(e instanceof Error ? e.message : 'Failed to save work order');
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const confirmDeleteOrder = async () => {
+    if (!orderToDelete || !selectedFactoryId) return;
+    setSavingOrder(true);
+    try {
+      await deleteWorkOrder(orderToDelete.id, selectedFactoryId);
+      toast.success('Work order deleted');
+      setOrderToDelete(null);
+      if (showDetailsModal?.id === orderToDelete.id) setShowDetailsModal(null);
+      await loadData();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete work order');
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -163,9 +239,11 @@ export function WorkOrders() {
               <Download size={16} />
               Export
             </button>
-            <button 
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2"
+            <button
+              type="button"
+              onClick={openCreateOrder}
+              disabled={!selectedFactoryId}
+              className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={16} />
               Create Work Order
@@ -234,7 +312,11 @@ export function WorkOrders() {
               </tr>
             ) : filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-[#757575]">No work orders yet. Create your first order.</td>
+                <td colSpan={8} className="px-6 py-8 text-center text-[#757575]">
+                  {!selectedFactoryId
+                    ? 'Select a factory to view work orders.'
+                    : 'No work orders yet. Create your first order.'}
+                </td>
               </tr>
             ) : filteredOrders.map(order => (
               <tr key={order.id} className="hover:bg-[#FAFAFA]">
@@ -265,25 +347,44 @@ export function WorkOrders() {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button 
+                  <div className="flex justify-end items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditOrder(order)}
+                      className="p-1.5 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg"
+                      aria-label={`Edit ${order.orderNumber}`}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderToDelete(order)}
+                      className="p-1.5 text-[#EF4444] hover:text-[#DC2626] hover:bg-red-50 rounded-lg"
+                      aria-label={`Delete ${order.orderNumber}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setShowDetailsModal(order)}
-                      className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs"
+                      className="text-[#16A34A] hover:text-[#15803D] font-medium text-xs px-1"
                     >
                       View
                     </button>
                     {order.status === 'pending' && !order.operator && (
-                      <button 
+                      <button
+                        type="button"
                         onClick={() => openAssignModal(order)}
-                        className="text-blue-600 hover:text-blue-700 font-medium text-xs"
+                        className="text-blue-600 hover:text-blue-700 font-medium text-xs px-1"
                       >
                         Assign
                       </button>
                     )}
                     {order.status === 'in-progress' && (
-                      <button 
+                      <button
+                        type="button"
                         onClick={() => updateStatus(order.id, 'completed')}
-                        className="text-green-600 hover:text-green-700 font-medium text-xs"
+                        className="text-green-600 hover:text-green-700 font-medium text-xs px-1"
                       >
                         Complete
                       </button>
@@ -296,85 +397,153 @@ export function WorkOrders() {
         </table>
       </div>
 
-      {/* Create Modal */}
-      {showCreateModal && (
+      {/* Create / Edit Modal */}
+      {orderFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[#212121]">Create Work Order</h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-[#757575] hover:text-[#212121]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center sticky top-0 bg-white">
+              <h3 className="font-bold text-lg text-[#212121]">
+                {orderFormMode === 'create' ? 'Create Work Order' : 'Edit Work Order'}
+              </h3>
+              <button type="button" onClick={closeOrderForm} className="text-[#757575] hover:text-[#212121]">
                 <X size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Product</label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g., Organic Oats"
-                  value={newOrder.product}
-                  onChange={(e) => setNewOrder({...newOrder, product: e.target.value})}
+                  value={orderForm.product}
+                  onChange={(e) => setOrderForm({ ...orderForm, product: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Quantity</label>
-                <input 
+                <input
                   type="number"
+                  min={1}
                   placeholder="5000"
-                  value={newOrder.quantity}
-                  onChange={(e) => setNewOrder({...newOrder, quantity: e.target.value})}
+                  value={orderForm.quantity}
+                  onChange={(e) => setOrderForm({ ...orderForm, quantity: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Production Line (Optional)</label>
-                <select 
-                  value={newOrder.line}
-                  onChange={(e) => setNewOrder({...newOrder, line: e.target.value})}
+                <select
+                  value={orderForm.line}
+                  onChange={(e) => setOrderForm({ ...orderForm, line: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 >
                   <option value="">Unassigned</option>
-                  <option>Line A</option>
-                  <option>Line B</option>
-                  <option>Line C</option>
-                  <option>Line D</option>
+                  {lineOptions.map((line) => (
+                    <option key={line} value={line}>
+                      {line}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#212121] mb-2">Priority</label>
-                <select 
-                  value={newOrder.priority}
-                  onChange={(e) => setNewOrder({...newOrder, priority: e.target.value as any})}
+                <label className="block text-sm font-medium text-[#212121] mb-2">Operator (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g., John Smith"
+                  value={orderForm.operator}
+                  onChange={(e) => setOrderForm({ ...orderForm, operator: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Priority</label>
+                  <select
+                    value={orderForm.priority}
+                    onChange={(e) =>
+                      setOrderForm({ ...orderForm, priority: e.target.value as WorkOrder['priority'] })
+                    }
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#212121] mb-2">Status</label>
+                  <select
+                    value={orderForm.status}
+                    onChange={(e) =>
+                      setOrderForm({ ...orderForm, status: e.target.value as WorkOrder['status'] })
+                    }
+                    className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="on-hold">On Hold</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#212121] mb-2">Due Date</label>
-                <input 
+                <input
                   type="date"
-                  value={newOrder.dueDate}
-                  onChange={(e) => setNewOrder({...newOrder, dueDate: e.target.value})}
+                  value={orderForm.dueDate}
+                  onChange={(e) => setOrderForm({ ...orderForm, dueDate: e.target.value })}
                   className="w-full px-4 py-2 border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                 />
               </div>
             </div>
-            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowCreateModal(false)}
+            <div className="p-6 border-t border-[#E0E0E0] flex gap-3 justify-end sticky bottom-0 bg-white">
+              <button
+                type="button"
+                onClick={closeOrderForm}
                 className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
               >
                 Cancel
               </button>
-              <button 
-                onClick={createOrder}
-                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D]"
+              <button
+                type="button"
+                onClick={saveOrderForm}
+                disabled={savingOrder}
+                className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] disabled:opacity-60 flex items-center gap-2"
               >
-                Create Order
+                {savingOrder && <Loader2 size={16} className="animate-spin" />}
+                {orderFormMode === 'create' ? 'Create Order' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {orderToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-lg text-[#212121] mb-2">Delete work order?</h3>
+            <p className="text-sm text-[#757575] mb-6">
+              This will permanently remove{' '}
+              <span className="font-medium text-[#212121]">{orderToDelete.orderNumber}</span> (
+              {orderToDelete.product}).
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteOrder}
+                disabled={savingOrder}
+                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-60 flex items-center gap-2"
+              >
+                {savingOrder && <Loader2 size={16} className="animate-spin" />}
+                Delete
               </button>
             </div>
           </div>
@@ -454,10 +623,35 @@ export function WorkOrders() {
                   <p className="font-bold text-[#212121] capitalize">{showDetailsModal.priority}</p>
                 </div>
                 <div>
+                  <span className="text-xs text-[#757575]">Status</span>
+                  <p className="font-bold text-[#212121] capitalize">{showDetailsModal.status}</p>
+                </div>
+                <div className="col-span-2">
                   <span className="text-xs text-[#757575]">Due Date</span>
-                  <p className="font-bold text-[#212121]">{showDetailsModal.dueDate}</p>
+                  <p className="font-bold text-[#212121]">{showDetailsModal.dueDate || '—'}</p>
                 </div>
               </div>
+            </div>
+            <div className="p-6 border-t border-[#E0E0E0] flex gap-3">
+              <button
+                type="button"
+                onClick={() => openEditOrder(showDetailsModal)}
+                className="flex-1 px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] flex items-center justify-center gap-2"
+              >
+                <Pencil size={16} />
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDetailsModal(null);
+                  setOrderToDelete(showDetailsModal);
+                }}
+                className="px-4 py-2 bg-[#EF4444] text-white font-medium rounded-lg hover:bg-[#DC2626] flex items-center gap-2"
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
             </div>
           </div>
         </div>

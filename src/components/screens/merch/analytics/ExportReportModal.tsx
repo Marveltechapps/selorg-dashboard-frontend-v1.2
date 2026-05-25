@@ -40,13 +40,8 @@ export function ExportReportModal({ isOpen, onClose }: ExportReportModalProps) {
   const handleBack = () => setStep(step - 1);
 
   const fetchReportData = async () => {
-    const types = reportType === 'full' ? ['campaign', 'sku', 'regional'] : [reportType];
-    const results: Record<string, any[]> = {};
-    for (const t of types) {
-      const resp = await analyticsApi.getSummary({ type: t, range: dateRange });
-      results[t] = Array.isArray(resp.data) ? resp.data : [];
-    }
-    return results;
+    const resp = await analyticsApi.exportReport({ reportType, range: dateRange });
+    return (resp?.data ?? {}) as Record<string, unknown[]>;
   };
 
   const buildReportContent = (data: Record<string, any[]>) => {
@@ -56,10 +51,15 @@ export function ExportReportModal({ isOpen, onClose }: ExportReportModalProps) {
     let csvRows: string[] = [title, `Generated: ${date}`, description, ''];
     const types = reportType === 'full' ? ['campaign', 'sku', 'regional'] : [reportType];
     for (const t of types) {
-      const rows = data[t] ?? [];
+      const rows = (data[t] as Record<string, unknown>[]) ?? [];
       if (rows.length > 0) {
-        const headers = Object.keys(rows[0]).filter(k => !k.startsWith('_'));
-        csvRows.push(`${t.toUpperCase()} Data`, headers.join(','), ...rows.map(r => headers.map(h => String(r[h] ?? '')).join(',')), '');
+        const headers = Object.keys(rows[0]).filter((k) => !k.startsWith('_'));
+        csvRows.push(
+          `${t.toUpperCase()} Data`,
+          headers.join(','),
+          ...rows.map((r) => headers.map((h) => String(r[h] ?? '')).join(',')),
+          ''
+        );
       }
     }
     return { title, generated: date, description, csvRows: csvRows.join('\n') };

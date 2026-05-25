@@ -10,9 +10,11 @@ export * from './interStoreTransfer.api';
 export * from './cycleCounts.api';
 export * from './scanItem.api';
 export * from './shelfView.api';
+export * from './shelves.api';
 export * from './stockLevels.api';
 export * from './adjustments.api';
 export * from './restockTask.api';
 export * from './auditLog.api';
+export * from './inventoryBulkImport.api';
 export * from './mockData';
 

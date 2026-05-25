@@ -150,6 +150,38 @@ export async function getAgingInventory(vendorId: string, daysThreshold = 30): P
   return extractList<Record<string, unknown>>(data).map(mapAgingInventoryFromApi);
 }
 
+export interface GlobalAlertsQuery {
+  status?: string;
+  priority?: string;
+  type?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface GlobalAlertsResponse {
+  alerts?: Array<Record<string, unknown>>;
+  items?: Array<Record<string, unknown>>;
+  total?: number;
+  page?: number;
+  limit?: number;
+}
+
+/** Hub-wide / shared operational alerts (used by Vendor Alerts screen). */
+export async function getGlobalAlerts(params: GlobalAlertsQuery = {}): Promise<GlobalAlertsResponse> {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.priority) qs.set('priority', params.priority);
+  if (params.type) qs.set('type', params.type);
+  if (params.search) qs.set('search', params.search);
+  if (params.page != null) qs.set('page', String(params.page));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return requestJson<GlobalAlertsResponse>(
+    `${API_CONFIG.baseURL}${API_ENDPOINTS.alerts.list}${suffix}`
+  );
+}
+
 export async function triggerInventorySync(vendorId: string) {
   return requestJson<Record<string, unknown>>(
     `${API_CONFIG.baseURL}${API_ENDPOINTS.vendor.inventory.sync(vendorId)}`,
@@ -208,6 +240,7 @@ export async function initiateLiquidation(
 }
 
 export const vendorInventoryApi = {
+  getGlobalAlerts,
   loadSupplyPerformance,
   loadVendorInventory,
   getKPIs,

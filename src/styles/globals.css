@@ -247,6 +247,36 @@ html {
   }
 }
 
+/* Darkstore dashboard — responsive sidebar + top bar (same pattern as admin) */
+.darkstore-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.darkstore-sidebar-nav.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .darkstore-sidebar-nav {
+    transform: translateX(0);
+  }
+  .darkstore-content-area {
+    margin-left: 220px;
+  }
+  .darkstore-topbar {
+    left: 220px;
+  }
+  .darkstore-content-area--v2 {
+    margin-left: 260px;
+  }
+  .darkstore-topbar--v2 {
+    left: 260px;
+  }
+  .darkstore-mobile-only {
+    display: none !important;
+  }
+}
+
 /* Rider dashboard — top bar spans content area (sidebar offset), same pattern as admin */
 .rider-content-area {
   margin-left: 220px;
@@ -261,6 +291,38 @@ html {
 }
 .vendor-topbar {
   left: 240px;
+}
+
+/* Production dashboard — top bar spans content area (220px sidebar), same pattern as darkstore */
+.production-content-area {
+  margin-left: 220px;
+}
+.production-topbar {
+  left: 220px;
+}
+
+/* Merch dashboard — responsive sidebar + top bar (same pattern as admin) */
+.merch-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.merch-sidebar-nav.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .merch-sidebar-nav {
+    transform: translateX(0);
+  }
+  .merch-content-area {
+    margin-left: 260px;
+  }
+  .merch-topbar {
+    left: 260px;
+  }
+  .merch-mobile-only {
+    display: none !important;
+  }
 }
 
 /* Finance dashboard — responsive sidebar + top bar (same pattern as admin) */
@@ -285,4 +347,16 @@ html {
   .finance-mobile-only {
     display: none !important;
   }
+}
+
+/* Portaled dropdowns must render above dialogs (z-index 10000) */
+[data-slot="select-content"],
+[data-slot="popover-content"],
+[data-slot="dropdown-menu-content"],
+[data-slot="dropdown-menu-sub-content"],
+[data-slot="context-menu-content"],
+[data-slot="menubar-content"],
+[data-slot="menubar-sub-content"],
+[data-slot="hover-card-content"] {
+  z-index: 10100 !important;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MerchSidebar } from './merch/MerchSidebar';
 import { MerchTopBar } from './merch/MerchTopBar';
 import { MerchOverview } from './screens/merch/MerchOverview';
@@ -7,43 +7,54 @@ import { PricingEngine } from './screens/merch/PricingEngine';
 import { PromoCampaigns } from './screens/merch/PromoCampaigns';
 import { AllocationStock } from './screens/merch/AllocationStock';
 import { GeofenceTargeting } from './screens/merch/geofence/GeofenceTargeting';
-import { InventoryOverview } from './screens/merch/InventoryOverview';
-import { InventoryTransactions } from './screens/merch/InventoryTransactions';
-import { ReplenishmentOrders } from './screens/merch/ReplenishmentOrders';
-import { ExpiryManagement } from './screens/merch/ExpiryManagement';
-// Phase 4 Screens - Warehouse & Distribution
-import { WarehouseManagement } from './screens/merch/WarehouseManagement';
-import { AllocationDashboard } from './screens/merch/AllocationDashboard';
-import { TransferOrdersManagement } from './screens/merch/TransferOrdersManagement';
-import { VendorManagement } from './screens/merch/VendorManagement';
 import { MerchAnalytics } from './screens/merch/MerchAnalytics';
 import { MerchAlerts } from './screens/merch/MerchAlerts';
 import { ComplianceApprovals } from './screens/merch/ComplianceApprovals';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
+const REMOVED_MERCH_TABS = new Set([
+  'inventory-overview',
+  'transactions',
+  'replenishment',
+  'expiry',
+  'warehouses',
+  'allocations',
+  'transfer-orders',
+  'vendors',
+]);
+
 export function MerchManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [region, setRegion] = useState('North America');
   const [scope, setScope] = useState<'Global' | 'Local'>('Global');
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+
+  useEffect(() => {
+    if (REMOVED_MERCH_TABS.has(activeTab)) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, setActiveTab]);
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
-      <MerchSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
+      <MerchSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onLogout={onLogout}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+      />
       
-      <div className="pl-[220px]">
-        <MerchTopBar 
-            onSearch={setSearchQuery} 
-            onRegionChange={setRegion}
-            onScopeChange={setScope}
-            currentRegion={region}
-            currentScope={scope}
-            onNavigate={setActiveTab}
-            searchQuery={searchQuery}
+      <div className="merch-content-area">
+        <MerchTopBar
+          onMenuClick={() => setSidebarOpen(true)}
+          filterQuery={searchQuery}
+          onFilterQueryChange={setSearchQuery}
         />
-        
-        <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+
+        <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
             <DashboardBreadcrumbs dashboard="merch" activeTab={activeTab} />
             {activeTab === 'overview' && (
                 <MerchOverview 
@@ -57,15 +68,6 @@ export function MerchManagement({ onLogout }: { onLogout: () => void }) {
             {activeTab === 'promotions' && <PromoCampaigns searchQuery={searchQuery} region={region} scope={scope} onNavigate={setActiveTab} />}
             {activeTab === 'allocation' && <AllocationStock searchQuery={searchQuery} />}
             {activeTab === 'geofence' && <GeofenceTargeting searchQuery={searchQuery} />}
-            {activeTab === 'inventory-overview' && <InventoryOverview onNavigate={setActiveTab} />}
-            {activeTab === 'transactions' && <InventoryTransactions searchQuery={searchQuery} />}
-            {activeTab === 'replenishment' && <ReplenishmentOrders searchQuery={searchQuery} />}
-            {activeTab === 'expiry' && <ExpiryManagement searchQuery={searchQuery} />}
-            {/* Phase 4: Warehouse & Distribution */}
-            {activeTab === 'warehouses' && <WarehouseManagement searchQuery={searchQuery} />}
-            {activeTab === 'allocations' && <AllocationDashboard searchQuery={searchQuery} />}
-            {activeTab === 'transfer-orders' && <TransferOrdersManagement searchQuery={searchQuery} />}
-            {activeTab === 'vendors' && <VendorManagement searchQuery={searchQuery} />}
             {activeTab === 'analytics' && <MerchAnalytics searchQuery={searchQuery} onNavigate={setActiveTab} />}
             {activeTab === 'alerts' && <MerchAlerts searchQuery={searchQuery} onNavigate={setActiveTab} />}
             {activeTab === 'compliance' && <ComplianceApprovals searchQuery={searchQuery} />}

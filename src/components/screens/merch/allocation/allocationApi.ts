@@ -136,15 +136,26 @@ export const allocationApi = {
     return response.json();
   },
 
-  async autoRebalance(): Promise<any> {
+  async autoRebalance(options?: { scope?: string; strategy?: string }): Promise<any> {
     const response = await fetch(`${API_BASE_URL}/rebalance/auto`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ scope: 'high-priority', strategy: 'minimize-stockouts' }),
+      body: JSON.stringify({
+        scope: options?.scope ?? 'high-priority',
+        strategy: options?.strategy ?? 'minimize-stockouts',
+      }),
     });
-    if (!response.ok) throw new Error('Failed to run auto rebalance');
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to run auto rebalance'));
     const json = await response.json();
     return json.data ?? json;
+  },
+
+  async fetchLocations(): Promise<Array<{ id: string; locationId: string; name: string; available: number }>> {
+    const response = await fetch(`${API_BASE_URL}/references/locations`, { headers: getAuthHeaders() });
+    if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to load locations'));
+    const json = await response.json();
+    const data = json.data ?? json;
+    return Array.isArray(data) ? data : [];
   },
 
   /** Fetch allocation history for demand/stock chart. Returns [] if endpoint not available. */

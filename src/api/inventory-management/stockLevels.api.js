@@ -19,10 +19,12 @@ export async function fetchStockLevels(params = {}) {
     status = 'all',
     page = 1,
     limit = 50,
+    sheetOnly = false,
   } = params;
   
   const queryParams = { storeId, category, status, page, limit };
   if (search) queryParams.search = search;
+  if (sheetOnly) queryParams.sheetOnly = 'true';
   
   return get(BASE_PATH, queryParams);
 }

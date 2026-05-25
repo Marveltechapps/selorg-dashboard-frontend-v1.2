@@ -17,16 +17,35 @@ interface AllocateStockModalProps {
 }
 
 export function AllocateStockModal({ open, onOpenChange, alert, onComplete }: AllocateStockModalProps) {
-  const [selectedSources, setSelectedSources] = useState<Record<string, boolean>>({ 'central': true });
-  const [quantities, setQuantities] = useState<Record<string, number>>({ 'central': 50 });
+  const [selectedSources, setSelectedSources] = useState<Record<string, boolean>>({});
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [sources, setSources] = useState<Array<{ key: string; name: string; available: number }>>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setSelectedSources({ 'central': true });
-      setQuantities({ 'central': 50 });
-    }
-  }, [open]);
+    if (!open) return;
+    allocationApi.fetchLocations()
+      .then((list) => {
+        const destName = alert?.location;
+        const filtered = list
+          .filter((l) => l.name !== destName)
+          .map((l) => ({ key: l.locationId || l.id, name: l.name, available: l.available }));
+        setSources(filtered);
+        if (filtered.length > 0) {
+          const first = filtered[0];
+          setSelectedSources({ [first.key]: true });
+          setQuantities({ [first.key]: 50 });
+        }
+      })
+      .catch(() => {
+        setSources([
+          { key: 'central', name: 'Central Warehouse', available: 0 },
+          { key: 'south', name: 'South Hub', available: 0 },
+        ]);
+        setSelectedSources({ central: true });
+        setQuantities({ central: 50 });
+      });
+  }, [open, alert?.location]);
 
   const handleConfirmTransfer = async () => {
     const totalQty = Object.keys(selectedSources).reduce((acc, key) =>
@@ -40,12 +59,18 @@ export function AllocateStockModal({ open, onOpenChange, alert, onComplete }: Al
 
     if (!alert) return;
 
+    const primarySource = sources.find((s) => selectedSources[s.key]);
+    if (!primarySource) {
+      toast.error('Select a source location');
+      return;
+    }
+
     setSubmitting(true);
     try {
       await allocationApi.createTransferOrder({
         skuId: alert.skuId ?? alert.sku,
         skuName: alert.sku,
-        fromLocation: 'Central Warehouse',
+        fromLocation: primarySource.name,
         toLocation: alert.location,
         quantity: totalQty,
       });
@@ -77,11 +102,6 @@ export function AllocateStockModal({ open, onOpenChange, alert, onComplete }: Al
         </DialogHeader>
 
         <div className="p-4 space-y-4">
-          <div className="bg-red-50 p-2 rounded-md border border-red-100 text-[10px] flex justify-between items-center">
-            <span className="text-red-800 font-medium">Current Stock: <strong>—</strong></span>
-            <span className="text-red-800 font-medium">Safety Target: <strong>—</strong></span>
-          </div>
-
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-gray-500">Select Source Location(s)</Label>
             <div className="border rounded-md overflow-hidden">
@@ -95,44 +115,29 @@ export function AllocateStockModal({ open, onOpenChange, alert, onComplete }: Al
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow className="h-8">
-                    <TableCell className="py-1 px-2">
-                      <Checkbox
-                        checked={!!selectedSources['central']}
-                        onCheckedChange={(c) => setSelectedSources({ ...selectedSources, 'central': !!c })}
-                        className="h-3 w-3"
-                      />
-                    </TableCell>
-                    <TableCell className="font-bold text-[10px] py-1 px-2">Central Warehouse</TableCell>
-                    <TableCell className="text-right text-gray-400 text-[10px] py-1 px-2">—</TableCell>
-                    <TableCell className="py-1 px-2">
-                      <Input
-                        className="h-6 w-16 text-right px-1 text-[10px]"
-                        value={quantities['central']}
-                        onChange={(e) => setQuantities({ ...quantities, 'central': parseInt(e.target.value, 10) || 0 })}
-                        disabled={!selectedSources['central']}
-                      />
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="h-8">
-                    <TableCell className="py-1 px-2">
-                      <Checkbox
-                        checked={!!selectedSources['south']}
-                        onCheckedChange={(c) => setSelectedSources({ ...selectedSources, 'south': !!c })}
-                        className="h-3 w-3"
-                      />
-                    </TableCell>
-                    <TableCell className="font-bold text-[10px] py-1 px-2">South Hub</TableCell>
-                    <TableCell className="text-right text-gray-400 text-[10px] py-1 px-2">—</TableCell>
-                    <TableCell className="py-1 px-2">
-                      <Input
-                        className="h-6 w-16 text-right px-1 text-[10px]"
-                        value={quantities['south'] ?? ''}
-                        onChange={(e) => setQuantities({ ...quantities, 'south': parseInt(e.target.value, 10) || 0 })}
-                        disabled={!selectedSources['south']}
-                      />
-                    </TableCell>
-                  </TableRow>
+                  {sources.map((src) => (
+                    <TableRow key={src.key} className="h-8">
+                      <TableCell className="py-1 px-2">
+                        <Checkbox
+                          checked={!!selectedSources[src.key]}
+                          onCheckedChange={(c) => setSelectedSources({ ...selectedSources, [src.key]: !!c })}
+                          className="h-3 w-3"
+                        />
+                      </TableCell>
+                      <TableCell className="font-bold text-[10px] py-1 px-2">{src.name}</TableCell>
+                      <TableCell className="text-right text-gray-600 text-[10px] py-1 px-2">
+                        {src.available > 0 ? src.available.toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell className="py-1 px-2">
+                        <Input
+                          className="h-6 w-16 text-right px-1 text-[10px]"
+                          value={quantities[src.key] ?? ''}
+                          onChange={(e) => setQuantities({ ...quantities, [src.key]: parseInt(e.target.value, 10) || 0 })}
+                          disabled={!selectedSources[src.key]}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

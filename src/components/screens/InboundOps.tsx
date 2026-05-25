@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Truck, ClipboardCheck, ArrowDownToLine, AlertTriangle, CheckCircle2, 
-  Map, BarChart2, Clock, ShieldAlert, History, RefreshCw, Filter, Search, ChevronRight, X, Package, ArrowRight
+  Truck, ClipboardCheck, ArrowDownToLine, CheckCircle2, 
+  Clock, RefreshCw, Filter, Search, X, Package, LayoutGrid
 } from 'lucide-react';
+import { PutawayRoutingGuide } from './inbound/PutawayRoutingGuide';
+import { StoreSetupTab } from './inbound/StoreSetupTab';
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { PageHeader } from '../ui/page-header';
@@ -16,24 +18,24 @@ import {
   startGRNProcessing,
   updateGRNItemQuantity,
   completeGRNProcessing,
-  getInterStoreTransfers,
-  receiveInterStoreTransfer,
-  syncInterStoreTransfers,
+  fetchInboundStaff,
 } from '../../api/inventory-management';
 import {
   fetchPutawayTasks as getPutawayTasks,
   assignPutawayTask,
   completePutawayTask,
 } from '../../api/inventory-management/putaway.api';
-import { ActionHistoryViewer } from '../ui/action-history-viewer';
+const DEFAULT_STORE_ID = 'DS-Adyar-01';
 
 export function InboundOps() {
-  const [activeTab, setActiveTab] = useState<'grn' | 'putaway' | 'transfers'>('grn');
+  const [activeTab, setActiveTab] = useState<'grn' | 'putaway' | 'store-setup'>('grn');
+  const [shelfLayoutRefreshKey, setShelfLayoutRefreshKey] = useState(0);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [putawayRefreshKey, setPutawayRefreshKey] = useState(0);
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
+  const storeId = activeStoreId || DEFAULT_STORE_ID;
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -53,7 +55,7 @@ export function InboundOps() {
     };
   }, [storeId]);
 
-  const loadSummary = async (silent: boolean = false) => {
+  const loadSummary = async (silent: boolean = false, notify: boolean = false) => {
     try {
       if (!silent) {
         setLoading(true);
@@ -66,8 +68,8 @@ export function InboundOps() {
           setSummary({ summary: { trucks_today: 0, pending_grn: 0, putaway_tasks: 0, inter_store_transfers: 0 } });
         }
         setLastRefresh(new Date());
-        if (!silent) {
-          toast.success("Summary refreshed", { duration: 2000 });
+        if (notify) {
+          toast.success('Summary refreshed', { duration: 2000 });
         }
       }
     } catch (error: any) {
@@ -91,7 +93,7 @@ export function InboundOps() {
     <div className="space-y-6">
       <PageHeader
         title="Inbound Operations"
-        subtitle="Manage GRN processing, putaway tasks, and inter-store transfers."
+        subtitle="Manage GRN processing and putaway tasks."
         actions={
           <div className="flex gap-4 items-center">
             <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
@@ -116,8 +118,19 @@ export function InboundOps() {
                 </div>
               </div>
             </div>
+            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
+              <div className="p-2 bg-[#F0FDF4] text-[#16A34A] rounded-lg">
+                <ArrowDownToLine size={20} />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-[#757575]">Putaway Queue</div>
+                <div className="font-bold text-[#212121]">
+                  {loading ? '...' : summary?.summary.putaway_tasks || 0} Tasks
+                </div>
+              </div>
+            </div>
             <button
-              onClick={() => loadSummary(false)}
+              onClick={() => loadSummary(false, true)}
               disabled={loading}
               className="p-2 hover:bg-gray-100 rounded-lg border border-[#E0E0E0] disabled:opacity-50"
               title="Refresh summary"
@@ -136,13 +149,38 @@ export function InboundOps() {
       <div className="flex items-center gap-1 border-b border-[#E0E0E0] mb-6 overflow-x-auto">
         <TabButton id="grn" label="GRN Processing" icon={ClipboardCheck} active={activeTab} onClick={setActiveTab} />
         <TabButton id="putaway" label="Putaway Manager" icon={ArrowDownToLine} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="transfers" label="Inter-Store Transfers" icon={Truck} active={activeTab} onClick={setActiveTab} />
+        <TabButton id="store-setup" label="Store Setup" icon={LayoutGrid} active={activeTab} onClick={setActiveTab} />
       </div>
 
       <div className="min-h-[500px]">
-        {activeTab === 'grn' && <GRNTab />}
-        {activeTab === 'putaway' && <PutawayTab />}
-        {activeTab === 'transfers' && <TransfersTab />}
+        {activeTab === 'grn' && (
+          <GRNTab
+            onPutawayTasksCreated={(count) => {
+              loadSummary(true);
+              if (count > 0) {
+                setPutawayRefreshKey((k) => k + 1);
+                setActiveTab('putaway');
+                toast.success(`${count} putaway task${count === 1 ? '' : 's'} queued`, {
+                  description: 'Switch to Putaway Manager to assign and complete.',
+                });
+              }
+            }}
+          />
+        )}
+        {activeTab === 'putaway' && (
+          <PutawayTab
+            refreshKey={putawayRefreshKey}
+            shelfLayoutRefreshKey={shelfLayoutRefreshKey}
+            onSummaryChange={() => loadSummary(true)}
+            onOpenStoreSetup={() => setActiveTab('store-setup')}
+          />
+        )}
+        {activeTab === 'store-setup' && (
+          <StoreSetupTab
+            storeId={storeId}
+            onShelvesUpdated={() => setShelfLayoutRefreshKey((k) => k + 1)}
+          />
+        )}
       </div>
     </div>
   );
@@ -165,7 +203,7 @@ function TabButton({ id, label, icon: Icon, active, onClick }: any) {
   );
 }
 
-function GRNTab() {
+function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: number) => void }) {
   const [selectedGRN, setSelectedGRN] = useState<string | null>(null);
   const [grnList, setGrnList] = useState<any[]>([]);
   const [grnDetails, setGrnDetails] = useState<any>(null);
@@ -177,8 +215,9 @@ function GRNTab() {
   const [showSearch, setShowSearch] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [itemEdits, setItemEdits] = useState<Record<string, { received: number; damaged: number }>>({});
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
+  const storeId = activeStoreId || DEFAULT_STORE_ID;
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -246,16 +285,24 @@ function GRNTab() {
     try {
       setDetailsLoading(true);
       const response = await getGRNDetails(grnId);
-      if (isMountedRef.current && response && response.grn) {
+      if (isMountedRef.current && response?.grn) {
         const grn = response.grn;
         const items = Array.isArray(grn.items) ? grn.items : [];
         setGrnDetails({ ...response, grn: { ...grn, items } });
+        const edits: Record<string, { received: number; damaged: number }> = {};
+        items.forEach((item: any) => {
+          edits[item.sku] = {
+            received: item.received_quantity ?? 0,
+            damaged: item.damaged_quantity ?? 0,
+          };
+        });
+        setItemEdits(edits);
       }
     } catch (error: any) {
       console.error('Failed to load GRN details:', error);
       if (isMountedRef.current) {
-        const fallback = await getGRNDetails(grnId);
-        if (fallback && fallback.grn) setGrnDetails(fallback);
+        toast.error(error.message || 'Failed to load GRN details');
+        setGrnDetails(null);
       }
     } finally {
       if (isMountedRef.current) setDetailsLoading(false);
@@ -264,19 +311,24 @@ function GRNTab() {
 
   const handleStartProcessing = async (grnId: string) => {
     const currentGRN = grnList.find(g => g.grn_id === grnId);
-    if (currentGRN) {
-      setGrnList(prev => prev.map(g => g.grn_id === grnId ? { ...g, status: 'in_progress' } : g));
-      if (grnDetails && grnDetails.grn.grn_id === grnId) {
-        setGrnDetails(prev => ({ ...prev, grn: { ...prev.grn, status: 'in_progress' } }));
+    const applyInProgress = (status: string = 'in_progress') => {
+      setGrnList(prev => prev.map(g => g.grn_id === grnId ? { ...g, status } : g));
+      if (grnDetails?.grn?.grn_id === grnId) {
+        setGrnDetails(prev => prev ? { ...prev, grn: { ...prev.grn, status } } : prev);
       }
-    }
+    };
+    if (currentGRN) applyInProgress();
     setActionLoading(prev => new Set(prev).add(grnId));
     try {
-      await startGRNProcessing(grnId, { actual_arrival: new Date().toISOString(), notes: 'Processing started' });
+      const result = await startGRNProcessing(grnId, { actual_arrival: new Date().toISOString(), notes: 'Processing started' });
       if (isMountedRef.current) {
+        const nextStatus = result?.status || 'in_progress';
+        applyInProgress(nextStatus);
         toast.success('GRN processing started');
-        loadGRNList(true);
-        if (selectedGRN === grnId) loadGRNDetails(grnId);
+        await Promise.all([
+          loadGRNList(true),
+          selectedGRN === grnId ? loadGRNDetails(grnId) : Promise.resolve(),
+        ]);
       }
     } catch (error: any) {
       console.error('Failed to start GRN processing:', error);
@@ -332,9 +384,15 @@ function GRNTab() {
     try {
       const response = await completeGRNProcessing(grnId, { auto_create_putaway: true });
       if (isMountedRef.current) {
-        toast.success(response.putaway_tasks_created ? `GRN completed. ${response.putaway_tasks_created} putaway tasks created` : 'GRN processing completed');
+        const created = response.putaway_tasks_created ?? 0;
+        toast.success(
+          created > 0
+            ? `GRN completed. ${created} putaway task${created === 1 ? '' : 's'} created`
+            : 'GRN processing completed'
+        );
         loadGRNList(true);
         if (selectedGRN === grnId) loadGRNDetails(grnId);
+        onPutawayTasksCreated?.(created);
       }
     } catch (error: any) {
       console.error('Failed to complete GRN processing:', error);
@@ -484,23 +542,86 @@ function GRNTab() {
                                  <td className="px-4 py-3 font-mono text-xs">{item.sku}</td>
                                  <td className="px-4 py-3 font-medium">{item.product_name}</td>
                                  <td className="px-4 py-3 text-[#616161]">{item.expected_quantity}</td>
-                                 <td className="px-4 py-3 font-bold">{item.received_quantity}</td>
-                                 <td className="px-4 py-3 font-bold text-[#EF4444]">{item.damaged_quantity || 0}</td>
+                                 <td className="px-4 py-3">
+                                   {grnDetails.grn.status === 'in_progress' ? (
+                                     <input
+                                       type="number"
+                                       min={0}
+                                       max={item.expected_quantity}
+                                       value={itemEdits[item.sku]?.received ?? item.received_quantity ?? 0}
+                                       onChange={(e) =>
+                                         setItemEdits((prev) => ({
+                                           ...prev,
+                                           [item.sku]: {
+                                             received: parseInt(e.target.value, 10) || 0,
+                                             damaged: prev[item.sku]?.damaged ?? item.damaged_quantity ?? 0,
+                                           },
+                                         }))
+                                       }
+                                       className="w-16 p-1 border border-[#E0E0E0] rounded text-sm font-bold"
+                                     />
+                                   ) : (
+                                     <span className="font-bold">{item.received_quantity}</span>
+                                   )}
+                                 </td>
+                                 <td className="px-4 py-3 font-bold text-[#EF4444]">
+                                   {grnDetails.grn.status === 'in_progress' ? (
+                                     <input
+                                       type="number"
+                                       min={0}
+                                       value={itemEdits[item.sku]?.damaged ?? item.damaged_quantity ?? 0}
+                                       onChange={(e) =>
+                                         setItemEdits((prev) => ({
+                                           ...prev,
+                                           [item.sku]: {
+                                             received: prev[item.sku]?.received ?? item.received_quantity ?? 0,
+                                             damaged: parseInt(e.target.value, 10) || 0,
+                                           },
+                                         }))
+                                       }
+                                       className="w-16 p-1 border border-[#E0E0E0] rounded text-sm font-bold"
+                                     />
+                                   ) : (
+                                     item.damaged_quantity || 0
+                                   )}
+                                 </td>
                                  <td className="px-4 py-3">
                                    <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", item.status === 'completed' ? "bg-[#F0FDF4] text-[#16A34A]" : item.status === 'received' ? "bg-[#E6F7FF] text-[#1677FF]" : item.status === 'damaged' ? "bg-[#FEE2E2] text-[#EF4444]" : "bg-[#F5F5F5] text-[#757575]")}>{item.status}</span>
                                  </td>
                                  <td className="px-4 py-3">
                                    {grnDetails.grn.status === 'in_progress' && (
-                                     <button onClick={() => { 
-                                       const newQty = prompt(`Enter received quantity for ${item.product_name} (Expected: ${item.expected_quantity}):`, item.received_quantity.toString()); 
-                                       if (newQty !== null) { 
-                                         const qty = parseInt(newQty); 
-                                         const damaged = prompt(`Enter damaged quantity (if any):`, item.damaged_quantity.toString()) || '0'; 
-                                         handleUpdateItem(grnDetails.grn.grn_id, item.sku, qty, parseInt(damaged)); 
-                                       } 
-                                     }} disabled={actionLoading.has(`${grnDetails.grn.grn_id}-${item.sku}`)} className="text-[#1677FF] font-bold text-xs hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
-                                       {actionLoading.has(`${grnDetails.grn.grn_id}-${item.sku}`) ? 'Updating...' : 'Update'}
-                                     </button>
+                                     <div className="flex flex-col gap-1">
+                                       <button
+                                         type="button"
+                                         onClick={() => {
+                                           const edit = itemEdits[item.sku];
+                                           handleUpdateItem(
+                                             grnDetails.grn.grn_id,
+                                             item.sku,
+                                             edit?.received ?? item.received_quantity ?? 0,
+                                             edit?.damaged ?? item.damaged_quantity ?? 0
+                                           );
+                                         }}
+                                         disabled={actionLoading.has(`${grnDetails.grn.grn_id}-${item.sku}`)}
+                                         className="text-[#1677FF] font-bold text-xs hover:underline disabled:opacity-50"
+                                       >
+                                         {actionLoading.has(`${grnDetails.grn.grn_id}-${item.sku}`) ? 'Saving...' : 'Save'}
+                                       </button>
+                                       <button
+                                         type="button"
+                                         onClick={() =>
+                                           handleUpdateItem(
+                                             grnDetails.grn.grn_id,
+                                             item.sku,
+                                             item.expected_quantity,
+                                             0
+                                           )
+                                         }
+                                         className="text-[10px] text-[#616161] hover:underline"
+                                       >
+                                         Receive full
+                                       </button>
+                                     </div>
                                    )}
                                  </td>
                                </tr>
@@ -527,55 +648,93 @@ function GRNTab() {
   );
 }
 
-function PutawayTab() {
+function PutawayTab({
+  refreshKey = 0,
+  shelfLayoutRefreshKey = 0,
+  onSummaryChange,
+  onOpenStoreSetup,
+}: {
+  refreshKey?: number;
+  shelfLayoutRefreshKey?: number;
+  onSummaryChange?: () => void;
+  onOpenStoreSetup?: () => void;
+}) {
   const [tasks, setTasks] = useState<any[]>([]);
+  const [staffList, setStaffList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [assignStaffId, setAssignStaffId] = useState('');
   const [actionLoading, setActionLoading] = useState<Set<string>>(new Set());
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
+  const storeId = activeStoreId || DEFAULT_STORE_ID;
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     loadPutawayTasks(false);
+    loadStaff();
     refreshIntervalRef.current = setInterval(() => { if (isMountedRef.current) loadPutawayTasks(true); }, 15000);
     return () => { isMountedRef.current = false; if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current); };
-  }, [storeId]);
+  }, [storeId, refreshKey]);
+
+  const loadStaff = async () => {
+    try {
+      const res = await fetchInboundStaff(storeId, 'all');
+      const all = res?.staff && Array.isArray(res.staff) ? res.staff : [];
+      const putawayRoles = new Set(['picker', 'packer', 'loader', 'supervisor']);
+      setStaffList(
+        all.filter((s: any) => putawayRoles.has(String(s.role || '').toLowerCase()))
+      );
+    } catch {
+      setStaffList([]);
+    }
+  };
 
   const loadPutawayTasks = async (silent: boolean = false) => {
     try {
       if (!silent) setLoading(true);
       const response = await getPutawayTasks({ storeId, status: 'all', page: 1, limit: 50 });
       if (isMountedRef.current) {
-        if (response && response.putaway_tasks) {
-          setTasks(response.putaway_tasks);
-          if (response.putaway_tasks.length > 0 && !selectedTask) setSelectedTask(response.putaway_tasks.find((t: any) => t.status === 'pending') || response.putaway_tasks[0]);
-        } else setTasks([]);
+        const list = Array.isArray(response?.putaway_tasks) ? response.putaway_tasks : [];
+        setTasks(list);
+        setSelectedTask((prev: any) => {
+          if (list.length === 0) return null;
+          if (prev) {
+            const updated = list.find((t: any) => t.task_id === prev.task_id);
+            if (updated) return updated;
+          }
+          return list.find((t: any) => t.status === 'pending') || list[0];
+        });
       }
     } catch (error: any) {
       console.error('Failed to load putaway tasks:', error);
       if (isMountedRef.current && !silent) toast.error("Failed to load putaway tasks");
-      if (isMountedRef.current) setTasks([]);
+      if (isMountedRef.current) {
+        setTasks([]);
+        setSelectedTask(null);
+      }
     } finally {
       if (isMountedRef.current) setLoading(false);
     }
   };
 
   const handleAssignTask = async (taskId: string) => {
-    const currentTask = tasks.find(t => t.task_id === taskId);
-    if (currentTask) {
-      setTasks(prev => prev.map(t => t.task_id === taskId ? { ...t, status: 'assigned', assigned_to: 'John D.', staff_id: 'STAFF-001', staff_name: 'John D.' } : t));
-      if (selectedTask?.task_id === taskId) setSelectedTask((prev: any) => ({ ...prev, status: 'assigned', assigned_to: 'John D.', staff_id: 'STAFF-001', staff_name: 'John D.' }));
+    const staff = staffList.find((s) => s.staff_id === assignStaffId);
+    if (!staff) {
+      toast.error('Select a staff member to assign');
+      return;
     }
     setActionLoading(prev => new Set(prev).add(taskId));
     try {
-      await assignPutawayTask(taskId, { staff_id: 'STAFF-001', staff_name: 'John D.' });
-      if (isMountedRef.current) { toast.success('Task assigned successfully'); loadPutawayTasks(true); }
+      await assignPutawayTask(taskId, { staff_id: staff.staff_id, staff_name: staff.name });
+      if (isMountedRef.current) {
+        toast.success(`Assigned to ${staff.name}`);
+        await loadPutawayTasks(true);
+        onSummaryChange?.();
+      }
     } catch (error: any) {
       console.error('Failed to assign task:', error);
-      if (isMountedRef.current && currentTask) { setTasks(prev => prev.map(t => t.task_id === taskId ? currentTask : t)); if (selectedTask?.task_id === taskId) setSelectedTask(currentTask); }
       toast.error(error.message || 'Failed to assign task');
     } finally {
       if (isMountedRef.current) setActionLoading(prev => { const next = new Set(prev); next.delete(taskId); return next; });
@@ -583,18 +742,23 @@ function PutawayTab() {
   };
 
   const handleCompleteTask = async (taskId: string) => {
-    const currentTask = tasks.find(t => t.task_id === taskId);
-    if (currentTask) {
-      setTasks(prev => prev.map(t => t.task_id === taskId ? { ...t, status: 'completed', actual_location: selectedTask?.location || 'A-12-03' } : t));
-      if (selectedTask?.task_id === taskId) setSelectedTask((prev: any) => ({ ...prev, status: 'completed', actual_location: selectedTask?.location || 'A-12-03' }));
+    const task = tasks.find((t) => t.task_id === taskId) || selectedTask;
+    const location =
+      window.prompt('Confirm shelf location:', task?.location || '')?.trim() || task?.location;
+    if (!location) {
+      toast.error('Location is required to complete putaway');
+      return;
     }
     setActionLoading(prev => new Set(prev).add(taskId));
     try {
-      await completePutawayTask(taskId, { actual_location: selectedTask?.location || 'A-12-03', notes: 'Completed' });
-      if (isMountedRef.current) { toast.success('Task completed successfully'); loadPutawayTasks(true); const nextTask = tasks.find(t => t.status === 'pending' && t.task_id !== taskId); if (nextTask) setSelectedTask(nextTask); }
+      await completePutawayTask(taskId, { actual_location: location, notes: 'Putaway completed' });
+      if (isMountedRef.current) {
+        toast.success('Putaway completed — stock updated');
+        await loadPutawayTasks(true);
+        onSummaryChange?.();
+      }
     } catch (error: any) {
       console.error('Failed to complete task:', error);
-      if (isMountedRef.current && currentTask) { setTasks(prev => prev.map(t => t.task_id === taskId ? currentTask : t)); if (selectedTask?.task_id === taskId) setSelectedTask(currentTask); }
       toast.error(error.message || 'Failed to complete task');
     } finally {
       if (isMountedRef.current) setActionLoading(prev => { const next = new Set(prev); next.delete(taskId); return next; });
@@ -606,6 +770,17 @@ function PutawayTab() {
 
   return (
     <div className="space-y-6">
+       <div className="flex justify-end">
+         <button
+           type="button"
+           onClick={() => loadPutawayTasks(false)}
+           disabled={loading}
+           className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-[#1677FF] border border-[#91CAFF] rounded-lg hover:bg-[#F0F7FF] disabled:opacity-50"
+         >
+           <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
+           Refresh tasks
+         </button>
+       </div>
        <div className="grid grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm"><div className="text-xs font-bold text-[#757575] uppercase tracking-wider mb-1">Putaway Queue</div><div className="text-2xl font-bold text-[#212121]">{loading ? '...' : pendingTasks.length} Tasks</div></div>
           <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm"><div className="text-xs font-bold text-[#757575] uppercase tracking-wider mb-1">Completed Today</div><div className="text-2xl font-bold text-[#212121]">{loading ? '...' : completedTasks.length}</div></div>
@@ -632,8 +807,23 @@ function PutawayTab() {
                     </div>
                  </div>
                  {selectedTask.status === 'pending' && (
-                   <div className="flex gap-3">
-                     <button onClick={() => handleAssignTask(selectedTask.task_id)} disabled={actionLoading.has(selectedTask.task_id)} className="px-4 py-2 bg-[#1677FF] text-white rounded-lg font-bold text-sm hover:bg-[#0958D9] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(selectedTask.task_id) ? 'Assigning...' : 'Assign Task'}</button>
+                   <div className="flex flex-wrap gap-3 items-end">
+                     <div className="flex-1 min-w-[180px]">
+                       <label className="block text-xs font-bold text-[#616161] mb-1">Assign to staff</label>
+                       <select
+                         value={assignStaffId}
+                         onChange={(e) => setAssignStaffId(e.target.value)}
+                         className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+                       >
+                         <option value="">Select staff...</option>
+                         {staffList.map((s) => (
+                           <option key={s.staff_id} value={s.staff_id}>
+                             {s.name} ({s.role})
+                           </option>
+                         ))}
+                       </select>
+                     </div>
+                     <button onClick={() => handleAssignTask(selectedTask.task_id)} disabled={actionLoading.has(selectedTask.task_id) || !assignStaffId} className="px-4 py-2 bg-[#1677FF] text-white rounded-lg font-bold text-sm hover:bg-[#0958D9] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(selectedTask.task_id) ? 'Assigning...' : 'Assign Task'}</button>
                    </div>
                  )}
                  {selectedTask.status === 'assigned' && (
@@ -642,8 +832,28 @@ function PutawayTab() {
                    </div>
                  )}
                </>
-             ) : <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E]">{loading ? 'Loading tasks...' : 'No tasks available'}</div>}
-             <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex-1 p-6 relative overflow-hidden"><div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur p-2 rounded border border-[#E0E0E0] shadow-sm"><h4 className="font-bold text-[#212121] text-sm flex items-center gap-2"><Map size={14}/> Routing Guide</h4><p className="text-xs text-[#616161]">Follow the highlighted path to the target shelf.</p></div><div className="w-full h-full bg-[#F5F5F5] rounded-lg border border-[#E0E0E0] relative flex items-center justify-center opacity-75"><div className="grid grid-cols-5 gap-8 w-3/4 h-3/4">{[...Array(10)].map((_, i) => (<div key={i} className={cn("bg-white border-2 rounded flex items-center justify-center text-xs font-bold text-[#E0E0E0]", i === 7 ? "border-[#4ADE80] bg-[#F0FDF4] text-[#16A34A] ring-4 ring-[#4ADE80]/20 scale-110 shadow-lg z-10" : "border-[#E0E0E0]")}>{i === 7 ? 'TARGET' : ''}</div>))}</div><svg className="absolute inset-0 w-full h-full pointer-events-none"><path d="M100,400 Q300,400 350,250 T600,150" fill="none" stroke="#1677FF" strokeWidth="4" strokeDasharray="8 4" className="animate-pulse" /></svg></div></div>
+             ) : (
+               <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E] p-8 text-center">
+                 {loading ? (
+                   'Loading tasks...'
+                 ) : (
+                   <>
+                     <ArrowDownToLine size={40} className="mb-3 opacity-20" />
+                     <p className="font-bold text-[#212121] mb-1">No putaway tasks</p>
+                     <p className="text-sm max-w-md">
+                       Complete a GRN in the GRN Processing tab (receive line items, then Complete GRN) to
+                       create putaway tasks for this store.
+                     </p>
+                   </>
+                 )}
+               </div>
+             )}
+             <PutawayRoutingGuide
+               storeId={storeId}
+               targetLocation={selectedTask?.location}
+               refreshKey={shelfLayoutRefreshKey}
+               onOpenStoreSetup={onOpenStoreSetup}
+             />
           </div>
           <div className="col-span-4 bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden">
             <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]"><h3 className="font-bold text-[#212121]">Up Next</h3></div>
@@ -658,203 +868,6 @@ function PutawayTab() {
                 </div>
               ))}
             </div>
-          </div>
-       </div>
-    </div>
-  );
-}
-
-function TransfersTab() {
-  const [transfers, setTransfers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedTransfer, setSelectedTransfer] = useState<any>(null);
-  const [actionLoading, setActionLoading] = useState<Set<string>>(new Set());
-  const [showHistory, setShowHistory] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
-  const isMountedRef = useRef(true);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    loadTransfers(false);
-    refreshIntervalRef.current = setInterval(() => { if (isMountedRef.current) loadTransfers(true); }, 20000);
-    return () => { isMountedRef.current = false; if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current); };
-  }, [storeId]);
-
-  const loadTransfers = async (silent: boolean = false) => {
-    try {
-      if (!silent) setLoading(true);
-      const response = await getInterStoreTransfers({ storeId, status: 'all', page: 1, limit: 50 });
-      if (isMountedRef.current) {
-        const list = (response && response.transfers) ? response.transfers : [];
-        setTransfers(list);
-        if (list.length > 0) {
-          setSelectedTransfer((prev: any) => {
-            const inList = prev ? list.find((t: any) => t.transfer_id === prev.transfer_id) : null;
-            return inList ? inList : (list.find((t: any) => t.status === 'pending' || t.status === 'in_transit') || list[0]);
-          });
-        }
-        if (!silent) toast.success("Transfers refreshed");
-      }
-    } catch (error: any) {
-      console.error('Failed to load transfers:', error);
-      if (isMountedRef.current && !silent) toast.error("Failed to load transfers");
-      if (isMountedRef.current) setTransfers([]);
-    } finally {
-      if (isMountedRef.current) setLoading(false);
-    }
-  };
-
-  const handleSyncTransfers = async () => {
-    setSyncing(true);
-    const toastId = toast.loading('Syncing with central ERP...');
-    try {
-      const response = await syncInterStoreTransfers(storeId);
-      if (response.success) {
-        toast.success(response.message || 'Transfers synced successfully', { id: toastId });
-        loadTransfers(true);
-      } else throw new Error(response.error || 'Failed to sync');
-    } catch (error: any) {
-      console.error('Sync error:', error);
-      toast.error(error.message || 'Failed to sync transfers', { id: toastId });
-    } finally { setSyncing(false); }
-  };
-
-  const handleReceiveTransfer = async (transferId: string) => {
-    const currentTransfer = transfers.find(t => t.transfer_id === transferId);
-    if (currentTransfer) {
-      setTransfers(prev => prev.map(t => t.transfer_id === transferId ? { ...t, status: 'received', actual_arrival: new Date().toISOString() } : t));
-      if (selectedTransfer?.transfer_id === transferId) setSelectedTransfer((prev: any) => ({ ...prev, status: 'received', actual_arrival: new Date().toISOString() }));
-    }
-    setActionLoading(prev => new Set(prev).add(transferId));
-    try {
-      const response = await receiveInterStoreTransfer(transferId, { auto_create_putaway: true });
-      if (isMountedRef.current) {
-        toast.success(response.putaway_tasks_created ? `Transfer received. ${response.putaway_tasks_created} putaway tasks created` : 'Transfer received successfully');
-        loadTransfers(true);
-      }
-    } catch (error: any) {
-      console.error('Failed to receive transfer:', error);
-      if (isMountedRef.current && currentTransfer) { setTransfers(prev => prev.map(t => t.transfer_id === transferId ? currentTransfer : t)); if (selectedTransfer?.transfer_id === transferId) setSelectedTransfer(currentTransfer); }
-      toast.error(error.message || 'Failed to receive transfer');
-    } finally { if (isMountedRef.current) setActionLoading(prev => { const next = new Set(prev); next.delete(transferId); return next; }); }
-  };
-
-  const formatETA = (expectedArrival: string) => {
-    const date = new Date(expectedArrival);
-    const now = new Date();
-    const diff = date.getTime() - now.getTime();
-    if (diff < 0) return 'Arrived';
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    if (hours < 1) return 'Soon';
-    if (hours < 24) return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  return (
-    <div className="space-y-6">
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[600px]">
-          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden">
-             <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-                <h3 className="font-bold text-[#212121]">Scheduled Transfers</h3>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowHistory(!showHistory)} className={cn("text-[10px] flex items-center gap-1 font-bold px-2 py-1 rounded transition-colors", showHistory ? "bg-[#1677FF] text-white" : "text-[#1677FF] hover:bg-[#E6F7FF]")}><History size={12} /> {showHistory ? 'View List' : 'History'}</button>
-                  <button onClick={handleSyncTransfers} disabled={syncing} className="text-[#1677FF] text-xs font-bold hover:underline disabled:opacity-50">{syncing ? 'Syncing...' : 'Refresh'}</button>
-                </div>
-             </div>
-             <div className="flex-1 overflow-y-auto">
-                {showHistory ? (
-                  <div className="p-4">
-                    <ActionHistoryViewer module="inbound" action="SYNC_TRANSFERS" limit={10} />
-                  </div>
-                ) : 
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
-                      <tr>
-                        <th className="px-4 py-3 font-medium">Transfer ID</th>
-                        <th className="px-4 py-3 font-medium">Origin Store</th>
-                        <th className="px-4 py-3 font-medium">ETA</th>
-                        <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#F0F0F0]">
-                      {loading ? (
-                        <tr><td colSpan={5} className="px-4 py-8 text-center text-[#9E9E9E]">Loading transfers...</td></tr>
-                      ) : transfers.length === 0 ? (
-                        <tr><td colSpan={5} className="px-4 py-8 text-center text-[#9E9E9E]">No transfers found</td></tr>
-                      ) : (
-                        transfers.map((trf) => (
-                          <tr key={trf.transfer_id} className={cn("hover:bg-[#F9FAFB] cursor-pointer", selectedTransfer?.transfer_id === trf.transfer_id ? "bg-[#F0F7FF]" : "")} onClick={() => setSelectedTransfer(trf)}>
-                            <td className="px-4 py-3 font-medium text-[#212121]">{trf.transfer_id}</td>
-                            <td className="px-4 py-3 text-[#616161]">{trf.from_store}</td>
-                            <td className="px-4 py-3 text-[#616161]">{formatETA(trf.expected_arrival)}</td>
-                            <td className="px-4 py-3">
-                              <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", trf.status === 'in_transit' ? "bg-[#E6F7FF] text-[#1677FF]" : trf.status === 'received' ? "bg-[#F0FDF4] text-[#16A34A]" : trf.status === 'rejected' ? "bg-[#FEE2E2] text-[#EF4444]" : "bg-[#F5F5F5] text-[#757575]")}>{trf.status}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {trf.status === 'pending' || trf.status === 'in_transit' ? (
-                                <button onClick={(e) => { e.stopPropagation(); handleReceiveTransfer(trf.transfer_id); }} disabled={actionLoading.has(trf.transfer_id)} className="px-2 py-1 bg-[#22C55E] text-white rounded text-xs font-bold hover:bg-[#16A34A] disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(trf.transfer_id) ? 'Receiving...' : 'Receive'}</button>
-                              ) : (
-                                <button className="p-1 hover:bg-[#E0E0E0] rounded text-[#616161]"><ChevronRight size={16} /></button>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                }
-             </div>
-          </div>
-          <div className="flex flex-col gap-6">
-             {selectedTransfer ? (
-               <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm flex-1">
-                  <h3 className="font-bold text-[#212121] mb-4 flex items-center gap-2"><Truck size={18} /> Transfer Details</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-[#F9FAFB] rounded-lg border border-[#E0E0E0]">
-                      <div>
-                        <div className="text-xs font-bold text-[#757575] uppercase">Transfer ID</div>
-                        <div className="font-bold text-[#212121]">{selectedTransfer.transfer_id}</div>
-                      </div>
-                      <div className="h-8 w-px bg-[#E0E0E0]" />
-                      <div>
-                        <div className="text-xs font-bold text-[#757575] uppercase">From Store</div>
-                        <div className="font-bold text-[#212121]">{selectedTransfer.from_store}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-[#F9FAFB] rounded-lg border border-[#E0E0E0]">
-                      <div>
-                        <div className="text-xs font-bold text-[#757575] uppercase">Total Items</div>
-                        <div className="font-bold text-[#212121]">{selectedTransfer.items_count} Items</div>
-                      </div>
-                      <div className="h-8 w-px bg-[#E0E0E0]" />
-                      <div>
-                        <div className="text-xs font-bold text-[#757575] uppercase">Total Quantity</div>
-                        <div className="font-bold text-[#212121]">{selectedTransfer.total_quantity} Units</div>
-                      </div>
-                    </div>
-                    <div className="p-3 bg-[#F9FAFB] rounded-lg border border-[#E0E0E0]">
-                      <div className="text-xs font-bold text-[#757575] uppercase mb-1">Expected Arrival</div>
-                      <div className="font-bold text-[#212121]">{new Date(selectedTransfer.expected_arrival).toLocaleString()}</div>
-                      {selectedTransfer.actual_arrival && (
-                        <>
-                          <div className="text-xs font-bold text-[#757575] uppercase mt-2 mb-1">Actual Arrival</div>
-                          <div className="font-bold text-[#22C55E]">{new Date(selectedTransfer.actual_arrival).toLocaleString()}</div>
-                        </>
-                      )}
-                    </div>
-                    {(selectedTransfer.status === 'pending' || selectedTransfer.status === 'in_transit') && (
-                      <button onClick={() => handleReceiveTransfer(selectedTransfer.transfer_id)} disabled={actionLoading.has(selectedTransfer.transfer_id)} className="w-full py-3 bg-[#22C55E] text-white rounded-lg font-bold hover:bg-[#16A34A] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <CheckCircle2 size={16} className={actionLoading.has(selectedTransfer.transfer_id) ? "animate-spin" : ""} /> 
-                        {actionLoading.has(selectedTransfer.transfer_id) ? 'Receiving...' : 'Receive Transfer'}
-                      </button>
-                    )}
-                  </div>
-               </div>
-             ) : <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E]">{loading ? 'Loading transfer details...' : 'Select a transfer to view details'}</div>}
           </div>
        </div>
     </div>

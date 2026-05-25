@@ -119,7 +119,17 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
     return matchesSearch && matchesStatus;
   });
 
-  const marginRiskCount = (allSkus ?? []).filter((s: any) => (s.margin ?? 0) < 15 || ['critical', 'warning'].includes((s.marginStatus ?? '').toLowerCase())).length;
+  const marginRiskCount = (allSkus ?? []).filter((s: any) => {
+    if (s.marginReviewed) return false;
+    return (s.margin ?? 0) < 15 || ['critical', 'warning'].includes((s.marginStatus ?? '').toLowerCase());
+  }).length;
+
+  const activeSurgeCount = surgeRules.filter((r: any) => (r.status ?? 'active') === 'active' || r.active === true).length;
+  const surgeMultipliers = surgeRules
+    .map((r: any) => typeof r.multiplier === 'number' ? r.multiplier : parseFloat(String(r.multiplier ?? '').replace(/x/gi, '')))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  const minSurge = surgeMultipliers.length ? Math.min(...surgeMultipliers) : null;
+  const maxSurge = surgeMultipliers.length ? Math.max(...surgeMultipliers) : null;
 
   const handleEditSku = (sku: any) => {
     setSelectedSku(sku);
@@ -148,7 +158,19 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
 
   const handleCreateRule = async (rule: any) => {
     try {
-      const response = await pricingApi.createPriceRule(rule);
+      const payload = {
+        name: rule.name,
+        description: rule.description,
+        type: rule.type,
+        scope: rule.scope,
+        pricingMethod: rule.pricingMethod,
+        marginMin: rule.marginMin ? parseFloat(rule.marginMin) : undefined,
+        marginMax: rule.marginMax ? parseFloat(rule.marginMax) : undefined,
+        startDate: rule.startDate instanceof Date ? rule.startDate.toISOString() : rule.startDate,
+        endDate: rule.endDate instanceof Date ? rule.endDate.toISOString() : rule.endDate,
+        status: 'pending',
+      };
+      const response = await pricingApi.createPriceRule(payload);
       if (response.success) {
         const priceRulesResp = await pricingApi.getPriceRules();
         if (priceRulesResp.success && Array.isArray(priceRulesResp.data)) {
@@ -213,10 +235,12 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
                  <ChevronRight className="text-gray-300 group-hover:text-[#7C3AED] transition-colors" size={20} />
              </div>
              <div className="flex items-end gap-2">
-                 <span className="text-4xl font-bold text-[#212121]">{surgeRules.filter((r: any) => r.active !== false).length > 0 ? 'Active' : 'Inactive'}</span>
-                 <span className="text-sm text-[#757575] mb-1">in {surgeRules.length} zone{surgeRules.length !== 1 ? 's' : ''}</span>
+                 <span className="text-4xl font-bold text-[#212121]">{activeSurgeCount > 0 ? 'Active' : 'Inactive'}</span>
+                 <span className="text-sm text-[#757575] mb-1">in {surgeRules.length} rule{surgeRules.length !== 1 ? 's' : ''}</span>
              </div>
-             <p className="text-xs text-[#757575] mt-2 group-hover:text-[#7C3AED] transition-colors">Multiplier: 1.1x - 1.25x</p>
+             <p className="text-xs text-[#757575] mt-2 group-hover:text-[#7C3AED] transition-colors">
+               {minSurge && maxSurge ? `Multiplier: ${minSurge}x - ${maxSurge}x` : 'No surge multipliers configured'}
+             </p>
           </div>
 
            <div 
@@ -380,9 +404,9 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
 
       {/* Interactive Components */}
       <PriceRuleWizard open={isWizardOpen} onOpenChange={setIsWizardOpen} onSubmit={handleCreateRule} />
-      <SurgePricingDrawer open={isSurgeOpen} onOpenChange={setIsSurgeOpen} />
-      <MarginRiskView open={isMarginOpen} onOpenChange={setIsMarginOpen} />
-      <PendingUpdatesView open={isPendingOpen} onOpenChange={setIsPendingOpen} />
+      <SurgePricingDrawer open={isSurgeOpen} onOpenChange={(open) => { setIsSurgeOpen(open); if (!open) loadData(); }} />
+      <MarginRiskView open={isMarginOpen} onOpenChange={(open) => { setIsMarginOpen(open); if (!open) loadData(); }} />
+      <PendingUpdatesView open={isPendingOpen} onOpenChange={(open) => { setIsPendingOpen(open); if (!open) loadData(); }} />
       <SKUPriceDetailDrawer 
         sku={selectedSku} 
         open={!!selectedSku} 
@@ -398,21 +422,28 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
             const orig = (skusToUse ?? []).find((s: any) => (s.id ?? s._id) === (u.id ?? u._id));
             return orig && (orig.sell !== u.sell || orig.base !== u.base);
           });
-          const next = [...(allSkus ?? [])];
-          for (const sku of changed) {
-            const id = sku.id ?? sku._id;
-            try {
-              const resp = await pricingApi.updateSkuPrice(id, { base: sku.base, sell: sku.sell, margin: sku.margin, marginStatus: sku.marginStatus });
-              if (resp.success && resp.data) {
+          if (changed.length === 0) return;
+          try {
+            const resp = await pricingApi.bulkUpdateSkus(changed.map((sku: any) => ({
+              id: sku.id ?? sku._id,
+              base: sku.base,
+              sell: sku.sell,
+              margin: sku.margin,
+              marginStatus: sku.marginStatus,
+            })));
+            if (resp.success && Array.isArray(resp.data)) {
+              const next = [...(allSkus ?? [])];
+              for (const updated of resp.data) {
+                const id = updated.id ?? updated._id;
                 const idx = next.findIndex((s: any) => (s.id ?? s._id) === id);
-                if (idx >= 0) next[idx] = { ...next[idx], ...resp.data, id: resp.data.id ?? resp.data._id ?? id };
+                if (idx >= 0) next[idx] = { ...next[idx], ...updated };
               }
-            } catch (e) {
-              toast.error(`Failed to update ${sku.name ?? sku.code}`);
+              setAllSkus(next);
+              toast.success(`Updated ${resp.count ?? changed.length} SKU(s)`);
             }
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Bulk update failed');
           }
-          setAllSkus(next);
-          if (changed.length > 0) toast.success(`Updated ${changed.length} SKU(s)`);
         }}
       />
       

@@ -39,7 +39,6 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
     { id: 'overview', label: 'Store Overview', icon: LayoutDashboard },
     { id: 'liveorders', label: 'Live Orders', icon: List },
     { id: 'cancelledorders', label: 'Cancelled Orders', icon: Ban },
-    { id: 'pickpack', label: 'Pick Tasks & Pack', icon: PackageSearch },
     { id: 'pickpackops', label: 'Pick & Pack Ops', icon: Package },
     { id: 'livepickingmonitor', label: 'Live Picking Monitor', icon: PackageSearch },
     { id: 'slamonitor', label: 'SLA Monitor', icon: Clock },

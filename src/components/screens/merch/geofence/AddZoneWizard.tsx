@@ -6,16 +6,24 @@ import { Label } from "../../../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
 import { Checkbox } from "../../../ui/checkbox";
 import { Zone, Store, ZoneType } from './types';
-import { MapArea } from './MapArea';
+import { GeofenceMap } from './GeofenceMap';
+import { polygonAreaSqKm } from './geofenceUtils';
 import { Tabs, TabsList, TabsTrigger } from "../../../ui/tabs"; // For steps visualization
 
 interface AddZoneWizardProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (zone: Zone) => void;
+  onSave: (zone: Zone & { linkedStoreIds?: string[] }) => void;
   existingZones: Zone[];
   stores?: Store[];
 }
+
+const DEFAULT_SETTINGS = {
+  deliveryFee: 39,
+  minOrderValue: 149,
+  estimatedDeliveryTime: 30,
+  surgeMultiplier: 1,
+};
 
 const STEPS = ['Basics', 'Draw', 'Link Stores', 'Rules', 'Review'];
 
@@ -30,16 +38,17 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
     points: [],
   });
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
-  
-  // Drawing state
-  const [drawingPoints, setDrawingPoints] = useState<{x: number, y: number}[]>([]);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+
+  const [drawingPolygon, setDrawingPolygon] = useState<{ lat: number; lng: number }[]>([]);
 
   // Reset state when modal opens
   React.useEffect(() => {
     if (isOpen) {
       setCurrentStep(0);
-      setDrawingPoints([]);
+      setDrawingPolygon([]);
       setSelectedStores([]);
+      setSettings(DEFAULT_SETTINGS);
       setZoneData({
         name: '',
         type: 'Serviceable',
@@ -52,8 +61,12 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
   }, [isOpen]);
 
   const handleNext = () => {
-    if (currentStep === 1 && drawingPoints.length < 3) {
-        alert("Please draw at least 3 points on the map.");
+    if (currentStep === 0 && !zoneData.name?.trim()) {
+      alert('Enter a zone name.');
+      return;
+    }
+    if (currentStep === 1 && drawingPolygon.length < 3) {
+        alert('Please draw at least 3 points on the map.');
         return;
     }
 
@@ -61,11 +74,13 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
       setCurrentStep(currentStep + 1);
     } else {
       // Save
-      const newZone: Zone = {
+      const newZone = {
         ...zoneData as Zone,
-        points: drawingPoints,
+        polygon: drawingPolygon,
         storesCovered: selectedStores.length,
-        areaSqKm: Math.round(Math.random() * 20) + 5 // Mock area calculation
+        areaSqKm: polygonAreaSqKm(drawingPolygon),
+        settings,
+        linkedStoreIds: selectedStores,
       };
       onSave(newZone);
       // Removed manual onClose() here, handled by parent after successful API call
@@ -78,12 +93,12 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
     }
   };
 
-  const handleMapClick = (x: number, y: number) => {
-    setDrawingPoints([...drawingPoints, { x, y }]);
+  const handleMapClick = (lat: number, lng: number) => {
+    setDrawingPolygon([...drawingPolygon, { lat, lng }]);
   };
 
   const undoLastPoint = () => {
-    setDrawingPoints(drawingPoints.slice(0, -1));
+    setDrawingPolygon(drawingPolygon.slice(0, -1));
   };
 
   return (
@@ -151,16 +166,16 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
                 <div className="h-full flex flex-col">
                     <div className="flex justify-between items-center mb-2">
                         <p className="text-sm text-gray-500">Click on the map to draw polygon points. Close the shape by clicking near the start.</p>
-                         <Button variant="outline" size="sm" onClick={undoLastPoint} disabled={drawingPoints.length === 0}>Undo Point</Button>
+                         <Button variant="outline" size="sm" onClick={undoLastPoint} disabled={drawingPolygon.length === 0}>Undo Point</Button>
                     </div>
                     <div className="flex-1 border rounded-lg overflow-hidden relative min-h-[300px]">
-                        <MapArea 
+                        <GeofenceMap
                             zones={existingZones}
                             stores={stores}
                             onZoneClick={() => {}}
                             onStoreClick={() => {}}
-                            isDrawing={true}
-                            drawingPoints={drawingPoints}
+                            isDrawing
+                            drawingPolygon={drawingPolygon}
                             onMapClick={handleMapClick}
                         />
                     </div>
@@ -197,12 +212,20 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
                         <h4 className="font-medium">Delivery Settings</h4>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Base Delivery Fee</Label>
-                                <Input type="number" placeholder="₹2.99" />
+                                <Label>Base delivery fee (₹)</Label>
+                                <Input
+                                  type="number"
+                                  value={settings.deliveryFee}
+                                  onChange={(e) => setSettings({ ...settings, deliveryFee: Number(e.target.value) })}
+                                />
                             </div>
                             <div className="space-y-2">
-                                <Label>Min Order Value</Label>
-                                <Input type="number" placeholder="₹15.00" />
+                                <Label>Min order value (₹)</Label>
+                                <Input
+                                  type="number"
+                                  value={settings.minOrderValue}
+                                  onChange={(e) => setSettings({ ...settings, minOrderValue: Number(e.target.value) })}
+                                />
                             </div>
                         </div>
                     </div>
@@ -213,9 +236,14 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
                             <Checkbox id="promo-eligible" defaultChecked />
                             <Label htmlFor="promo-eligible">Enable standard promotions</Label>
                         </div>
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="surge-pricing" />
-                            <Label htmlFor="surge-pricing">Enable surge pricing during peak hours</Label>
+                        <div className="space-y-2">
+                            <Label>Surge multiplier</Label>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              value={settings.surgeMultiplier}
+                              onChange={(e) => setSettings({ ...settings, surgeMultiplier: Number(e.target.value) })}
+                            />
                         </div>
                     </div>
                 </div>
@@ -231,7 +259,7 @@ export function AddZoneWizard({ isOpen, onClose, onSave, existingZones, stores =
                         </div>
                          <div className="flex justify-between">
                             <span className="text-gray-500">Points</span>
-                            <span className="font-medium">{drawingPoints.length} vertices</span>
+                            <span className="font-medium">{drawingPolygon.length} vertices</span>
                         </div>
                          <div className="flex justify-between">
                             <span className="text-gray-500">Linked Stores</span>

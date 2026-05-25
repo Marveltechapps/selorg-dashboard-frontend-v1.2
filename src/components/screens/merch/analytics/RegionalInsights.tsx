@@ -30,10 +30,10 @@ export function RegionalInsights({ onNavigate }: { onNavigate?: (tab: string) =>
             orders: item.orders || 0,
             aov: item.aov || 0,
             redemptionRate: item.redemptionRate || 0,
-            uplift: 0,
-            newCustomers: 0,
-            returningCustomers: 0,
-            storeType: 'Dark Store'
+            uplift: item.metadata?.uplift ?? 0,
+            newCustomers: item.metadata?.newCustomers ?? 0,
+            returningCustomers: item.metadata?.returningCustomers ?? 0,
+            storeType: item.metadata?.storeType ?? 'Dark Store',
           })));
         } else {
           setRegionalData([]);

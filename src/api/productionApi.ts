@@ -103,7 +103,7 @@ export async function fetchRawMaterials(search?: string, storeId?: string): Prom
   return Array.isArray(data) ? data : [];
 }
 
-export async function createRawMaterial(body: {
+export type RawMaterialInput = {
   name: string;
   currentStock: number;
   unit: string;
@@ -111,11 +111,32 @@ export async function createRawMaterial(body: {
   reorderPoint?: number;
   supplier?: string;
   category?: string;
-}, storeId?: string): Promise<RawMaterial> {
+};
+
+export async function createRawMaterial(body: RawMaterialInput, storeId?: string): Promise<RawMaterial> {
   const payload = storeId ? { ...body, storeId } : body;
   return fetchApi<RawMaterial>(`${base}${API_ENDPOINTS.production.rawMaterials.materials}`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updateRawMaterial(
+  id: string,
+  body: Partial<RawMaterialInput>,
+  storeId?: string
+): Promise<RawMaterial> {
+  const payload = storeId ? { ...body, storeId } : body;
+  return fetchApi<RawMaterial>(`${base}${API_ENDPOINTS.production.rawMaterials.material(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteRawMaterial(id: string, storeId?: string): Promise<void> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  await fetchApi(`${base}${API_ENDPOINTS.production.rawMaterials.material(id)}${q}`, {
+    method: 'DELETE',
   });
 }
 
@@ -175,17 +196,41 @@ export async function fetchPlans(storeId?: string): Promise<ProductionPlan[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export async function createPlan(body: {
+export type ProductionPlanInput = {
   product: string;
   line: string;
   startDate: string;
   endDate?: string;
   quantity: number;
-}, storeId?: string): Promise<ProductionPlan> {
-  const payload = storeId ? { ...body, endDate: body.endDate || body.startDate, storeId } : { ...body, endDate: body.endDate || body.startDate };
+  status?: ProductionPlan['status'];
+};
+
+export async function createPlan(body: ProductionPlanInput, storeId?: string): Promise<ProductionPlan> {
+  const payload = storeId
+    ? { ...body, endDate: body.endDate || body.startDate, storeId }
+    : { ...body, endDate: body.endDate || body.startDate };
   return fetchApi<ProductionPlan>(`${base}${API_ENDPOINTS.production.planning.plans}`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updatePlan(
+  id: string,
+  body: Partial<ProductionPlanInput>,
+  storeId?: string
+): Promise<ProductionPlan> {
+  const payload = storeId ? { ...body, storeId } : body;
+  return fetchApi<ProductionPlan>(`${base}${API_ENDPOINTS.production.planning.plan(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deletePlan(id: string, storeId?: string): Promise<void> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  await fetchApi(`${base}${API_ENDPOINTS.production.planning.plan(id)}${q}`, {
+    method: 'DELETE',
   });
 }
 
@@ -198,17 +243,40 @@ export async function fetchWorkOrders(search?: string, storeId?: string): Promis
   return Array.isArray(data) ? data : [];
 }
 
-export async function createWorkOrder(body: {
+export type WorkOrderInput = {
   product: string;
   quantity: number;
   line?: string;
   priority?: 'low' | 'medium' | 'high';
   dueDate?: string;
-}, storeId?: string): Promise<WorkOrder> {
+  status?: WorkOrder['status'];
+  operator?: string;
+};
+
+export async function createWorkOrder(body: WorkOrderInput, storeId?: string): Promise<WorkOrder> {
   const payload = storeId ? { ...body, storeId } : body;
   return fetchApi<WorkOrder>(`${base}${API_ENDPOINTS.production.workOrders.list}`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updateWorkOrder(
+  id: string,
+  body: Partial<WorkOrderInput>,
+  storeId?: string
+): Promise<WorkOrder> {
+  const payload = storeId ? { ...body, storeId } : body;
+  return fetchApi<WorkOrder>(`${base}${API_ENDPOINTS.production.workOrders.byId(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteWorkOrder(id: string, storeId?: string): Promise<void> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  await fetchApi(`${base}${API_ENDPOINTS.production.workOrders.byId(id)}${q}`, {
+    method: 'DELETE',
   });
 }
 
@@ -376,12 +444,87 @@ export async function updateProductionLine(
   });
 }
 
+export type ProductionLineInput = {
+  name: string;
+  status?: ProductionLineOverview['status'];
+  currentJob?: string;
+  output?: number;
+  target?: number;
+  efficiency?: number;
+  lineId?: string;
+};
+
+export async function createProductionLine(
+  body: ProductionLineInput,
+  factoryId?: string
+): Promise<{ success: boolean; line: ProductionLineOverview; message: string }> {
+  const payload = factoryId ? { ...body, factoryId } : body;
+  return fetchApi(`${base}${API_ENDPOINTS.production.overviewLines}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateProductionLineDetails(
+  lineId: string,
+  body: Partial<ProductionLineInput>,
+  factoryId?: string
+): Promise<{ success: boolean; line: ProductionLineOverview; message: string }> {
+  const payload = factoryId ? { ...body, factoryId } : body;
+  return fetchApi(`${base}${API_ENDPOINTS.production.overviewLine(lineId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProductionLine(
+  lineId: string,
+  factoryId?: string
+): Promise<{ success: boolean; message: string }> {
+  const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
+  return fetchApi(`${base}${API_ENDPOINTS.production.overviewLine(lineId)}${q}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function fetchProductionFactories(): Promise<ProductionFactory[]> {
   const data = await fetchApi<{ success: boolean; factories: ProductionFactory[] }>(`${base}${API_ENDPOINTS.production.factories}`);
   return data?.factories ?? [];
 }
 
 const dash = API_ENDPOINTS.production.dashboard;
+
+function mapProductionAlertRecord(r: Record<string, unknown>): ProductionAlert {
+  const alertId = String(r.id ?? r.alert_id ?? r._id ?? '').trim();
+  return {
+    id: alertId,
+    title: String(r.title ?? ''),
+    description: String(r.description ?? ''),
+    severity: (r.severity ?? 'info') as ProductionAlert['severity'],
+    category: (r.category ?? 'production') as ProductionAlert['category'],
+    status: (r.status ?? 'active') as ProductionAlert['status'],
+    timestamp: String(r.timestamp ?? r.created_at ?? new Date().toISOString()),
+    location: r.location ? String(r.location) : undefined,
+    assignedTo: r.assignedTo ? String(r.assignedTo) : r.assigned_to ? String(r.assigned_to) : undefined,
+    resolvedBy: r.resolvedBy ? String(r.resolvedBy) : r.resolved_by ? String(r.resolved_by) : undefined,
+    resolvedAt: r.resolvedAt ? String(r.resolvedAt) : r.resolved_at ? String(r.resolved_at) : undefined,
+  };
+}
+
+function mapProductionIncidentRecord(r: Record<string, unknown>): ProductionIncident {
+  const incidentId = String(r.id ?? r.incident_id ?? r._id ?? '').trim();
+  return {
+    id: incidentId,
+    title: String(r.title ?? ''),
+    description: String(r.description ?? ''),
+    severity: (r.severity ?? 'medium') as ProductionIncident['severity'],
+    category: String(r.category ?? 'General'),
+    reportedBy: String(r.reportedBy ?? r.reported_by ?? ''),
+    location: String(r.location ?? ''),
+    timestamp: String(r.timestamp ?? r.reported_at ?? new Date().toISOString()),
+    status: (r.status ?? 'open') as ProductionIncident['status'],
+  };
+}
 
 export async function fetchProductionAlerts(params?: {
   status?: string;
@@ -396,7 +539,15 @@ export async function fetchProductionAlerts(params?: {
   if (params?.category) q.set('category', params.category);
   if (params?.search) q.set('search', params.search);
   if (params?.factoryId) q.set('factoryId', params.factoryId);
-  return fetchApi(`${base}${dash.alerts}?${q}`);
+  const qs = q.toString();
+  const res = await fetchApi<{
+    alerts?: Record<string, unknown>[];
+    summary?: { criticalCount: number; warningCount: number; activeAlertsCount: number };
+  }>(`${base}${dash.alerts}${qs ? `?${qs}` : ''}`);
+  return {
+    alerts: (res?.alerts ?? []).map((a) => mapProductionAlertRecord(a)),
+    summary: res?.summary ?? { criticalCount: 0, warningCount: 0, activeAlertsCount: 0 },
+  };
 }
 
 export async function updateProductionAlertStatus(
@@ -405,15 +556,19 @@ export async function updateProductionAlertStatus(
   assignee?: string,
   factoryId?: string
 ): Promise<{ alert: ProductionAlert }> {
-  return fetchApi(`${base}${dash.alertStatus(alertId)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ actionType, assignee, factoryId }),
-  });
+  const res = await fetchApi<{ alert?: Record<string, unknown> }>(
+    `${base}${dash.alertStatus(encodeURIComponent(alertId))}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ actionType, assignee, factoryId }),
+    }
+  );
+  return { alert: mapProductionAlertRecord(res?.alert ?? {}) };
 }
 
 export async function deleteProductionAlert(alertId: string, factoryId?: string): Promise<void> {
   const q = factoryId ? `?factoryId=${encodeURIComponent(factoryId)}` : '';
-  await fetchApi(`${base}${dash.alertDelete(alertId)}${q}`, { method: 'DELETE' });
+  await fetchApi(`${base}${dash.alertDelete(encodeURIComponent(alertId))}${q}`, { method: 'DELETE' });
 }
 
 export async function fetchProductionIncidents(params?: { factoryId?: string }): Promise<{
@@ -423,7 +578,15 @@ export async function fetchProductionIncidents(params?: { factoryId?: string }):
   const q = new URLSearchParams();
   if (params?.factoryId) q.set('factoryId', params.factoryId);
   const qs = q.toString() ? `?${q.toString()}` : '';
-  return fetchApi(`${base}${dash.incidents}${qs}`);
+  const res = await fetchApi<{
+    incidents?: Record<string, unknown>[];
+    openIncidentsCount?: number;
+  }>(`${base}${dash.incidents}${qs}`);
+  const incidents = (res?.incidents ?? []).map((i) => mapProductionIncidentRecord(i));
+  return {
+    incidents,
+    openIncidentsCount: res?.openIncidentsCount ?? incidents.filter((i) => i.status !== 'resolved').length,
+  };
 }
 
 export async function createProductionIncident(body: {
@@ -435,10 +598,11 @@ export async function createProductionIncident(body: {
   location?: string;
 }, factoryId?: string): Promise<{ incident: ProductionIncident }> {
   const payload = factoryId ? { ...body, factoryId } : body;
-  return fetchApi(`${base}${dash.incidents}`, {
+  const res = await fetchApi<{ incident?: Record<string, unknown> }>(`${base}${dash.incidents}`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return { incident: mapProductionIncidentRecord(res?.incident ?? {}) };
 }
 
 export async function updateProductionIncidentStatus(
@@ -446,10 +610,14 @@ export async function updateProductionIncidentStatus(
   status: 'open' | 'investigating' | 'resolved',
   factoryId?: string
 ): Promise<{ incident: ProductionIncident }> {
-  return fetchApi(`${base}${dash.incidentStatus(incidentId)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ status, factoryId }),
-  });
+  const res = await fetchApi<{ incident?: Record<string, unknown> }>(
+    `${base}${dash.incidentStatus(encodeURIComponent(incidentId))}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ status, factoryId }),
+    }
+  );
+  return { incident: mapProductionIncidentRecord(res?.incident ?? {}) };
 }
 
 export async function fetchProductionReports(params?: {
@@ -603,13 +771,34 @@ export async function fetchQCInspections(storeId?: string): Promise<QCInspection
   }));
 }
 
-export async function createQCInspection(body: {
+export type QCInspectionInput = {
   batch: string;
   checkType: string;
   result: 'pass' | 'fail' | 'pending';
   inspector: string;
   notes?: string;
-}, storeId?: string): Promise<QCInspection> {
+};
+
+function mapInspectionRecord(r: Record<string, unknown>, fallback?: Partial<QCInspectionInput>): QCInspection {
+  return {
+    id: String(r.inspection_id ?? r._id ?? r.id ?? Date.now()),
+    time: r.createdAt
+      ? new Date(String(r.createdAt)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      : new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    batch: String(r.batch_id ?? fallback?.batch ?? ''),
+    checkType: String(r.check_type ?? r.product_name ?? fallback?.checkType ?? ''),
+    result: (r.status === 'passed'
+      ? 'pass'
+      : r.status === 'failed'
+        ? 'fail'
+        : 'pending') as 'pass' | 'fail' | 'pending',
+    inspector: String(r.inspector ?? fallback?.inspector ?? ''),
+    notes: r.notes ? String(r.notes) : fallback?.notes,
+    date: String(r.date ?? new Date().toISOString().split('T')[0]),
+  };
+}
+
+export async function createQCInspection(body: QCInspectionInput, storeId?: string): Promise<QCInspection> {
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
   const res = await fetchApi<{ success: boolean; inspection: Record<string, unknown> }>(`${base}${API_ENDPOINTS.production.qc.inspections}${q}`, {
     method: 'POST',
@@ -621,26 +810,37 @@ export async function createQCInspection(body: {
       notes: body.notes,
     }),
   });
-  const r = res?.inspection ?? {};
-  return {
-    id: String(r.inspection_id ?? r._id ?? r.id ?? Date.now()),
-    time: r.createdAt ? new Date(String(r.createdAt)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-    batch: String(r.batch_id ?? body.batch),
-    checkType: String(r.product_name ?? body.checkType),
-    result: (r.status === 'passed' ? 'pass' : r.status === 'failed' ? 'fail' : 'pending') as 'pass' | 'fail' | 'pending',
-    inspector: String(r.inspector ?? body.inspector),
-    notes: r.notes ? String(r.notes) : body.notes,
-    date: String(r.date ?? new Date().toISOString().split('T')[0]),
-  };
+  return mapInspectionRecord((res?.inspection ?? {}) as Record<string, unknown>, body);
+}
+
+export async function updateQCInspection(
+  id: string,
+  body: Partial<QCInspectionInput>,
+  storeId?: string
+): Promise<QCInspection> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const payload = storeId ? { ...body, storeId } : body;
+  const res = await fetchApi<{ success: boolean; inspection: Record<string, unknown> }>(
+    `${base}${API_ENDPOINTS.production.qc.inspection(id)}${q}`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+  return mapInspectionRecord((res?.inspection ?? {}) as Record<string, unknown>, body);
+}
+
+export async function deleteQCInspection(id: string, storeId?: string): Promise<void> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  await fetchApi(`${base}${API_ENDPOINTS.production.qc.inspection(id)}${q}`, { method: 'DELETE' });
 }
 
 export async function fetchQCLabTests(storeId?: string): Promise<QCLabTest[]> {
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
   const data = await fetchApi<{ success: boolean; samples: unknown[] }>(`${base}${API_ENDPOINTS.production.qc.samples}${q}`);
   const items = data?.samples ?? [];
-  return (items as Record<string, unknown>[]).map((r) => ({
-    id: String(r.sample_id ?? r._id ?? r.id ?? ''),
-    sampleId: String(r.sample_id ?? ''),
+  return (items as Record<string, unknown>[]).map((r) => {
+    const sampleId = String(r.sample_id ?? r.id ?? r._id ?? '');
+    return {
+    id: sampleId || String(r._id ?? ''),
+    sampleId,
     product: String(r.product_name ?? r.product ?? ''),
     source: String(r.batch_id ?? r.source ?? ''),
     testType: String(r.test_type ?? r.testType ?? ''),
@@ -649,7 +849,8 @@ export async function fetchQCLabTests(storeId?: string): Promise<QCLabTest[]> {
     receivedDate: String(r.date ?? r.received_date ?? r.createdAt ?? ''),
     completedDate: r.completed_date ? String(r.completed_date) : undefined,
     result: r.result_notes ? String(r.result_notes) : (r.result && r.result !== 'pending' ? String(r.result) : undefined),
-  }));
+  };
+  });
 }
 
 function mapSampleStatus(r: Record<string, unknown>): 'pending' | 'in-progress' | 'completed' | 'failed' {
@@ -672,17 +873,19 @@ export async function createQCLabTest(body: {
   priority?: 'low' | 'normal' | 'high';
 }, storeId?: string): Promise<QCLabTest> {
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const payload = {
+    batchId: body.source,
+    productName: body.product,
+    product: body.product,
+    source: body.source,
+    testType: body.testType,
+    testedBy: 'Lab User',
+    priority: body.priority ?? 'normal',
+    ...(storeId ? { storeId } : {}),
+  };
   const res = await fetchApi<{ success: boolean; sample: Record<string, unknown> }>(`${base}${API_ENDPOINTS.production.qc.samples}${q}`, {
     method: 'POST',
-    body: JSON.stringify({
-      batchId: body.source,
-      productName: body.product,
-      product: body.product,
-      source: body.source,
-      testType: body.testType,
-      testedBy: 'Lab User',
-      priority: body.priority ?? 'normal',
-    }),
+    body: JSON.stringify(payload),
   });
   const r = res?.sample ?? {};
   return {
@@ -697,36 +900,71 @@ export async function createQCLabTest(body: {
   };
 }
 
+export type QCLabTestInput = {
+  product: string;
+  source: string;
+  testType: string;
+  priority?: 'low' | 'normal' | 'high';
+  status?: QCLabTest['status'];
+  result?: string;
+};
+
+function mapLabTestRecord(r: Record<string, unknown>, sampleId?: string): QCLabTest {
+  return {
+    id: String(r.sample_id ?? r._id ?? r.id ?? sampleId ?? ''),
+    sampleId: String(r.sample_id ?? sampleId ?? ''),
+    product: String(r.product_name ?? r.product ?? ''),
+    source: String(r.source ?? r.batch_id ?? ''),
+    testType: String(r.test_type ?? r.testType ?? ''),
+    status: mapSampleStatus(r),
+    priority: (r.priority ?? 'normal') as 'low' | 'normal' | 'high',
+    receivedDate: String(r.received_date ?? r.date ?? r.createdAt ?? ''),
+    completedDate: r.completed_date ? String(r.completed_date) : undefined,
+    result: r.result_notes ? String(r.result_notes) : r.result && r.result !== 'pending' ? String(r.result) : undefined,
+  };
+}
+
+export async function updateQCLabTest(
+  sampleId: string,
+  body: Partial<QCLabTestInput> & { status?: 'pending' | 'in-progress' | 'completed'; result?: string },
+  storeId?: string
+): Promise<QCLabTest> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const payload: Record<string, unknown> = { testedBy: 'Lab User' };
+  if (storeId) payload.storeId = storeId;
+  if (body.product !== undefined) payload.product = body.product;
+  if (body.source !== undefined) {
+    payload.source = body.source;
+    payload.batchId = body.source;
+  }
+  if (body.testType !== undefined) payload.testType = body.testType;
+  if (body.priority !== undefined) payload.priority = body.priority;
+  if (body.status !== undefined) payload.status = body.status;
+  if (body.result !== undefined) payload.result_notes = body.result;
+  if (body.status === 'completed') {
+    payload.result = 'pass';
+    payload.result_notes = body.result ?? 'Completed';
+  }
+  const encodedId = encodeURIComponent(sampleId);
+  const res = await fetchApi<{ success: boolean; sample: Record<string, unknown> }>(
+    `${base}${API_ENDPOINTS.production.qc.sampleStatus(encodedId)}${q}`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+  return mapLabTestRecord((res?.sample ?? {}) as Record<string, unknown>, sampleId);
+}
+
 export async function updateQCLabTestStatus(
   sampleId: string,
   status: 'pending' | 'in-progress' | 'completed',
   result?: string,
   storeId?: string
 ): Promise<QCLabTest> {
+  return updateQCLabTest(sampleId, { status, result }, storeId);
+}
+
+export async function deleteQCLabTest(sampleId: string, storeId?: string): Promise<void> {
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
-  const body: Record<string, unknown> = { status, testedBy: 'Lab User' };
-  if (status === 'completed') {
-    body.result = 'pass';
-    body.result_notes = result ?? 'Completed';
-  }
-  if (result) body.result_notes = result;
-  const res = await fetchApi<{ success: boolean; sample: Record<string, unknown> }>(`${base}${API_ENDPOINTS.production.qc.sampleStatus(sampleId)}${q}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  });
-  const r = res?.sample ?? {};
-  return {
-    id: String(r.sample_id ?? sampleId),
-    sampleId: String(r.sample_id ?? sampleId),
-    product: String(r.product_name ?? ''),
-    source: String(r.batch_id ?? ''),
-    testType: String(r.test_type ?? ''),
-    status: mapSampleStatus(r),
-    priority: (r.priority ?? 'normal') as 'low' | 'normal' | 'high',
-    receivedDate: String(r.date ?? ''),
-    completedDate: r.completed_date ? String(r.completed_date) : undefined,
-    result: r.result_notes ? String(r.result_notes) : (r.result ? String(r.result) : undefined),
-  };
+  await fetchApi(`${base}${API_ENDPOINTS.production.qc.sampleStatus(encodeURIComponent(sampleId))}${q}`, { method: 'DELETE' });
 }
 
 // ---- Production Maintenance ----
@@ -745,6 +983,8 @@ export interface ProductionEquipment {
 
 export interface ProductionMaintenanceTask {
   id: string;
+  /** Business id used in API paths (task_id); falls back to id when needed */
+  taskId: string;
   equipmentId: string;
   equipmentName: string;
   taskType: 'preventive' | 'corrective' | 'breakdown';
@@ -785,6 +1025,40 @@ export async function fetchProductionEquipment(storeId?: string): Promise<Produc
   }));
 }
 
+export type ProductionMaintenanceTaskInput = {
+  equipmentId: string;
+  equipmentName: string;
+  taskType: 'preventive' | 'corrective' | 'breakdown';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  scheduledDate: string;
+  description: string;
+  estimatedHours?: number;
+  status?: ProductionMaintenanceTask['status'];
+  technician?: string;
+};
+
+function mapMaintenanceTaskRecord(
+  r: Record<string, unknown>,
+  fallback?: Partial<ProductionMaintenanceTaskInput>
+): ProductionMaintenanceTask {
+  const taskId = String(r.task_id ?? r.id ?? r._id ?? '');
+  const id = taskId || String(r._id ?? '');
+  return {
+    id,
+    taskId: taskId || id,
+    equipmentId: String(r.equipment_id ?? fallback?.equipmentId ?? ''),
+    equipmentName: String(r.equipment_name ?? fallback?.equipmentName ?? ''),
+    taskType: (r.task_type ?? fallback?.taskType ?? 'preventive') as ProductionMaintenanceTask['taskType'],
+    priority: (r.priority ?? fallback?.priority ?? 'medium') as ProductionMaintenanceTask['priority'],
+    status: (r.status ?? fallback?.status ?? 'scheduled') as ProductionMaintenanceTask['status'],
+    scheduledDate: String(r.scheduled_date ?? fallback?.scheduledDate ?? ''),
+    completedDate: r.completed_date ? String(r.completed_date) : undefined,
+    technician: r.technician ? String(r.technician) : fallback?.technician,
+    description: String(r.description ?? fallback?.description ?? ''),
+    estimatedHours: r.estimated_hours != null ? Number(r.estimated_hours) : fallback?.estimatedHours,
+  };
+}
+
 export async function createProductionEquipment(body: {
   name: string;
   code: string;
@@ -792,9 +1066,10 @@ export async function createProductionEquipment(body: {
   location?: string;
 }, storeId?: string): Promise<ProductionEquipment> {
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const payload = storeId ? { ...body, storeId } : body;
   const res = await fetchApi<{ success: boolean; equipment: Record<string, unknown> }>(`${base}${API_ENDPOINTS.production.maintenance.equipment}${q}`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   const r = res?.equipment ?? {};
   return {
@@ -814,19 +1089,9 @@ export async function fetchProductionMaintenanceTasks(storeId?: string): Promise
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
   const data = await fetchApi<{ success: boolean; tasks: unknown[] }>(`${base}${API_ENDPOINTS.production.maintenance.tasks}${q}`);
   const items = data?.tasks ?? [];
-  return (items as Record<string, unknown>[]).map((r) => ({
-    id: String(r.task_id ?? r._id ?? r.id ?? ''),
-    equipmentId: String(r.equipment_id ?? ''),
-    equipmentName: String(r.equipment_name ?? ''),
-    taskType: (r.task_type ?? 'preventive') as 'preventive' | 'corrective' | 'breakdown',
-    priority: (r.priority ?? 'medium') as 'low' | 'medium' | 'high' | 'critical',
-    status: (r.status ?? 'scheduled') as 'scheduled' | 'in-progress' | 'completed' | 'overdue',
-    scheduledDate: String(r.scheduled_date ?? ''),
-    completedDate: r.completed_date ? String(r.completed_date) : undefined,
-    technician: r.technician ? String(r.technician) : undefined,
-    description: String(r.description ?? ''),
-    estimatedHours: r.estimated_hours != null ? Number(r.estimated_hours) : undefined,
-  }));
+  return (items as Record<string, unknown>[]).map((r) =>
+    mapMaintenanceTaskRecord(r as Record<string, unknown>)
+  );
 }
 
 export async function createProductionMaintenanceTask(body: {
@@ -839,32 +1104,54 @@ export async function createProductionMaintenanceTask(body: {
   estimatedHours?: number;
 }, storeId?: string): Promise<ProductionMaintenanceTask> {
   const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const payload = {
+    equipment_id: body.equipmentId,
+    equipment_name: body.equipmentName,
+    task_type: body.taskType,
+    priority: body.priority,
+    scheduled_date: body.scheduledDate,
+    description: body.description,
+    estimated_hours: body.estimatedHours,
+    ...(storeId ? { storeId } : {}),
+  };
   const res = await fetchApi<{ success: boolean; task: Record<string, unknown> }>(`${base}${API_ENDPOINTS.production.maintenance.tasks}${q}`, {
     method: 'POST',
-    body: JSON.stringify({
-      equipment_id: body.equipmentId,
-      equipment_name: body.equipmentName,
-      task_type: body.taskType,
-      priority: body.priority,
-      scheduled_date: body.scheduledDate,
-      description: body.description,
-      estimated_hours: body.estimatedHours,
-    }),
+    body: JSON.stringify(payload),
   });
-  const r = res?.task ?? {};
-  return {
-    id: String(r.task_id ?? r._id ?? r.id ?? Date.now()),
-    equipmentId: String(r.equipment_id ?? body.equipmentId),
-    equipmentName: String(r.equipment_name ?? body.equipmentName),
-    taskType: (r.task_type ?? body.taskType) as 'preventive' | 'corrective' | 'breakdown',
-    priority: (r.priority ?? body.priority) as 'low' | 'medium' | 'high' | 'critical',
-    status: (r.status ?? 'scheduled') as 'scheduled' | 'in-progress' | 'completed' | 'overdue',
-    scheduledDate: String(r.scheduled_date ?? body.scheduledDate),
-    completedDate: r.completed_date ? String(r.completed_date) : undefined,
-    technician: r.technician ? String(r.technician) : undefined,
-    description: String(r.description ?? body.description),
-    estimatedHours: r.estimated_hours != null ? Number(r.estimated_hours) : body.estimatedHours,
-  };
+  return mapMaintenanceTaskRecord((res?.task ?? {}) as Record<string, unknown>, body);
+}
+
+export async function updateProductionMaintenanceTask(
+  taskId: string,
+  body: Partial<ProductionMaintenanceTaskInput>,
+  storeId?: string
+): Promise<ProductionMaintenanceTask> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const payload: Record<string, unknown> = {};
+  if (storeId) payload.storeId = storeId;
+  if (body.equipmentId !== undefined) payload.equipment_id = body.equipmentId;
+  if (body.equipmentName !== undefined) payload.equipment_name = body.equipmentName;
+  if (body.taskType !== undefined) payload.task_type = body.taskType;
+  if (body.priority !== undefined) payload.priority = body.priority;
+  if (body.scheduledDate !== undefined) payload.scheduled_date = body.scheduledDate;
+  if (body.description !== undefined) payload.description = body.description;
+  if (body.estimatedHours !== undefined) payload.estimated_hours = body.estimatedHours;
+  if (body.status !== undefined) payload.status = body.status;
+  if (body.technician !== undefined) payload.technician = body.technician;
+
+  const encodedId = encodeURIComponent(taskId);
+  const res = await fetchApi<{ success: boolean; task: Record<string, unknown> }>(
+    `${base}${API_ENDPOINTS.production.maintenance.task(encodedId)}${q}`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+  return mapMaintenanceTaskRecord((res?.task ?? {}) as Record<string, unknown>, body);
+}
+
+export async function deleteProductionMaintenanceTask(taskId: string, storeId?: string): Promise<void> {
+  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  await fetchApi(`${base}${API_ENDPOINTS.production.maintenance.task(encodeURIComponent(taskId))}${q}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function updateProductionMaintenanceTaskStatus(
@@ -873,25 +1160,7 @@ export async function updateProductionMaintenanceTaskStatus(
   technician?: string,
   storeId?: string
 ): Promise<ProductionMaintenanceTask> {
-  const q = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
-  const res = await fetchApi<{ success: boolean; task: Record<string, unknown> }>(`${base}${API_ENDPOINTS.production.maintenance.taskStatus(taskId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status, technician }),
-  });
-  const r = res?.task ?? {};
-  return {
-    id: String(r.task_id ?? taskId),
-    equipmentId: String(r.equipment_id ?? ''),
-    equipmentName: String(r.equipment_name ?? ''),
-    taskType: (r.task_type ?? 'preventive') as 'preventive' | 'corrective' | 'breakdown',
-    priority: (r.priority ?? 'medium') as 'low' | 'medium' | 'high' | 'critical',
-    status: (r.status ?? status) as 'scheduled' | 'in-progress' | 'completed' | 'overdue',
-    scheduledDate: String(r.scheduled_date ?? ''),
-    completedDate: r.completed_date ? String(r.completed_date) : undefined,
-    technician: r.technician ? String(r.technician) : technician,
-    description: String(r.description ?? ''),
-    estimatedHours: r.estimated_hours != null ? Number(r.estimated_hours) : undefined,
-  };
+  return updateProductionMaintenanceTask(taskId, { status, technician }, storeId);
 }
 
 export async function fetchProductionIotDevices(storeId?: string): Promise<ProductionIotDevice[]> {

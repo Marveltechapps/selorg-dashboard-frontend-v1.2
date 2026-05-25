@@ -8,8 +8,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Badge } from "../../../ui/badge";
 import { Separator } from "../../../ui/separator";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, IndianRupee } from "lucide-react";
-import { pricingApi } from './pricingApi';
-import { toast } from "sonner";
 
 interface SKUPriceDetailDrawerProps {
   sku: any | null;
@@ -36,8 +34,10 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
   const handleUpdate = () => {
     const updatedSell = parseFloat(sellingPrice);
     const updatedBase = parseFloat(basePrice);
-    const cost = sku.cost || 10.50;
-    const margin = parseFloat((((updatedSell - cost) / updatedSell) * 100).toFixed(1));
+    const cost = sku.cost ?? 0;
+    const margin = updatedSell > 0 && cost > 0
+      ? parseFloat((((updatedSell - cost) / updatedSell) * 100).toFixed(1))
+      : sku.margin ?? 0;
     
     const updatedSku = {
       ...sku,
@@ -50,27 +50,24 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
     onUpdate(updatedSku);
   };
 
-  const historyData = sku.history && sku.history.length > 0 ? sku.history : [
-    { date: 'Jan', price: sku.sell * 0.8, competitor: sku.competitor * 0.8 },
-    { date: 'Feb', price: sku.sell * 0.85, competitor: sku.competitor * 0.85 },
-    { date: 'Mar', price: sku.sell * 0.9, competitor: sku.competitor * 0.9 },
-    { date: 'Apr', price: sku.sell * 0.95, competitor: sku.competitor * 0.92 },
-    { date: 'May', price: sku.sell * 0.98, competitor: sku.competitor * 0.95 },
-    { date: 'Jun', price: sku.sell * 0.99, competitor: sku.competitor * 0.98 },
-    { date: 'Jul', price: sku.sell, competitor: sku.competitor },
-  ];
+  const historyData = sku.history && sku.history.length > 0 ? sku.history.map((h: any) => ({
+    date: h.date,
+    price: h.price ?? h.sell ?? sku.sell,
+    competitor: h.competitor ?? sku.competitor ?? 0,
+  })) : [];
+  const competitorDiff = (sku.sell ?? 0) - (sku.competitor ?? 0);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[800px] sm:w-[700px] overflow-y-auto pr-10">
-        <SheetHeader className="mb-6 mr-10">
+      <SheetContent className="w-full sm:w-[700px] sm:max-w-[700px] overflow-y-auto px-6 pb-8 pt-4">
+        <SheetHeader className="mb-6 px-0">
           <SheetTitle className="flex flex-col gap-1">
             <span className="text-2xl">{sku.name}</span>
             <span className="text-sm font-normal text-slate-500">{sku.code}</span>
           </SheetTitle>
           <div className="flex gap-2 mt-2">
-            <Badge variant="outline">Beverages</Badge>
-            <Badge variant="secondary">Primary Region: East</Badge>
+            {sku.category && <Badge variant="outline">{sku.category}</Badge>}
+            {sku.region && <Badge variant="secondary">Region: {sku.region}</Badge>}
           </div>
         </SheetHeader>
 
@@ -80,15 +77,20 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
                 <div className="p-4 bg-slate-50 rounded-lg border">
                     <p className="text-sm text-slate-500">Current Margin</p>
                     <div className="flex items-end gap-2">
-                        <span className="text-2xl font-bold text-green-600">16.6%</span>
-                        <span className="text-xs text-green-600 flex items-center mb-1"><ArrowUpRight size={12} /> 2%</span>
+                        <span className={`text-2xl font-bold ${sku.marginStatus === 'healthy' ? 'text-green-600' : sku.marginStatus === 'warning' ? 'text-amber-600' : 'text-red-600'}`}>
+                          {sku.margin?.toFixed?.(1) ?? sku.margin}%
+                        </span>
                     </div>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-lg border">
                     <p className="text-sm text-slate-500">vs Competitor</p>
                     <div className="flex items-end gap-2">
-                        <span className="text-2xl font-bold text-slate-900">-₹0.21</span>
-                        <span className="text-xs text-slate-500 mb-1">Cheaper</span>
+                        <span className="text-2xl font-bold text-slate-900">
+                          {competitorDiff >= 0 ? '+' : ''}₹{Math.abs(competitorDiff).toFixed(2)}
+                        </span>
+                        <span className="text-xs text-slate-500 mb-1">
+                          {competitorDiff > 0 ? 'Pricier' : competitorDiff < 0 ? 'Cheaper' : 'Matched'}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -121,7 +123,7 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
                     </div>
                 </div>
                 <div className="flex justify-between items-center text-sm pt-2">
-                    <span className="text-slate-500">Cost: ${sku.cost || '10.50'}</span>
+                    <span className="text-slate-500">Cost: ₹{(sku.cost ?? 0).toFixed(2)}</span>
                     <Button 
                         type="button"
                         size="sm" 
@@ -140,7 +142,11 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
                     <TabsTrigger value="breakdown" className="flex-1">Regional Breakdown</TabsTrigger>
                 </TabsList>
                 <TabsContent value="history" className="h-[350px] mt-4 min-h-[300px] border rounded-lg p-2 bg-slate-50 relative">
-                    {activeTab === "history" && (
+                    {historyData.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+                        No price history yet. Updates will appear here after price changes.
+                      </div>
+                    ) : activeTab === "history" && (
                         <div className="w-full h-full absolute inset-0 p-2">
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart key={`${sku.id}-${activeTab}`} data={historyData} margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
@@ -160,16 +166,16 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
                 <TabsContent value="breakdown">
                     <div className="space-y-3 mt-4">
                         <div className="flex justify-between items-center p-3 bg-slate-50 rounded">
-                            <span>East Coast</span>
-                            <span className="font-bold">₹14.99</span>
+                            <span>Base Price</span>
+                            <span className="font-bold">₹{(sku.base ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center p-3 bg-slate-50 rounded">
-                            <span>West Coast</span>
-                            <span className="font-bold">₹15.50</span>
+                            <span>Selling Price</span>
+                            <span className="font-bold">₹{(sku.sell ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center p-3 bg-slate-50 rounded">
-                            <span>Central</span>
-                            <span className="font-bold">₹14.50</span>
+                            <span>Competitor Avg</span>
+                            <span className="font-bold">₹{(sku.competitor ?? 0).toFixed(2)}</span>
                         </div>
                     </div>
                 </TabsContent>
@@ -180,7 +186,9 @@ export function SKUPriceDetailDrawer({ sku, open, onOpenChange, onUpdate }: SKUP
                     <TrendingUp size={16} /> Competitive Insight
                 </h4>
                 <p className="text-sm text-amber-800">
-                    Competitor X has lowered their price by ₹0.30 in the last week. Consider matching to maintain market share.
+                  {sku.competitor > 0
+                    ? `Competitor average is ₹${sku.competitor.toFixed(2)}. Your selling price is ${competitorDiff === 0 ? 'matched' : competitorDiff < 0 ? `${Math.abs(competitorDiff).toFixed(2)} lower` : `${competitorDiff.toFixed(2)} higher`}.`
+                    : 'No competitor benchmark available for this SKU yet.'}
                 </p>
             </div>
         </div>
