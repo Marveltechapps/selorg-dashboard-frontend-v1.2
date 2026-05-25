@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { Plus, Search, Download, X, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
@@ -400,7 +401,7 @@ export function WorkOrders() {
       {/* Create / Edit Modal */}
       {orderFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#212121]">
                 {orderFormMode === 'create' ? 'Create Work Order' : 'Edit Work Order'}
@@ -521,7 +522,7 @@ export function WorkOrders() {
 
       {orderToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete work order?</h3>
             <p className="text-sm text-[#757575] mb-6">
               This will permanently remove{' '}
@@ -553,7 +554,7 @@ export function WorkOrders() {
       {/* Assign Operator Modal */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Assign Operator - {showAssignModal.orderNumber}</h3>
               <button onClick={() => { setShowAssignModal(null); setAssignOperatorName(''); }} className="text-[#757575] hover:text-[#212121]">
@@ -593,7 +594,7 @@ export function WorkOrders() {
       {/* Details Modal */}
       {showDetailsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Order {showDetailsModal.orderNumber}</h3>
               <button onClick={() => setShowDetailsModal(null)} className="text-[#757575] hover:text-[#212121]">

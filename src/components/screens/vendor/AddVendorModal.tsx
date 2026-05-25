@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import { Upload, AlertTriangle } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 
@@ -614,7 +615,7 @@ export function AddVendorModal({
   return (
     <div
       className="fixed inset-0 z-[400] flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-8 pt-[88px]"
-      onClick={handleCancel}
+      onClick={createBackdropClickHandler(handleCancel)}
     >
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col"
@@ -1602,7 +1603,7 @@ export function AddVendorModal({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={createBackdropClickHandler(handleCancel)}
               className="px-6 py-2 border border-[#D1D5DB] rounded-lg text-sm font-bold text-[#1F2937] hover:bg-[#F3F4F6]"
             >
               Cancel

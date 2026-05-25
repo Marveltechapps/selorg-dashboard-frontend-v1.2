@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { TrendingUp, AlertTriangle, Loader2, Plus, Eye } from 'lucide-react';
 import { promotionApi, markdownApi } from '../../../api/merch/analyticsApi';
 import { toast } from 'sonner';
@@ -115,7 +116,7 @@ export function PromoCampaigns({ searchQuery = "", onNavigate = () => {} }: any)
 
       {selectedCampaign && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" {...stopModalPointerPropagation}>
             <h2 className="text-xl font-bold mb-4">{selectedCampaign.campaignName}</h2>
             <div className="space-y-3 text-sm mb-6">
               <div><p className="text-gray-600">Type</p><p className="font-semibold">{selectedCampaign.campaignType}</p></div>

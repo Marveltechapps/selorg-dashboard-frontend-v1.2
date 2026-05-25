@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import {
   ArrowLeft, Star, Package, CheckCircle, FileText, MessageSquare, TrendingUp, AlertTriangle, Clock,
   X, MoreVertical, Edit, BarChart3, Pause, PlayCircle, Phone, MapPin, CreditCard,
@@ -655,7 +656,7 @@ export function VendorProfile({
       <div className="sticky top-0 h-16 bg-white border-b border-[#E5E7EB] shadow-sm flex items-center justify-between px-6 z-20">
         <div className="flex items-center gap-4">
           <button 
-            onClick={onClose}
+            onClick={createBackdropClickHandler(onClose)}
             className="flex items-center gap-2 text-[#4F46E5] hover:text-[#4338CA] font-medium transition-colors"
           >
             <ArrowLeft size={20} />
@@ -674,7 +675,7 @@ export function VendorProfile({
             </button>
             {openMenu && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(false)} />
+                <div className="fixed inset-0 z-10" onClick={createBackdropClickHandler(() => setOpenMenu(false))} />
                 <div className="absolute right-0 top-12 z-20 bg-white border border-[#E5E7EB] rounded-lg shadow-xl py-1 w-56">
                   <button onClick={() => { onEdit(); setOpenMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-[#F3F4F6] flex items-center gap-2">
                     <Edit size={14} /> Edit Vendor
@@ -744,7 +745,7 @@ export function VendorProfile({
             )}
           </div>
           <button 
-            onClick={onClose}
+            onClick={createBackdropClickHandler(onClose)}
             className="p-2 hover:bg-[#F3F4F6] rounded-lg transition-colors"
           >
             <X size={20} className="text-[#6B7280]" />

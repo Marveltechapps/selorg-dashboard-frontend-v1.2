@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import { 
   Upload, 
   Plus, 
@@ -890,7 +891,7 @@ Tech Logistics,Standard,Equipment,2024-10-14,2024-10-18,Net 15,SKU-101,Delivery 
                           <>
                             <div 
                               className="fixed inset-0 z-10" 
-                              onClick={() => setShowMoreMenu(null)}
+                              onClick={createBackdropClickHandler(() => setShowMoreMenu(null))}
                             />
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E0E0E0] rounded-lg shadow-lg z-20">
                               <button 

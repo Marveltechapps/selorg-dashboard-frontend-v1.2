@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import {
   LayoutDashboard,
   CreditCard,
@@ -102,7 +103,7 @@ export function FinanceSidebar({
             'finance-mobile-only fixed inset-0 bg-black/50 z-40 transition-opacity',
             mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
           )}
-          onClick={onMobileClose}
+          onClick={createBackdropClickHandler(onMobileClose)}
           aria-hidden
         />
       )}

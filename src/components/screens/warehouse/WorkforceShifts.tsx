@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { Users, Clock, Zap, UserCheck, X, Download, Search, Plus, Calendar, TrendingUp, Award, AlertCircle, CheckCircle2, XCircle, Coffee, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState, LoadingState } from '../../ui/ux-components';
@@ -1196,7 +1197,7 @@ export function WorkforceShifts() {
       {/* Add Staff Modal */}
       {showRosterModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Add New Staff Member</h3>
               <button onClick={() => setShowRosterModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1294,7 +1295,7 @@ export function WorkforceShifts() {
       {/* Create Schedule Modal */}
       {showScheduleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Create Shift Schedule</h3>
               <button onClick={() => setShowScheduleModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1355,7 +1356,7 @@ export function WorkforceShifts() {
       {/* Log Attendance Modal */}
       {showAttendanceModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Log Attendance</h3>
               <button onClick={() => setShowAttendanceModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1427,7 +1428,7 @@ export function WorkforceShifts() {
       {/* Leave Request Modal */}
       {showLeaveModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">New Leave Request</h3>
               <button onClick={() => setShowLeaveModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1513,7 +1514,7 @@ export function WorkforceShifts() {
       {/* Training Modal */}
       {showTrainingModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Add Training Program</h3>
               <button onClick={() => setShowTrainingModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1609,7 +1610,7 @@ export function WorkforceShifts() {
       {/* Staff Details Modal */}
       {showStaffDetailsModal && selectedStaff && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Staff Details - {selectedStaff.name}</h3>
               <button onClick={() => setShowStaffDetailsModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1677,7 +1678,7 @@ export function WorkforceShifts() {
       {/* Assign Staff Modal */}
       {showAssignStaffModal && selectedSchedule && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Assign Staff - {selectedSchedule.date} ({selectedSchedule.shift})</h3>
               <button onClick={() => setShowAssignStaffModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1766,7 +1767,7 @@ export function WorkforceShifts() {
       {/* Training Details Modal */}
       {showTrainingDetailsModal && selectedTraining && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Training Details - {selectedTraining.title}</h3>
               <button onClick={() => setShowTrainingDetailsModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { ArrowRightLeft, MapPin, Truck, CheckCircle2, X, Download, Search } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState, LoadingState } from '../../ui/ux-components';
@@ -282,7 +283,7 @@ export function Transfers() {
       {/* New Transfer Modal */}
       {showTransferModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Create New Transfer</h3>
               <button onClick={() => setShowTransferModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

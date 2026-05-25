@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "./utils";
+import { guardModalDismissOnPortaledOverlay } from "./modalOverlayGuards";
 
 function Dialog({
   ...props
@@ -56,7 +57,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, style, ...props }, ref) => {
+>(({ className, children, style, onInteractOutside, onPointerDownOutside, onFocusOutside, ...props }, ref) => {
   const describedBy = props["aria-describedby"];
   return (
     <DialogPortal>
@@ -70,6 +71,9 @@ const DialogContent = React.forwardRef<
         )}
         style={{ zIndex: 10000, ...style }}
         aria-describedby={describedBy ?? undefined}
+        onInteractOutside={guardModalDismissOnPortaledOverlay(onInteractOutside)}
+        onPointerDownOutside={guardModalDismissOnPortaledOverlay(onPointerDownOutside)}
+        onFocusOutside={guardModalDismissOnPortaledOverlay(onFocusOutside)}
         {...props}
       >
         {children}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { 
   CheckCircle2, AlertOctagon, ShieldAlert, FileText, 
   Search, Filter, Plus, Clock, ChevronRight, X, AlertTriangle, RefreshCw, History,
@@ -330,7 +331,7 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
 
        {isDialogOpen && (
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" {...stopModalPointerPropagation}>
                <div className="flex justify-between items-center mb-6">
                  <h3 className="font-bold text-[#212121] text-lg">Add Watch Item</h3>
                  <button onClick={() => setIsDialogOpen(false)}><X size={20}/></button>
@@ -535,7 +536,7 @@ getAuditStatus()
 
        {isReadingDialogOpen && (
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" {...stopModalPointerPropagation}>
                <div className="flex justify-between items-center mb-6">
                  <h3 className="font-bold text-[#212121] text-lg">Add {categories.find(c => c.id === activeCategory)?.label}</h3>
                  <button onClick={() => setIsReadingDialogOpen(false)}><X size={20}/></button>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { Play, AlertTriangle, Clock, PauseCircle, Package, Download, X, StopCircle, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
@@ -460,7 +461,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
       {/* Downtime Modal */}
       {showDowntime && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Active Downtime</h3>
               <button onClick={closeDowntimeModal} className="text-[#757575] hover:text-[#212121]">
@@ -501,7 +502,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
       {/* Manage Line Modal */}
       {showManageModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Manage {showManageModal.name}</h3>
               <button onClick={() => setShowManageModal(null)} className="text-[#757575] hover:text-[#212121]">
@@ -589,7 +590,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
       {/* Create / Edit Line Modal */}
       {lineFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">
                 {lineFormMode === 'create' ? 'Add Production Line' : 'Edit Production Line'}
@@ -705,7 +706,7 @@ export function ProductionOverview({ showDowntimeModal = false, onCloseDowntimeM
       {/* Delete confirmation */}
       {lineToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete production line?</h3>
             <p className="text-sm text-[#757575] mb-6">
               This will permanently remove <span className="font-medium text-[#212121]">{lineToDelete.name}</span>.

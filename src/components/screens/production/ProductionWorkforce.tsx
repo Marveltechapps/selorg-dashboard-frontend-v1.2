@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, UserPlus, Download, X, Search, Plus, Loader2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
@@ -578,7 +579,7 @@ export function ProductionStaff() {
       {/* Add Employee Modal - only when on roster tab */}
       {showAddModal && subTab !== 'shifts' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Add New Employee</h3>
               <button onClick={() => setShowAddModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -689,7 +690,7 @@ export function ProductionStaff() {
       {/* Add Shift Modal - only when on Shift Planning tab */}
       {showAddModal && subTab === 'shifts' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Schedule New Shift</h3>
               <button onClick={() => setShowAddModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -783,7 +784,7 @@ export function ProductionStaff() {
       {/* Employee Profile Modal */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Employee Profile</h3>
               <button onClick={() => setShowProfileModal(null)} className="text-[#757575] hover:text-[#212121]">

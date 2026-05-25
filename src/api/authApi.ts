@@ -52,7 +52,7 @@ export class ApiNetworkError extends Error {
       apiBaseUrl.startsWith('http') &&
       !apiBaseUrl.startsWith(window.location.origin);
     const crossOriginHint = isCrossOrigin
-      ? 'Browsers often show this as a CORS error when the API returns 502 without CORS headers. '
+      ? 'Requests from this dashboard need CORS on api.selorg.com, or use same-origin /api/v1 with nginx proxying /api/ to Node (port 3333). '
       : '';
     const sameOriginHint =
       !isCrossOrigin && apiBaseUrl.startsWith('/')
@@ -62,8 +62,8 @@ export class ApiNetworkError extends Error {
       `Cannot reach the API at ${apiBaseUrl}. ` +
         crossOriginHint +
         sameOriginHint +
-        `The API backend may be stopped (nginx 502 on api.selorg.com). ` +
-        `Restart: cd selorg-dashboard-backend-v1.1 && pm2 start app.js --name selorg-backend`
+        'The server may be down or misconfigured (common symptom: nginx 502 on api.selorg.com). ' +
+        'Start backend: cd selorg-dashboard-backend-v1.1 && npm start (or pm2 start ecosystem.config.cjs).'
     );
     this.name = 'ApiNetworkError';
     this.apiBaseUrl = apiBaseUrl;
@@ -82,20 +82,54 @@ function isFetchNetworkFailure(err: unknown): boolean {
 function resolveHealthCheckUrl(apiBaseUrl: string): string {
   if (apiBaseUrl.startsWith('http')) {
     try {
-      return new URL('/health', new URL(apiBaseUrl).origin).href;
+      return new URL('/health/ready', new URL(apiBaseUrl).origin).href;
     } catch {
-      return '/health';
+      return '/health/ready';
     }
   }
-  return '/health';
+  return '/health/ready';
 }
 
-/** Probe /health so nginx 502 surfaces as a clear error before login POST (which browsers mask as CORS). */
+function isNodeHealthPayload(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false;
+  const record = data as Record<string, unknown>;
+  const inner =
+    record.success === true && record.data && typeof record.data === 'object'
+      ? (record.data as Record<string, unknown>)
+      : record;
+  const status = inner.status;
+  return status === 'healthy' || status === 'ready';
+}
+
+/** True when nginx serves a static placeholder instead of the Node backend. */
+function isStaleNginxHealthBody(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return normalized.includes('api server running') || normalized.startsWith('<!doctype');
+}
+
+/**
+ * Probe /health/ready (Node) before login POST.
+ * api.selorg.com often exposes a static /health page while /api/* returns 502 without CORS headers.
+ */
 async function assertApiReachable(apiBaseUrl: string): Promise<void> {
   const healthUrl = resolveHealthCheckUrl(apiBaseUrl);
   try {
     const res = await fetch(healthUrl, { method: 'GET', credentials: 'omit', cache: 'no-store' });
-    if (res.ok) return;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+    if (res.ok) {
+      if (contentType.includes('application/json')) {
+        const data = (await res.json().catch(() => null)) as unknown;
+        if (isNodeHealthPayload(data)) return;
+      } else {
+        const text = await res.text().catch(() => '');
+        if (isStaleNginxHealthBody(text)) {
+          throw new ApiNetworkError(apiBaseUrl);
+        }
+      }
+      throw new ApiNetworkError(apiBaseUrl);
+    }
+
     if (res.status === 502 || res.status === 503 || res.status === 504) {
       throw new ApiNetworkError(apiBaseUrl);
     }

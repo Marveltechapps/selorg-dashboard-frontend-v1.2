@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import { useSearchParams } from 'react-router-dom';
 import { Users, AlertTriangle, Truck, Star, Clock, ChevronDown, Download, CheckCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -401,7 +402,7 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
               </button>
               {showDownloadMenu && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowDownloadMenu(false)} />
+                  <div className="fixed inset-0 z-10" onClick={createBackdropClickHandler(() => setShowDownloadMenu(false))} />
                   <div className="absolute right-0 mt-2 w-44 bg-white border border-[#E5E7EB] rounded-lg shadow-lg z-20 py-1">
                     <button
                       type="button"
@@ -646,7 +647,7 @@ export function VendorOverview({ searchQuery = '' }: VendorOverviewProps) {
                    <>
                      <div 
                        className="fixed inset-0 z-10" 
-                       onClick={() => setShowFilterMenu(false)}
+                       onClick={createBackdropClickHandler(() => setShowFilterMenu(false))}
                      />
                      <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E5E7EB] rounded-lg shadow-lg z-20 py-1">
                        <button 

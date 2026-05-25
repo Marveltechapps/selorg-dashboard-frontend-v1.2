@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { ArrowUpFromLine, ShoppingCart, Box, Truck, X, Download, Search, Plus, CheckCircle, Package, ScanLine, MapPin, Clock, User, List, Zap, Users, Route, Target } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
@@ -962,7 +963,7 @@ export function OutboundOps() {
       {/* Assign Picker Modal */}
       {showAssignModal && selectedOrder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Assign Picker</h3>
               <button onClick={() => setShowAssignModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1013,7 +1014,7 @@ export function OutboundOps() {
       {/* Create Batch Modal */}
       {showBatchModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Create New Batch</h3>
               <button onClick={() => setShowBatchModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1056,7 +1057,7 @@ export function OutboundOps() {
       {/* Update Pick Quantity Modal */}
       {showPickUpdateModal && selectedPick && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Update Pick Quantity</h3>
               <button onClick={() => setShowPickUpdateModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1101,7 +1102,7 @@ export function OutboundOps() {
       {/* Order Details Modal */}
       {showOrderDetailsModal && selectedOrder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Order Details - {selectedOrder.orderId}</h3>
               <button onClick={() => setShowOrderDetailsModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1157,7 +1158,7 @@ export function OutboundOps() {
       {/* Batch Details Modal */}
       {showBatchDetailsModal && selectedBatch && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Batch Details - {selectedBatch.batchId}</h3>
               <button onClick={() => setShowBatchDetailsModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1216,7 +1217,7 @@ export function OutboundOps() {
       {/* Route Map Modal */}
       {showRouteMapModal && selectedRoute && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Route Map - {selectedRoute.routeId}</h3>
               <button onClick={() => setShowRouteMapModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1273,7 +1274,7 @@ export function OutboundOps() {
       {/* Picker Orders Modal */}
       {showPickerOrdersModal && selectedPicker && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Orders for {selectedPicker.pickerName ?? selectedPicker.name}</h3>
               <button onClick={() => setShowPickerOrdersModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

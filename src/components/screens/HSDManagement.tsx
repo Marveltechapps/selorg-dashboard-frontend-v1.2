@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { 
   Smartphone, Battery, Wifi, AlertTriangle, RefreshCw, Lock, 
   Search, Filter, Activity, ScanLine, RotateCcw, UserPlus, 
@@ -85,7 +86,7 @@ function RegisterDeviceModal({ onClose, onSuccess }: { onClose: () => void; onSu
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4" {...stopModalPointerPropagation}>
         <div className="p-6 border-b border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
           <h3 className="text-lg font-bold text-[#212121]">Register New Device</h3>
           <button onClick={onClose} className="p-1 text-[#616161] hover:text-[#212121] rounded-lg">
@@ -627,7 +628,7 @@ function AssignDeviceModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4" {...stopModalPointerPropagation}>
         <div className="p-6 border-b border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
           <h3 className="text-lg font-bold text-[#212121]">Assign Device{selectedCount > 1 ? 's' : ''}</h3>
           <button
@@ -1101,7 +1102,7 @@ function IssueTracker() {
 
          {showManageModal && selectedIssue && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4 p-6">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4 p-6" {...stopModalPointerPropagation}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[#212121]">Manage Issue</h3>
                   <button onClick={() => { setShowManageModal(false); setSelectedIssue(null); }} className="p-1 text-[#616161] hover:text-[#212121] rounded-lg"><X size={20} /></button>
@@ -1207,7 +1208,7 @@ function ReportFaultModal({ onClose, onSuccess }: { onClose: () => void; onSucce
 
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-         <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4">
+         <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
                <h3 className="text-lg font-bold text-[#212121]">Report Device Fault</h3>
                <button onClick={onClose} className="p-1 text-[#616161] hover:text-[#212121] rounded-lg">

@@ -28,6 +28,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '../../ui/dropdown-menu';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
 import {
@@ -304,7 +305,10 @@ export function WarehouseDevices() {
       {/* Add Device Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border">
+          <div
+            className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border"
+            {...stopModalPointerPropagation}
+          >
             <div className="p-6 border-b border-border flex justify-between items-center">
               <h3 className="font-semibold text-lg">Add New Device</h3>
               <Button variant="ghost" size="icon" onClick={() => setShowAddModal(false)}><X className="h-5 w-5" /></Button>
@@ -338,7 +342,10 @@ export function WarehouseDevices() {
       {/* Assign Modal */}
       {showAssignModal && selectedDevice && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border">
+          <div
+            className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border"
+            {...stopModalPointerPropagation}
+          >
             <div className="p-6 border-b border-border flex justify-between items-center">
               <h3 className="font-semibold text-lg">Assign Device — {selectedDevice.deviceId}</h3>
               <Button variant="ghost" size="icon" onClick={() => setShowAssignModal(false)}><X className="h-5 w-5" /></Button>
@@ -369,7 +376,10 @@ export function WarehouseDevices() {
       {/* Return Details Modal */}
       {showReturnDetailsModal && selectedDevice && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border max-h-[90vh] overflow-y-auto">
+          <div
+            className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border max-h-[90vh] overflow-y-auto"
+            {...stopModalPointerPropagation}
+          >
             <div className="p-6 border-b border-border flex justify-between items-center">
               <h3 className="font-semibold text-lg">Return details — {selectedDevice.deviceId}</h3>
               <Button variant="ghost" size="icon" onClick={() => setShowReturnDetailsModal(false)}><X className="h-5 w-5" /></Button>
@@ -414,7 +424,10 @@ export function WarehouseDevices() {
       {/* Mark Damaged Modal */}
       {showDamagedModal && selectedDevice && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border">
+          <div
+            className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border"
+            {...stopModalPointerPropagation}
+          >
             <div className="p-6 border-b border-border flex justify-between items-center">
               <h3 className="font-semibold text-lg">Mark Damaged — {selectedDevice.deviceId}</h3>
               <Button variant="ghost" size="icon" onClick={() => setShowDamagedModal(false)}><X className="h-5 w-5" /></Button>

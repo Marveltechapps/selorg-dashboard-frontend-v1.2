@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   AlertTriangle, 
@@ -843,7 +844,7 @@ export function ProductionAlerts() {
       {/* Report Incident Modal */}
       {showIncidentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Report Incident</h3>
               <button onClick={() => setShowIncidentModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -942,7 +943,7 @@ export function ProductionAlerts() {
       {/* Delete Alert Confirmation */}
       {alertToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete alert?</h3>
             <p className="text-sm text-[#757575] mb-6">
               Permanently remove{' '}
@@ -974,7 +975,7 @@ export function ProductionAlerts() {
       {/* Assignee Modal */}
       {assigneeModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">
                 {assigneeModal.action === 'dispatch' ? 'Dispatch Maintenance' : 'Assign Alert'}
@@ -1021,7 +1022,7 @@ export function ProductionAlerts() {
       {/* Alert Details Modal */}
       {showDetailsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Alert Details</h3>
               <button onClick={() => setShowDetailsModal(null)} className="text-[#757575] hover:text-[#212121]">

@@ -5,6 +5,7 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 
 import { cn } from "./utils";
 import { buttonVariants } from "./button";
+import { guardModalDismissOnPortaledOverlay } from "./modalOverlayGuards";
 
 function AlertDialog({
   ...props
@@ -46,6 +47,9 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  onInteractOutside,
+  onPointerDownOutside,
+  onFocusOutside,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
   return (
@@ -57,6 +61,9 @@ function AlertDialogContent({
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[201] flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col gap-4 overflow-y-auto rounded-lg border border-[#e4e4e7] bg-white p-6 text-[#18181b] shadow-xl duration-200 sm:max-w-lg",
           className,
         )}
+        onInteractOutside={guardModalDismissOnPortaledOverlay(onInteractOutside)}
+        onPointerDownOutside={guardModalDismissOnPortaledOverlay(onPointerDownOutside)}
+        onFocusOutside={guardModalDismissOnPortaledOverlay(onFocusOutside)}
         {...props}
       />
     </AlertDialogPortal>

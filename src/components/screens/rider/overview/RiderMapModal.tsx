@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { FleetLiveMap } from './FleetLiveMap';
@@ -111,7 +112,7 @@ export function RiderMapModal({ isOpen, onClose, riders, orders }: RiderMapModal
       role="dialog"
       aria-modal="true"
       aria-labelledby="live-fleet-map-title"
-      onClick={onClose}
+      onClick={createBackdropClickHandler(onClose)}
     >
       <div
         className="rounded-xl border border-[#E0E0E0] bg-white shadow-2xl"

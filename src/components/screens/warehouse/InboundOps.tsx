@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { ArrowDownToLine, Truck, ClipboardList, CheckCircle2, AlertOctagon, X, Plus, Search, Download } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
@@ -818,7 +819,7 @@ export function InboundOps() {
 
       {showStartCountModal && grnToStart && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Assign to Dock</h3>
               <button
@@ -908,7 +909,7 @@ export function InboundOps() {
 
       {showDocsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">GRN Details</h3>
               <button
@@ -980,7 +981,7 @@ export function InboundOps() {
 
       {showDiscrepancyModal && selectedGRNForDiscrepancy && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">
                 {selectedGRNForDiscrepancy.status === 'discrepancy'
@@ -1048,7 +1049,7 @@ export function InboundOps() {
 
       {showGRNModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Create New GRN</h3>
               <button type="button" onClick={() => setShowGRNModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

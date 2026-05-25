@@ -17,6 +17,7 @@ import {
     DropdownMenuSeparator, 
     DropdownMenuTrigger 
 } from "../../ui/dropdown-menu";
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 
 import { takePendingUpdatesOpenRequest } from './pricingPendingUpdatesBridge';
 
@@ -449,7 +450,10 @@ export function PricingEngine({ searchQuery = "" }: { searchQuery?: string }) {
       
       {/* Price Rules View Modal */}
       {isRulesViewOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsRulesViewOpen(false)}>
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={createBackdropClickHandler(() => setIsRulesViewOpen(false))}
+        >
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <div>

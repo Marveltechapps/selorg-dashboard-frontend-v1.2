@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import { X, Package, Clock, CheckCircle, XCircle, IndianRupee, Loader2 } from 'lucide-react';
 import * as vendorApi from '../../../api/vendor/vendorManagement.api';
 
@@ -80,7 +81,7 @@ export function PerformanceReportModal({ vendor, onClose }: PerformanceReportMod
   const grn = data?.grn;
 
   return (
-    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4" onClick={createBackdropClickHandler(onClose)}>
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}

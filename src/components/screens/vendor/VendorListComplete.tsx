@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createBackdropClickHandler, stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { createPortal } from 'react-dom';
 import { 
   Search, Download, Upload, X, 
@@ -1636,7 +1637,7 @@ export function VendorList(props: VendorListProps = {}) {
 
       {/* View Documents Modal */}
       {isDocumentsModalOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsDocumentsModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={createBackdropClickHandler(() => setIsDocumentsModalOpen(false))}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" 
             onClick={(e) => e.stopPropagation()}
@@ -1725,7 +1726,7 @@ export function VendorList(props: VendorListProps = {}) {
 
       {/* Send Message Modal */}
       {isMessageModalOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsMessageModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={createBackdropClickHandler(() => setIsMessageModalOpen(false))}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" 
             onClick={(e) => e.stopPropagation()}
@@ -1801,10 +1802,10 @@ export function VendorList(props: VendorListProps = {}) {
       {isSuspendDialogOpen && selectedVendor && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4"
-          onClick={() => {
+          onClick={createBackdropClickHandler(() => {
             setIsSuspendDialogOpen(false);
             setSuspendIsReactivate(false);
-          }}
+          })}
         >
           <div
             className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6"
@@ -1896,7 +1897,7 @@ export function VendorList(props: VendorListProps = {}) {
 
       {/* Deactivate Confirmation Dialog */}
       {isDeactivateDialogOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsDeactivateDialogOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={createBackdropClickHandler(() => setIsDeactivateDialogOpen(false))}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" 
             onClick={(e) => e.stopPropagation()}
@@ -1958,7 +1959,7 @@ export function VendorList(props: VendorListProps = {}) {
       {isActivateDialogOpen && selectedVendor && (
         <div
           className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setIsActivateDialogOpen(false)}
+          onClick={createBackdropClickHandler(() => setIsActivateDialogOpen(false))}
           role="presentation"
         >
           <div
@@ -2003,7 +2004,7 @@ export function VendorList(props: VendorListProps = {}) {
 
       {/* Delete Confirmation Dialog */}
       {isDeleteDialogOpen && selectedVendor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={() => setIsDeleteDialogOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4" onClick={createBackdropClickHandler(() => setIsDeleteDialogOpen(false))}>
           <div 
             className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" 
             onClick={(e) => e.stopPropagation()}

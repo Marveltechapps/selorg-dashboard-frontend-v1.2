@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { Package, Plus, AlertTriangle, TrendingUp, Download, X, Search, CheckCircle, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
@@ -616,7 +617,7 @@ export function RawMaterials() {
       {/* Create / Edit Material Modal */}
       {materialFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">
                 {materialFormMode === 'create' ? 'Add New Material' : 'Edit Material'}
@@ -729,7 +730,7 @@ export function RawMaterials() {
       {/* Delete Material Confirmation */}
       {materialToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete material?</h3>
             <p className="text-sm text-[#757575] mb-6">
               This will permanently remove{' '}
@@ -760,7 +761,7 @@ export function RawMaterials() {
       {/* Order Quantity Modal */}
       {showOrderModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Order {showOrderModal.name}</h3>
               <button onClick={() => { setShowOrderModal(null); setOrderQty(''); }} className="text-[#757575] hover:text-[#212121]">
@@ -799,7 +800,7 @@ export function RawMaterials() {
       {/* Receipt Details Modal */}
       {showReceiptModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">{showReceiptModal.poNumber}</h3>
               <button onClick={() => setShowReceiptModal(null)} className="text-[#757575] hover:text-[#212121]">

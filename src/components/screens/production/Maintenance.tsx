@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Wrench, 
@@ -793,7 +794,7 @@ export function MaintenanceAssets() {
       {/* Schedule / Edit Maintenance Modal */}
       {taskFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#212121]">
                 {taskFormMode === 'create' ? 'Schedule Maintenance Task' : 'Edit Maintenance Task'}
@@ -940,7 +941,7 @@ export function MaintenanceAssets() {
 
       {taskToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete maintenance task?</h3>
             <p className="text-sm text-[#757575] mb-6">
               Remove task for <span className="font-medium text-[#212121]">{taskToDelete.equipmentName}</span>?
@@ -965,7 +966,7 @@ export function MaintenanceAssets() {
 
       {technicianModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Assign technician</h3>
             <p className="text-sm text-[#757575] mb-4">Enter the technician name to start this task.</p>
             <input
@@ -996,7 +997,7 @@ export function MaintenanceAssets() {
       {/* Add Equipment Modal */}
       {showEquipmentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Add New Equipment</h3>
               <button onClick={() => setShowEquipmentModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -1068,7 +1069,7 @@ export function MaintenanceAssets() {
       {/* Details Modal */}
       {showDetailsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">
                 {'code' in showDetailsModal ? 'Equipment Details' : 'Task Details'}

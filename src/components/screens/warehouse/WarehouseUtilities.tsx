@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { Upload, Tag, RefreshCw, Printer, Database, X, Download, CheckCircle2, FileUp } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
@@ -225,7 +226,7 @@ export function WarehouseUtilities() {
       {/* Bulk Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Bulk SKU Upload</h3>
               <button onClick={() => setShowUploadModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -297,7 +298,7 @@ export function WarehouseUtilities() {
       {/* Label Manager Modal */}
       {showLabelModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Generate Rack Labels</h3>
               <button onClick={() => setShowLabelModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -359,7 +360,7 @@ export function WarehouseUtilities() {
       {/* Bin Reassignment Modal */}
       {showReassignModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Bin Reassignment</h3>
               <button onClick={() => setShowReassignModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -438,7 +439,7 @@ export function WarehouseUtilities() {
       {/* Barcode Reprint Modal */}
       {showBarcodeModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Barcode Reprint</h3>
               <button onClick={() => setShowBarcodeModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -488,7 +489,7 @@ export function WarehouseUtilities() {
       {/* Access Logs Modal */}
       {showLogsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Access Logs</h3>
               <div className="flex gap-3">

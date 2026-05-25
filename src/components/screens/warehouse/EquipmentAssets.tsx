@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { TabletSmartphone, Wrench, Battery, Wifi, AlertTriangle, Truck, X, Download, Search, Plus } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState } from '../../ui/ux-components';
@@ -387,7 +388,7 @@ export function EquipmentAssets() {
       {/* Report Issue Modal */}
       {showIssueModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Report Equipment Issue</h3>
               <button onClick={() => setShowIssueModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -452,7 +453,7 @@ export function EquipmentAssets() {
       {/* Add Equipment Modal */}
       {showAddEquipmentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Add New Equipment</h3>
               <button onClick={() => setShowAddEquipmentModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

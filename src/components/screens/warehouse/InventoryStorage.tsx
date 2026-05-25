@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { Package, Grid, Layers, RefreshCw, Search, Download, X, Edit2, Plus, AlertTriangle, TrendingUp, TrendingDown, BarChart3, ClipboardCheck, ArrowRightLeft, Bell } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState, InlineNotification } from '../../ui/ux-components';
@@ -1006,7 +1007,7 @@ export function InventoryStorage() {
       {/* Location Details Modal */}
       {selectedLocation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Location {selectedLocation.id}</h3>
               <button onClick={() => setSelectedLocation(null)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1052,7 +1053,7 @@ export function InventoryStorage() {
       {/* Adjustment Modal */}
       {showAdjustmentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">New Inventory Adjustment</h3>
               <button onClick={() => setShowAdjustmentModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1138,7 +1139,7 @@ export function InventoryStorage() {
       {/* Cycle Count Modal */}
       {showCycleCountModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Schedule Cycle Count</h3>
               <button onClick={() => setShowCycleCountModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1205,7 +1206,7 @@ export function InventoryStorage() {
       {/* Transfer Modal */}
       {showTransferModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">New Transfer</h3>
               <button onClick={() => setShowTransferModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1288,7 +1289,7 @@ export function InventoryStorage() {
       {/* Reorder Modal */}
       {showReorderModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Create Reorder Request</h3>
               <button onClick={() => setShowReorderModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

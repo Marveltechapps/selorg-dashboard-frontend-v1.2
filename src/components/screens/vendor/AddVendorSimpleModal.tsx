@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { VENDOR_PAYMENT_TERMS } from './AddVendorModal';
@@ -99,7 +100,7 @@ export function AddVendorSimpleModal({ isOpen, onClose, onCreated }: AddVendorSi
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={resetAndClose}
+      onClick={createBackdropClickHandler(resetAndClose)}
     >
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4"

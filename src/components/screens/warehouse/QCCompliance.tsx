@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { ClipboardCheck, Thermometer, ShieldCheck, AlertTriangle, X, Download, Plus, Search, CheckCircle, FileText, Activity, Beaker, TrendingUp, Clock, User } from 'lucide-react';
 import { PageHeader } from '../../ui/page-header';
 import { EmptyState, LoadingState } from '../../ui/ux-components';
@@ -1054,7 +1055,7 @@ export function QCCompliance() {
       {/* Rejection Modal */}
       {showRejectionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Log Batch Rejection</h3>
               <button onClick={() => setShowRejectionModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1134,7 +1135,7 @@ export function QCCompliance() {
       {/* New Inspection Modal */}
       {showInspectionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">New QC Inspection</h3>
               <button onClick={() => setShowInspectionModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1204,7 +1205,7 @@ export function QCCompliance() {
       {/* Temperature Log Modal */}
       {showTempLogModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Log Temperature Reading</h3>
               <button onClick={() => setShowTempLogModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1268,7 +1269,7 @@ export function QCCompliance() {
       {/* Sample Test Modal */}
       {showSampleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#1E293B]">Create Sample Test</h3>
               <button onClick={() => setShowSampleModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1334,7 +1335,7 @@ export function QCCompliance() {
       {/* Inspection Report Modal */}
       {showInspectionReportModal && selectedInspection && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Inspection Report - {selectedInspection.inspectionId}</h3>
               <button onClick={() => setShowInspectionReportModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1423,7 +1424,7 @@ export function QCCompliance() {
       {/* Document View Modal */}
       {showDocumentModal && selectedDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Document - {selectedDoc.docName}</h3>
               <button onClick={() => setShowDocumentModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1497,7 +1498,7 @@ export function QCCompliance() {
       {/* Sample Report Modal */}
       {showSampleReportModal && selectedSample && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Sample Test Report - {selectedSample.sampleId}</h3>
               <button onClick={() => setShowSampleReportModal(false)} className="text-[#64748B] hover:text-[#1E293B]">
@@ -1583,7 +1584,7 @@ export function QCCompliance() {
       {/* Temperature Chart Modal */}
       {showTempChartModal && selectedTempLog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E2E8F0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#1E293B]">Temperature Chart - {selectedTempLog.zone}</h3>
               <button onClick={() => setShowTempChartModal(false)} className="text-[#64748B] hover:text-[#1E293B]">

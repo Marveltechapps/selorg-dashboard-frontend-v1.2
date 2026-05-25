@@ -5,6 +5,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "./utils";
+import { guardModalDismissOnPortaledOverlay } from "./modalOverlayGuards";
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
@@ -49,12 +50,15 @@ const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & {
     side?: "top" | "right" | "bottom" | "left";
   }
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", className, children, onInteractOutside, onPointerDownOutside, onFocusOutside, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
       data-slot="sheet-content"
+      onInteractOutside={guardModalDismissOnPortaledOverlay(onInteractOutside)}
+      onPointerDownOutside={guardModalDismissOnPortaledOverlay(onPointerDownOutside)}
+      onFocusOutside={guardModalDismissOnPortaledOverlay(onFocusOutside)}
       className={cn(
         "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-[100] flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
         side === "right" &&

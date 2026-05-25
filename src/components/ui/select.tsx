@@ -62,6 +62,8 @@ function SelectContent({
   position = "popper",
   sideOffset = 4,
   collisionPadding = 12,
+  onPointerDown,
+  onClick,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
@@ -70,6 +72,14 @@ function SelectContent({
         data-slot="select-content"
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onPointerDown?.(e);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick?.(e);
+        }}
         className={cn(
           "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-[10100] min-w-[8rem] max-h-[min(var(--radix-select-content-available-height),280px)] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border shadow-md",
           position === "popper" &&

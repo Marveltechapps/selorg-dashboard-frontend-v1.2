@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { 
   Settings, 
   Database, 
@@ -509,7 +510,7 @@ export function ProductionUtilities() {
       {/* Bulk Upload Modal */}
       {showBulkUploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Bulk Upload</h3>
               <button onClick={() => setShowBulkUploadModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -569,7 +570,7 @@ export function ProductionUtilities() {
       {/* Job Card Generator Modal */}
       {showJobCardModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Generate Job Card</h3>
               <button onClick={() => setShowJobCardModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -670,7 +671,7 @@ export function ProductionUtilities() {
       {/* HSD Sync Modal */}
       {showSyncModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">HSD Sync</h3>
               <button onClick={() => setShowSyncModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -730,7 +731,7 @@ export function ProductionUtilities() {
       {/* Backup Modal */}
       {showBackupModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Backup & Restore</h3>
               <button onClick={() => setShowBackupModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -788,7 +789,7 @@ export function ProductionUtilities() {
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">System Settings</h3>
               <button onClick={() => setShowSettingsModal(false)} className="text-[#757575] hover:text-[#212121]">
@@ -896,7 +897,7 @@ export function ProductionUtilities() {
       {/* Audit Logs Modal */}
       {showAuditModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">Audit Logs</h3>
               <button onClick={() => setShowAuditModal(false)} className="text-[#757575] hover:text-[#212121]">

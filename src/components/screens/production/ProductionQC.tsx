@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Shield, 
@@ -658,7 +659,7 @@ export function ProductionQC() {
 
       {inspectionFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">
                 {inspectionFormMode === 'create' ? 'Log QC Inspection' : 'Edit QC Inspection'}
@@ -766,7 +767,7 @@ export function ProductionQC() {
 
       {labFormMode && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center sticky top-0 bg-white">
               <h3 className="font-bold text-lg text-[#212121]">
                 {labFormMode === 'create' ? 'Request Lab Test' : 'Edit Lab Test'}
@@ -897,7 +898,7 @@ export function ProductionQC() {
 
       {inspectionToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete inspection?</h3>
             <p className="text-sm text-[#757575] mb-6">
               Remove inspection for <span className="font-medium text-[#212121]">{inspectionToDelete.batch}</span>?
@@ -922,7 +923,7 @@ export function ProductionQC() {
 
       {labTestToDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Delete lab test?</h3>
             <p className="text-sm text-[#757575] mb-6">
               Remove lab test <span className="font-medium text-[#212121]">{labTestToDelete.sampleId}</span>?
@@ -947,7 +948,7 @@ export function ProductionQC() {
 
       {labResultModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" {...stopModalPointerPropagation}>
             <h3 className="font-bold text-lg text-[#212121] mb-2">Add test result</h3>
             <p className="text-sm text-[#757575] mb-4">
               Sample <span className="font-medium text-[#212121]">{labResultModal.sampleId}</span>
@@ -984,7 +985,7 @@ export function ProductionQC() {
       {/* Details Modal */}
       {showDetailsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" {...stopModalPointerPropagation}>
             <div className="p-6 border-b border-[#E0E0E0] flex justify-between items-center">
               <h3 className="font-bold text-lg text-[#212121]">
                 {'batch' in showDetailsModal ? 'Inspection Details' : 'Lab Test Details'}
