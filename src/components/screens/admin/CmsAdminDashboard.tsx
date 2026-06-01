@@ -266,7 +266,6 @@ export function CmsAdminDashboard() {
                     type="file"
                     accept={XLSX_FILE_ACCEPT}
                     multiple={false}
-                    webkitdirectory={false}
                     className="mt-2 sr-only"
                     aria-label="Upload SKU mastersheet (.xlsx)"
                     onChange={(e) => {
@@ -307,7 +306,6 @@ export function CmsAdminDashboard() {
                     type="file"
                     accept={XLSX_FILE_ACCEPT}
                     multiple={false}
-                    webkitdirectory={false}
                     className="mt-2 sr-only"
                     aria-label="Upload CMS pages mastersheet (.xlsx)"
                     onChange={(e) => {

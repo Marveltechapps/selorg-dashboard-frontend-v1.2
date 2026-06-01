@@ -71,8 +71,8 @@
             "vite": "6.3.5"
       },
       "scripts": {
-            "predev": "node scripts/sync-vite-index-cache.mjs",
-            "prestart": "node scripts/sync-vite-index-cache.mjs",
+            "predev": "node scripts/ensure-dev-port-free.mjs && node scripts/sync-vite-index-cache.mjs",
+            "prestart": "node scripts/ensure-dev-port-free.mjs && node scripts/sync-vite-index-cache.mjs",
             "start": "vite",
             "dev": "vite",
             "build": "vite build",

@@ -84,6 +84,9 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
     errors?: Array<{ sheet?: string; row?: number; message: string }>;
   } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const importStartedAtRef = React.useRef<number | null>(null);
+  /** Typical full mastersheet import duration (ms); used for time-based progress until the API responds. */
+  const IMPORT_ESTIMATE_MS = 150_000;
 
   const refreshHistory = React.useCallback(async () => {
     const runs = await fetchContentHubImportHistory(15);
@@ -120,7 +123,8 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
       toast.error('Only .xlsx files are allowed');
       return;
     }
-    setImportProgress(10);
+    importStartedAtRef.current = Date.now();
+    setImportProgress(5);
     setImporting(true);
     try {
       const result = await uploadContentHubMaster(file, true);
@@ -139,6 +143,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
     } catch (e: any) {
       toast.error(e?.message || 'Import failed');
     } finally {
+      importStartedAtRef.current = null;
       window.setTimeout(() => {
         setImporting(false);
         setImportProgress(0);
@@ -153,8 +158,12 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
   React.useEffect(() => {
     if (!importing) return;
     const timer = window.setInterval(() => {
-      setImportProgress((prev) => (prev >= 92 ? prev : prev + 6));
-    }, 450);
+      const startedAt = importStartedAtRef.current;
+      if (!startedAt) return;
+      const elapsed = Date.now() - startedAt;
+      const estimated = Math.min(97, 5 + (elapsed / IMPORT_ESTIMATE_MS) * 92);
+      setImportProgress((prev) => Math.max(prev, estimated));
+    }, 400);
     return () => window.clearInterval(timer);
   }, [importing]);
 
@@ -165,8 +174,6 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
         type="file"
         accept={XLSX_FILE_ACCEPT}
         multiple={false}
-        // Force file selection (not folder); directory mode breaks single .xlsx import.
-        webkitdirectory={false}
         className="sr-only"
         aria-label="Import CMS mastersheet (.xlsx)"
         onChange={(e) => {
@@ -204,7 +211,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs text-[#71717a]">
             <span>Import in progress...</span>
-            <span>{Math.min(100, Math.max(0, importProgress))}%</span>
+            <span>{Math.round(Math.min(100, Math.max(0, importProgress)))}%</span>
           </div>
           <Progress value={importProgress} className="h-2 bg-[#f1f5f9] [&>div]:bg-[#e11d48]" />
         </div>
