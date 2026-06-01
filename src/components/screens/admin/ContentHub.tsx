@@ -32,10 +32,11 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import {
   fetchContentHubImportHistory,
-  uploadContentHubMaster,
   XLSX_FILE_ACCEPT,
   type ContentHubImportRun,
 } from '@/api/cmsAdminApi';
+import { useCmsImport } from '@/contexts/CmsImportContext';
+import { CmsImportStatusBanner } from '@/components/admin/CmsImportStatusBanner';
 
 interface ContentHubProps {
   setActiveTab: (tab: string) => void;
@@ -73,20 +74,21 @@ const SHARED_ITEMS = [
 ];
 
 export function ContentHub({ setActiveTab }: ContentHubProps) {
+  const { job, isRunning, progress: importProgress, startImport } = useCmsImport();
   const totalModules = PICKER_ITEMS.length + CUSTOMER_ITEMS.length + SHARED_ITEMS.length;
-  const [importing, setImporting] = React.useState(false);
-  const [importProgress, setImportProgress] = React.useState(0);
   const [importHistory, setImportHistory] = React.useState<ContentHubImportRun[]>([]);
-  const [lastImportResult, setLastImportResult] = React.useState<{
-    success: boolean;
-    counts?: Record<string, any>;
-    warnings?: Array<{ sheet?: string; row?: number; message: string }>;
-    errors?: Array<{ sheet?: string; row?: number; message: string }>;
-  } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-  const importStartedAtRef = React.useRef<number | null>(null);
-  /** Typical full mastersheet import duration (ms); used for time-based progress until the API responds. */
-  const IMPORT_ESTIMATE_MS = 150_000;
+
+  const importing = job?.kind === 'content-hub' && job.status === 'running';
+  const lastImportResult =
+    job?.kind === 'content-hub' && job.result
+      ? {
+          success: job.result.success,
+          counts: job.result.counts,
+          warnings: job.result.warnings,
+          errors: job.result.errors,
+        }
+      : null;
 
   const refreshHistory = React.useCallback(async () => {
     const runs = await fetchContentHubImportHistory(15);
@@ -119,35 +121,18 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
 
   const handleImport = async (file: File) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      toast.error('Only .xlsx files are allowed');
-      return;
-    }
-    importStartedAtRef.current = Date.now();
-    setImportProgress(5);
-    setImporting(true);
     try {
-      const result = await uploadContentHubMaster(file, true);
-      setLastImportResult(result);
-      setImportProgress(100);
+      const result = await startImport('content-hub', file, { overwrite: true });
       void refreshHistory();
-      if (result.success) {
-        toast.success('Import complete');
-      } else {
+      if (!result.success) {
         const topErrors = (result.errors || [])
           .slice(0, 3)
           .map((e) => `${e.sheet || 'Sheet'}${e.row ? ` row ${e.row}` : ''}: ${e.message}`)
           .join(' | ');
-        toast.error(topErrors || 'Import finished with issues');
+        if (topErrors) toast.error(topErrors);
       }
-    } catch (e: any) {
-      toast.error(e?.message || 'Import failed');
-    } finally {
-      importStartedAtRef.current = null;
-      window.setTimeout(() => {
-        setImporting(false);
-        setImportProgress(0);
-      }, 350);
+    } catch {
+      // Toasts handled in context
     }
   };
 
@@ -155,20 +140,9 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
     void refreshHistory();
   }, [refreshHistory]);
 
-  React.useEffect(() => {
-    if (!importing) return;
-    const timer = window.setInterval(() => {
-      const startedAt = importStartedAtRef.current;
-      if (!startedAt) return;
-      const elapsed = Date.now() - startedAt;
-      const estimated = Math.min(97, 5 + (elapsed / IMPORT_ESTIMATE_MS) * 92);
-      setImportProgress((prev) => Math.max(prev, estimated));
-    }, 400);
-    return () => window.clearInterval(timer);
-  }, [importing]);
-
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full">
+      <CmsImportStatusBanner kinds={['content-hub']} />
       <input
         ref={fileInputRef}
         type="file"
@@ -182,7 +156,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
           // reset so same file can be re-selected
           e.currentTarget.value = '';
         }}
-        disabled={importing}
+        disabled={importing || (isRunning && job?.kind !== 'content-hub')}
       />
       <div className="flex justify-between items-start">
         <div>
@@ -199,7 +173,7 @@ export function ContentHub({ setActiveTab }: ContentHubProps) {
           <button
             type="button"
             className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-[#e4e4e7] bg-white text-sm font-medium text-[#18181b] hover:bg-[#f4f4f5] transition-colors disabled:opacity-60"
-            disabled={importing}
+            disabled={importing || (isRunning && job?.kind !== 'content-hub')}
             onClick={() => fileInputRef.current?.click()}
           >
             {importing ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <UploadCloud size={14} className="mr-1.5" />}

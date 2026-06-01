@@ -17,6 +17,7 @@ import { ComplianceCenter } from './screens/admin/ComplianceCenter';
 import { AuditLogs } from './screens/admin/AuditLogs';
 import { CustomerAppHome } from './screens/admin/CustomerAppHome';
 import { AdminDashboardProvider } from '@/contexts/AdminDashboardContext';
+import { CmsImportProvider } from '@/contexts/CmsImportContext';
 import { AppCMS } from './screens/admin/AppCMS';
 import { OnboardingManagement } from './screens/admin/OnboardingManagement';
 import { ApplicationsManagement } from './screens/admin/ApplicationsManagement';
@@ -307,6 +308,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AdminDashboardProvider>
+    <CmsImportProvider>
     <div className="min-h-screen bg-[#fcfcfc] text-[#18181b] font-sans">
       <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
       <div className="admin-content-area">
@@ -353,6 +355,7 @@ export function AdminManagement({ onLogout }: { onLogout: () => void }) {
         </main>
       </div>
     </div>
+    </CmsImportProvider>
     </AdminDashboardProvider>
   );
 }

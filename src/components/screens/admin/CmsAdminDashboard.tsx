@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   fetchCmsOverview,
-  uploadSkuMaster,
-  uploadCmsPages,
   XLSX_FILE_ACCEPT,
   type AdminCmsOverview,
   type AdminCmsUploadResult,
 } from '@/api/cmsAdminApi';
+import { useCmsImport } from '@/contexts/CmsImportContext';
+import { CmsImportStatusBanner } from '@/components/admin/CmsImportStatusBanner';
 import { CmsPagesScreen } from './CmsPagesScreen';
 import { CollectionsScreen } from './CollectionsScreen';
 import { HomeConfigScreen } from './HomeConfigScreen';
@@ -27,12 +27,21 @@ interface UploadState {
 }
 
 export function CmsAdminDashboard() {
+  const { job, isRunning, startImport } = useCmsImport();
   const [tab, setTab] = useState<CmsTab>('overview');
   const [overview, setOverview] = useState<AdminCmsOverview | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
   const [overwrite, setOverwrite] = useState(true);
-  const [skuUpload, setSkuUpload] = useState<UploadState>({ uploading: false, result: null });
-  const [cmsUpload, setCmsUpload] = useState<UploadState>({ uploading: false, result: null });
+
+  const skuUpload: UploadState =
+    job?.kind === 'sku-master'
+      ? { uploading: job.status === 'running', result: job.result }
+      : { uploading: false, result: null };
+
+  const cmsUpload: UploadState =
+    job?.kind === 'cms-pages'
+      ? { uploading: job.status === 'running', result: job.result }
+      : { uploading: false, result: null };
 
   useEffect(() => {
     const load = async () => {
@@ -49,35 +58,15 @@ export function CmsAdminDashboard() {
     load();
   }, []);
 
-  const handleUpload = async (
-    kind: 'sku' | 'cms',
-    file: File | null,
-  ) => {
+  const handleUpload = async (kind: 'sku' | 'cms', file: File | null) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      toast.error('Only .xlsx files are allowed');
-      return;
-    }
-    const setState = kind === 'sku' ? setSkuUpload : setCmsUpload;
-    setState({ uploading: true, result: null });
+    const importKind = kind === 'sku' ? 'sku-master' : 'cms-pages';
     try {
-      const result =
-        kind === 'sku'
-          ? await uploadSkuMaster(file, overwrite)
-          : await uploadCmsPages(file);
-      setState({ uploading: false, result });
-      if (result.success) {
-        toast.success('Import complete');
-      } else {
-        toast.error('Import completed with issues');
-      }
-    } catch (e: any) {
-      const msg = e?.message || 'Upload failed';
-      setState({
-        uploading: false,
-        result: { success: false, counts: {}, errors: [{ message: msg }] },
-      });
-      toast.error(msg);
+      await startImport(importKind, file, { overwrite });
+      const data = await fetchCmsOverview();
+      setOverview(data);
+    } catch {
+      // Errors surfaced via context + banner
     }
   };
 
@@ -143,6 +132,7 @@ export function CmsAdminDashboard() {
 
   return (
     <div className="space-y-6">
+      <CmsImportStatusBanner kinds={['sku-master', 'cms-pages']} />
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold text-[#18181b] flex items-center gap-2">
           <BarChart3 className="h-6 w-6" />
@@ -237,7 +227,7 @@ export function CmsAdminDashboard() {
           </div>
         </TabsContent>
 
-        <TabsContent value="upload" className="mt-0">
+        <TabsContent value="upload" forceMount className="mt-0 data-[state=inactive]:hidden">
           <div className="space-y-4">
             <div className="rounded-md border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-xs text-[#1d4ed8]">
               Both mastersheets upload separately. SKU Mastersheet updates products/categories/banners;
@@ -274,7 +264,7 @@ export function CmsAdminDashboard() {
                       // reset so same file can be re-selected
                       e.target.value = '';
                     }}
-                    disabled={skuUpload.uploading}
+                    disabled={skuUpload.uploading || (isRunning && job?.kind !== 'sku-master')}
                   />
                 </label>
                 {skuUpload.uploading && (
@@ -313,7 +303,7 @@ export function CmsAdminDashboard() {
                       void handleUpload('cms', file);
                       e.target.value = '';
                     }}
-                    disabled={cmsUpload.uploading}
+                    disabled={cmsUpload.uploading || (isRunning && job?.kind !== 'cms-pages')}
                   />
                 </label>
                 {cmsUpload.uploading && (
