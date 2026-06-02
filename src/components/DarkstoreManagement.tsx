@@ -1,6 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
-import { SidebarV2 } from '../layouts/sidebar/SidebarV2';
 import { websocketService } from '../utils/websocket';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from './TopBar';
@@ -31,12 +30,10 @@ import { LogisticsModule } from './logistics/LogisticsModule';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
-// Feature flag for new navigation (Phase A). Use VITE_ENABLE_NEW_NAV=true in env for Vite.
-const ENABLE_NEW_NAV = import.meta.env.VITE_ENABLE_NEW_NAV === 'true';
-
 export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
   const { token, isAuthenticated } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Establish WebSocket connection when authenticated so Overview & Live Order Board get real-time updates.
   // Do not call resetConnection() on mount — it disconnects any in-progress connection and causes
@@ -68,14 +65,20 @@ export function DarkstoreManagement({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
-      {ENABLE_NEW_NAV ? (
-        <SidebarV2 activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
-      ) : (
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
-      )}
-      
-      <div className={ENABLE_NEW_NAV ? 'darkstore-content-area darkstore-content-area--v2' : 'darkstore-content-area'}>
-        <TopBar setActiveTab={setActiveTab} wideSidebar={ENABLE_NEW_NAV} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onLogout={onLogout}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+      />
+
+      <div className="darkstore-content-area">
+        <TopBar
+          setActiveTab={setActiveTab}
+          wideSidebar
+          onMenuClick={() => setSidebarOpen(true)}
+        />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
             <DashboardBreadcrumbs dashboard="darkstore" activeTab={activeTab} />
