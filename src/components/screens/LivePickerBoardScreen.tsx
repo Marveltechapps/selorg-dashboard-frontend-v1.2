@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { websocketService } from '@/utils/websocket';
 import { RefreshCw, Loader2, Zap, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { getPickersLive, type LivePicker } from '../../api/darkstore/pickers.api';
+import { getPickerRegistry, type StorePickerRegistryItem } from '../../api/darkstore/pickers.api';
 import { PageHeader } from '../ui/page-header';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth, getActiveStoreId } from '../../contexts/AuthContext';
 
 function formatLastActivity(d: string | null | undefined): string {
   if (!d) return '—';
@@ -49,21 +49,43 @@ function WorkerStatusBadge({ online, derivedStatus }: { online: boolean; derived
   );
 }
 
+function OtpBadge({ otp }: { otp: string | null | undefined }) {
+  if (!otp) {
+    return <span className="text-[#9E9E9E] text-sm font-mono">—</span>;
+  }
+  return (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE] font-mono text-sm font-bold tracking-widest">
+      {otp}
+    </span>
+  );
+}
+
 export function LivePickerBoardScreen() {
   const { isAuthenticated } = useAuth();
-  const [pickers, setPickers] = useState<LivePicker[]>([]);
+  const [pickers, setPickers] = useState<StorePickerRegistryItem[]>([]);
+  const [storeName, setStoreName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchPickers = useCallback(async () => {
+    const storeId = getActiveStoreId();
+    if (!storeId) {
+      setPickers([]);
+      setStoreName(null);
+      setError('No active store selected. Choose a store from the dashboard header.');
+      setLoading(false);
+      return;
+    }
     try {
       setError(null);
-      const res = await getPickersLive();
-      setPickers(res?.data ?? []);
+      const res = await getPickerRegistry(storeId);
+      setStoreName(res?.data?.storeName ?? null);
+      setPickers(res?.data?.pickers ?? []);
     } catch (e) {
       setPickers([]);
-      setError(e instanceof Error ? e.message : 'Failed to load live pickers');
+      setStoreName(null);
+      setError(e instanceof Error ? e.message : 'Failed to load picker list');
     } finally {
       setLoading(false);
     }
@@ -102,7 +124,11 @@ export function LivePickerBoardScreen() {
     <div className="space-y-6">
       <PageHeader
         title="Live Picker Board"
-        subtitle="Picker workforce status and activity"
+        subtitle={
+          storeName
+            ? `${storeName} — registered pickers and store OTPs`
+            : 'Picker workforce registered at this dark store'
+        }
         actions={
           <button
             onClick={() => { setLoading(true); fetchPickers(); }}
@@ -125,7 +151,9 @@ export function LivePickerBoardScreen() {
         </div>
       ) : pickers.length === 0 ? (
         <div className="bg-white border border-[#E0E0E0] rounded-xl p-12 text-center">
-          <p className="text-[#757575]">No pickers in shift. Picker users will appear here when they punch in and send heartbeats.</p>
+          <p className="text-[#757575]">
+            No pickers registered at this store yet. Pickers appear here after they log into the Picker App at this dark store.
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
@@ -134,6 +162,7 @@ export function LivePickerBoardScreen() {
               <thead className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
                 <tr>
                   <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Picker</th>
+                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Store OTP</th>
                   <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Status</th>
                   <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Battery</th>
                   <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Active Order</th>
@@ -148,11 +177,22 @@ export function LivePickerBoardScreen() {
                         <div className="w-8 h-8 rounded-full bg-[#E0E7FF] flex items-center justify-center">
                           <User size={14} className="text-[#4F46E5]" />
                         </div>
-                        <span className="font-medium text-[#212121]">{p.name}</span>
+                        <div>
+                          <span className="font-medium text-[#212121]">{p.name}</span>
+                          {p.phone && (
+                            <p className="text-xs text-[#9E9E9E] font-mono mt-0.5">{p.phone}</p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="py-3 px-4">
+                      <OtpBadge otp={p.permanentOtp} />
+                    </td>
+                    <td className="py-3 px-4">
                       <WorkerStatusBadge online={p.online} derivedStatus={p.derivedStatus} />
+                      {!p.inShift && p.online === false && (
+                        <p className="text-[10px] text-[#9E9E9E] mt-1">Not punched in</p>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <BatteryBadge level={p.batteryLevel} />

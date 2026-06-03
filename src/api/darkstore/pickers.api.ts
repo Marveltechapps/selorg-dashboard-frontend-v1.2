@@ -37,18 +37,54 @@ export type DerivedWorkerStatus = 'AVAILABLE' | 'PICKING' | 'ON_BREAK' | 'OFFLIN
 export interface LivePicker {
   id: string;
   name: string;
+  phone?: string | null;
   online: boolean;
   derivedStatus?: DerivedWorkerStatus;
   batteryLevel: number | null;
   activeOrderId: string | null;
   lastActivity: string | null;
+  permanentOtp?: string | null;
+  firstLoginAt?: string | null;
+  lastLoginAt?: string | null;
+  loginCount?: number;
+  inShift?: boolean;
+}
+
+export interface StorePickerRegistryItem extends LivePicker {
+  permanentOtp: string | null;
+  firstLoginAt: string | null;
+  lastLoginAt: string | null;
+  loginCount: number;
+}
+
+export interface StorePickerRegistryResponse {
+  storeId: string;
+  storeName: string;
+  pickers: StorePickerRegistryItem[];
 }
 
 /**
  * Get live pickers (PickerUser workforce with heartbeat data)
  */
-export async function getPickersLive(): Promise<{ success: boolean; data: LivePicker[] }> {
-  return apiRequest(`${BASE_PATH}/live`);
+export async function getPickersLive(params?: {
+  storeId?: string;
+  includeRegistered?: boolean;
+}): Promise<{ success: boolean; data: LivePicker[] }> {
+  const q = new URLSearchParams();
+  if (params?.storeId) q.set('storeId', params.storeId);
+  if (params?.includeRegistered) q.set('includeRegistered', 'true');
+  const query = q.toString();
+  return apiRequest(`${BASE_PATH}/live${query ? `?${query}` : ''}`);
+}
+
+/**
+ * Get all pickers registered at a dark store (permanent OTP list).
+ */
+export async function getPickerRegistry(
+  storeId: string
+): Promise<{ success: boolean; data: StorePickerRegistryResponse }> {
+  const q = new URLSearchParams({ storeId });
+  return apiRequest(`${BASE_PATH}/registry?${q.toString()}`);
 }
 
 export interface PickOpsOrder {
