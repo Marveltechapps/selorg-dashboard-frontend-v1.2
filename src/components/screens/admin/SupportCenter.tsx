@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -82,6 +82,7 @@ import { AdminLiveChatPanel } from './AdminLiveChatPanel';
 
 export function SupportCenter() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [slaMetrics, setSlaMetrics] = useState<SLAMetrics | null>(null);
@@ -89,6 +90,7 @@ export function SupportCenter() {
   const [faqs, setFaqs] = useState<SupportFAQ[]>([]);
   const [feedback, setFeedback] = useState<SupportFeedback[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoaded, setInitialLoaded] = useState(false);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -134,10 +136,94 @@ export function SupportCenter() {
   // Inbox selection state (P1-37)
   const [inboxSelectedTicketId, setInboxSelectedTicketId] = useState<string | null>(null);
   const [supportTab, setSupportTab] = useState('all-tickets');
+  const [assignSelectOpen, setAssignSelectOpen] = useState(false);
+  const [statusSelectOpen, setStatusSelectOpen] = useState(false);
+  const prevTicketModalOpenRef = useRef(false);
+  const ticketModalOpenerRef = useRef<HTMLElement | null>(null);
+
+  const getActiveElementInfo = () => {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return null;
+    return {
+      tag: active.tagName,
+      className: active.className,
+      dataRole: active.getAttribute('data-role'),
+    };
+  };
+
+  const blurModalCloseButtonIfFocused = (context: 'assign' | 'status') => {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return;
+    if (active.getAttribute('data-role') === 'admin-modal-close') {
+      console.debug(`[support-center][${context}][blur-close-button-before-open]`, {
+        pathname: window.location.pathname,
+        activeElement: getActiveElementInfo(),
+      });
+      active.blur();
+    }
+  };
   const liveChatWaitingCount = useMemo(
     () => liveChats.filter((c) => c.status === 'waiting').length,
     [liveChats],
   );
+
+  useEffect(() => {
+    console.debug('[support-center][route-change]', {
+      pathname: window.location.pathname,
+      routerPathname: `${location.pathname}${location.search}${location.hash}`,
+      viewTicketOpen,
+      selectedTicketId: selectedTicket?.id || null,
+      supportTab,
+    });
+  }, [location.pathname, location.search, location.hash, viewTicketOpen, selectedTicket?.id, supportTab]);
+
+  useEffect(() => {
+    console.debug('[support-center][render]', {
+      pathname: window.location.pathname,
+      selectedTicketId: selectedTicket?.id || null,
+      viewTicketOpen,
+      supportTab,
+      loading,
+      initialLoaded,
+    });
+  }, [selectedTicket?.id, viewTicketOpen, supportTab, loading, initialLoaded]);
+
+  useEffect(() => {
+    console.debug('[support-center][state-snapshot]', {
+      pathname: window.location.pathname,
+      isTicketModalOpen: viewTicketOpen,
+      dialogOpen: viewTicketOpen,
+      selectedTicketId: selectedTicket?.id || null,
+      assignSelectOpen,
+      statusSelectOpen,
+    });
+  }, [viewTicketOpen, selectedTicket?.id, assignSelectOpen, statusSelectOpen]);
+
+  useEffect(() => {
+    if (prevTicketModalOpenRef.current && !viewTicketOpen) {
+      console.log('[MODAL CLOSE]', {
+        reason: 'viewTicketOpen changed true->false',
+        pathname: window.location.pathname,
+        selectedTicketId: selectedTicket?.id || null,
+        assignSelectOpen,
+        statusSelectOpen,
+      });
+    }
+    prevTicketModalOpenRef.current = viewTicketOpen;
+  }, [viewTicketOpen, selectedTicket?.id, assignSelectOpen, statusSelectOpen]);
+
+  useEffect(() => {
+    const onSubmitCapture = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      console.debug('[support-center][form-submit-captured]', {
+        pathname: window.location.pathname,
+        targetTag: target?.tagName || null,
+        targetClass: target?.className || null,
+      });
+    };
+    document.addEventListener('submit', onSubmitCapture, true);
+    return () => document.removeEventListener('submit', onSubmitCapture, true);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -155,8 +241,9 @@ export function SupportCenter() {
     return () => clearInterval(poll);
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) setLoading(true);
     try {
       const filters: any = {};
       if (statusFilter !== 'all') filters.status = statusFilter;
@@ -182,14 +269,21 @@ export function SupportCenter() {
       if (waiting > 0 && supportTab === 'all-tickets') {
         setSupportTab('live-chats');
       }
+      if (!initialLoaded) setInitialLoaded(true);
     } catch (error) {
       toast.error('Failed to load support data');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   const handleViewTicket = (ticket: SupportTicket) => {
+    console.debug('[support-center][ticket-modal][open-request]', {
+      pathname: window.location.pathname,
+      ticketId: ticket.id,
+    });
+    ticketModalOpenerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelectedTicket(ticket);
     setReplyText('');
     setViewTicketOpen(true);
@@ -200,13 +294,27 @@ export function SupportCenter() {
 
   const handleAssignTicket = async (ticketId: string, agentId: string) => {
     if (!agentId) return;
+    console.debug('[support-center][assign][value-change][before]', {
+      pathname: window.location.pathname,
+      routerPathname: `${location.pathname}${location.search}${location.hash}`,
+      ticketId,
+      selectedValue: agentId,
+      selectedTicketId: selectedTicket?.id || null,
+      viewTicketOpen,
+    });
     try {
       const updated = await assignTicket(ticketId, agentId);
       toast.success('Ticket assigned successfully');
       if (updated && selectedTicket?.id === ticketId) {
         setSelectedTicket(updated);
       }
-      loadData();
+      console.debug('[support-center][assign][value-change][after-api]', {
+        pathname: window.location.pathname,
+        ticketId,
+        assignedTo: updated?.assignedTo,
+        assignedToName: updated?.assignedToName,
+      });
+      loadData({ silent: true });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to assign ticket';
       toast.error(message);
@@ -234,7 +342,7 @@ export function SupportCenter() {
       });
 
       const updated =
-        (await updateTicket(selectedTicket.id, { status: 'in_progress' }).catch(() => null)) ??
+        (await updateTicket(selectedTicket.id, { status: 'waiting_for_customer' }).catch(() => null)) ??
         (await fetchTicketById(selectedTicket.id));
 
       if (updated) {
@@ -263,6 +371,11 @@ export function SupportCenter() {
       }
       setReplyText('');
       setInboxSelectedTicketId(null);
+      console.log('[MODAL CLOSE]', {
+        reason: 'handleCloseTicket success path',
+        pathname: window.location.pathname,
+        ticketId,
+      });
       setSelectedTicket(null);
       setViewTicketOpen(false);
       loadData();
@@ -275,10 +388,23 @@ export function SupportCenter() {
   };
 
   const handleStatusChange = async (ticketId: string, status: string) => {
+    console.debug('[support-center][status][value-change][before]', {
+      pathname: window.location.pathname,
+      routerPathname: `${location.pathname}${location.search}${location.hash}`,
+      ticketId,
+      selectedValue: status,
+      selectedTicketId: selectedTicket?.id || null,
+      viewTicketOpen,
+    });
     try {
       await updateTicket(ticketId, { status: status as any });
       toast.success('Status updated');
-      loadData();
+      console.debug('[support-center][status][value-change][after-api]', {
+        pathname: window.location.pathname,
+        ticketId,
+        status,
+      });
+      loadData({ silent: true });
     } catch (error) {
       toast.error('Failed to update status');
     }
@@ -466,6 +592,13 @@ export function SupportCenter() {
 
   const currentUser = getCurrentUser();
   const myAssignedTickets = currentUser ? tickets.filter(t => t.assignedTo === currentUser.id) : [];
+  /** Open tickets in the support queue: unassigned or assigned to the current agent */
+  const myQueueTickets = tickets.filter((t) => {
+    const active = t.status === 'open' || t.status === 'in_progress';
+    if (!active) return false;
+    if (!t.assignedTo) return true;
+    return currentUser ? t.assignedTo === currentUser.id : false;
+  });
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -481,6 +614,7 @@ export function SupportCenter() {
     switch (status) {
       case 'open': return 'bg-blue-500';
       case 'in_progress': return 'bg-purple-500';
+      case 'waiting_for_customer': return 'bg-amber-500';
       case 'resolved': return 'bg-emerald-500';
       case 'closed': return 'bg-gray-500';
       default: return 'bg-gray-500';
@@ -498,7 +632,7 @@ export function SupportCenter() {
     );
   });
 
-  if (loading) {
+  if (loading && !initialLoaded) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-[#71717a]">Loading support center...</div>
@@ -614,6 +748,7 @@ export function SupportCenter() {
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="open">Open</SelectItem>
                     <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="waiting_for_customer">Waiting for Customer</SelectItem>
                     <SelectItem value="resolved">Resolved</SelectItem>
                     <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
@@ -766,7 +901,7 @@ export function SupportCenter() {
                       <Label className="text-xs">Assign:</Label>
                       <Select value={selectedTicket.assignedTo || ''} onValueChange={(val) => handleAssignTicket(selectedTicket.id, val)}>
                         <SelectTrigger className="w-48 h-8"><SelectValue placeholder="Select agent" /></SelectTrigger>
-                        <SelectContent>{agents.filter(a => a.isOnline).map((a) => (<SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>))}</SelectContent>
+                        <SelectContent portalled={false}>{agents.filter(a => a.isOnline).map((a) => (<SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>))}</SelectContent>
                       </Select>
                     </div>
 
@@ -821,19 +956,32 @@ export function SupportCenter() {
           <div className="bg-white border border-[#e4e4e7] rounded-xl p-6 shadow-sm h-[90vh] overflow-y-auto">
             <div className="text-center py-12 min-h-full">
               <User className="mx-auto mb-4 text-[#a1a1aa]" size={48} />
-              <h3 className="font-bold text-[#18181b] mb-2">My Assigned Tickets</h3>
+              <h3 className="font-bold text-[#18181b] mb-2">Support Queue</h3>
               <p className="text-[#71717a] mb-4">
-                You have {myAssignedTickets.length} tickets assigned to you
+                {myQueueTickets.length} open ticket{myQueueTickets.length === 1 ? '' : 's'} (unassigned or assigned to you)
+                {myAssignedTickets.length > 0 && (
+                  <span className="block text-xs mt-1">{myAssignedTickets.length} assigned to you in total</span>
+                )}
               </p>
               <div className="space-y-2 max-w-2xl mx-auto">
-                {myAssignedTickets.length === 0 ? (
-                  <p className="text-[#71717a] py-4">No tickets assigned to you</p>
+                {myQueueTickets.length === 0 ? (
+                  <p className="text-[#71717a] py-4">No open tickets in your queue. New customer submissions appear here and under All Tickets.</p>
                 ) : (
-                myAssignedTickets.map(ticket => (
+                myQueueTickets.map(ticket => (
                   <div key={ticket.id} className="flex items-center justify-between p-3 border border-[#e4e4e7] rounded-lg">
                     <div className="flex items-center gap-3">
                       <span className="font-mono font-bold text-[#e11d48]">{ticket.ticketNumber}</span>
-                      <span className="text-sm">{ticket.subject}</span>
+                      <div className="text-left">
+                        <span className="text-sm block">{ticket.subject}</span>
+                        {ticket.assignedToName ? (
+                          <span className="text-xs text-[#71717a]">
+                            Assigned to {ticket.assignedToName}
+                            {ticket.assignedAt ? ` · ${new Date(ticket.assignedAt).toLocaleString()}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[#a1a1aa]">Unassigned</span>
+                        )}
+                      </div>
                     </div>
                     <Button size="sm" variant="outline" onClick={() => handleViewTicket(ticket)}>
                       View
@@ -1196,10 +1344,38 @@ export function SupportCenter() {
 
       <AdminModal
         open={viewTicketOpen}
-        onOpenChange={setViewTicketOpen}
+        onOpenChange={(open) => {
+          console.debug('[support-center][ticket-modal][open-change]', {
+            pathname: window.location.pathname,
+            open,
+            selectedTicketId: selectedTicket?.id || null,
+            assignSelectOpen,
+            statusSelectOpen,
+          });
+          if (!open) {
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur();
+            }
+            console.log('[MODAL CLOSE]', {
+              reason: 'AdminModal onOpenChange(false)',
+              pathname: window.location.pathname,
+              selectedTicketId: selectedTicket?.id || null,
+              assignSelectOpen,
+              statusSelectOpen,
+            });
+            const focusTarget = ticketModalOpenerRef.current;
+            if (focusTarget && document.contains(focusTarget)) {
+              requestAnimationFrame(() => {
+                focusTarget.focus({ preventScroll: true });
+              });
+            }
+          }
+          setViewTicketOpen(open);
+        }}
         title={`Ticket Details - ${selectedTicket?.ticketNumber}`}
         subtitle={selectedTicket ? `Created on ${new Date(selectedTicket.createdAt).toLocaleString()}` : undefined}
         maxWidth="max-w-3xl"
+        bodyClassName="support-ticket-modal-body"
         footer={
           selectedTicket ? (
             <div className="flex w-full justify-end gap-3">
@@ -1259,16 +1435,99 @@ export function SupportCenter() {
               <h4 className="font-bold text-[#18181b] mb-2">Description</h4>
               <p className="text-[#71717a]">{selectedTicket.description}</p>
             </div>
+            <div className="p-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-sm">
+              <p className="text-[#71717a]">Assignment</p>
+              <p className="font-medium text-[#18181b]">
+                {selectedTicket.assignedToName || 'Unassigned'}
+                {selectedTicket.assignedAt
+                  ? ` · ${new Date(selectedTicket.assignedAt).toLocaleString()}`
+                  : ''}
+              </p>
+            </div>
             <AdminFormGrid>
               <AdminField label="Assign to Agent">
                 <Select
+                  open={assignSelectOpen}
+                  onOpenChange={(open) => {
+                    console.debug('[support-center][assign][onOpenChange]', {
+                      pathname: window.location.pathname,
+                      open,
+                      isTicketModalOpen: viewTicketOpen,
+                      dialogOpen: viewTicketOpen,
+                      selectedTicketId: selectedTicket?.id || null,
+                      activeElement: getActiveElementInfo(),
+                    });
+                    if (open) blurModalCloseButtonIfFocused('assign');
+                    setAssignSelectOpen(open);
+                  }}
                   value={selectedTicket.assignedTo || ''}
                   onValueChange={(val) => handleAssignTicket(selectedTicket.id, val)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger
+                    onPointerDown={() => {
+                      console.log('ASSIGN CLICK');
+                      console.debug('[support-center][assign][trigger][onPointerDown]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        assignSelectOpen,
+                        activeElement: getActiveElementInfo(),
+                      });
+                    }}
+                    onClick={() => {
+                      console.debug('[support-center][assign][trigger][onClick]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        assignSelectOpen,
+                        activeElement: getActiveElementInfo(),
+                      });
+                    }}
+                    onFocus={() => {
+                      console.debug('[support-center][assign][trigger][onFocus]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        assignSelectOpen,
+                      });
+                    }}
+                  >
                     <SelectValue placeholder="Select agent" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent
+                    position="popper"
+                    sideOffset={4}
+                    onPointerDown={() => {
+                      console.debug('[support-center][assign][content][onPointerDown]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        assignSelectOpen,
+                      });
+                    }}
+                    onClick={() => {
+                      console.debug('[support-center][assign][content][onClick]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        assignSelectOpen,
+                      });
+                    }}
+                    onFocus={() => {
+                      console.debug('[support-center][assign][content][onFocus]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        assignSelectOpen,
+                      });
+                    }}
+                  >
                     {agents.filter(a => a.isOnline).map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>
                         {agent.name} ({agent.activeTickets}/{agent.maxTicketCapacity})
@@ -1279,15 +1538,90 @@ export function SupportCenter() {
               </AdminField>
               <AdminField label="Status">
                 <Select
+                  open={statusSelectOpen}
+                  onOpenChange={(open) => {
+                    console.debug('[support-center][status][onOpenChange]', {
+                      pathname: window.location.pathname,
+                      open,
+                      isTicketModalOpen: viewTicketOpen,
+                      dialogOpen: viewTicketOpen,
+                      selectedTicketId: selectedTicket?.id || null,
+                      activeElement: getActiveElementInfo(),
+                    });
+                    if (open) blurModalCloseButtonIfFocused('status');
+                    setStatusSelectOpen(open);
+                  }}
                   value={selectedTicket.status}
                   onValueChange={(val) => handleStatusChange(selectedTicket.id, val)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger
+                    onPointerDown={() => {
+                      console.log('STATUS CLICK');
+                      console.debug('[support-center][status][trigger][onPointerDown]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        statusSelectOpen,
+                        activeElement: getActiveElementInfo(),
+                      });
+                    }}
+                    onClick={() => {
+                      console.debug('[support-center][status][trigger][onClick]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        statusSelectOpen,
+                        activeElement: getActiveElementInfo(),
+                      });
+                    }}
+                    onFocus={() => {
+                      console.debug('[support-center][status][trigger][onFocus]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        statusSelectOpen,
+                      });
+                    }}
+                  >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent
+                    position="popper"
+                    sideOffset={4}
+                    onPointerDown={() => {
+                      console.debug('[support-center][status][content][onPointerDown]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        statusSelectOpen,
+                      });
+                    }}
+                    onClick={() => {
+                      console.debug('[support-center][status][content][onClick]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        statusSelectOpen,
+                      });
+                    }}
+                    onFocus={() => {
+                      console.debug('[support-center][status][content][onFocus]', {
+                        pathname: window.location.pathname,
+                        selectedTicketId: selectedTicket?.id || null,
+                        isTicketModalOpen: viewTicketOpen,
+                        dialogOpen: viewTicketOpen,
+                        statusSelectOpen,
+                      });
+                    }}
+                  >
                     <SelectItem value="open">Open</SelectItem>
                     <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="waiting_for_customer">Waiting for Customer</SelectItem>
                     <SelectItem value="resolved">Resolved</SelectItem>
                     <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>

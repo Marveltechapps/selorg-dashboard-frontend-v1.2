@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,8 +30,25 @@ export function AdminModal({
   children,
   footer,
 }: AdminModalProps) {
+  const backdropPointerDownRef = useRef(false);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
+    console.debug('[admin-modal][open-state]', {
+      title,
+      open,
+      pathname: window.location.pathname,
+      activeElement: document.activeElement
+        ? {
+            tag: (document.activeElement as HTMLElement).tagName,
+            className: (document.activeElement as HTMLElement).className,
+            dataRole: (document.activeElement as HTMLElement).getAttribute('data-role'),
+          }
+        : null,
+    });
     if (open) {
+      previouslyFocusedRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       document.body.style.overflow = 'hidden';
       return () => {
         document.body.style.overflow = '';
@@ -42,7 +59,32 @@ export function AdminModal({
   if (!open) return null;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        console.debug('[admin-modal][root-onOpenChange]', {
+          title,
+          pathname: window.location.pathname,
+          openBefore: open,
+          openAfter: nextOpen,
+          activeElement: document.activeElement
+            ? {
+                tag: (document.activeElement as HTMLElement).tagName,
+                className: (document.activeElement as HTMLElement).className,
+                dataRole: (document.activeElement as HTMLElement).getAttribute('data-role'),
+              }
+            : null,
+        });
+        if (!nextOpen) {
+          console.log('[MODAL CLOSE]', {
+            reason: 'DialogPrimitive.Root onOpenChange(false)',
+            title,
+            pathname: window.location.pathname,
+          });
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           style={{
@@ -61,15 +103,83 @@ export function AdminModal({
               justifyContent: 'center',
               padding: '1rem',
             }}
+            onPointerDown={(e) => {
+              backdropPointerDownRef.current = e.target === e.currentTarget;
+              console.debug('[admin-modal][backdrop][onPointerDown]', {
+                title,
+                pathname: window.location.pathname,
+                isBackdropPointerDown: backdropPointerDownRef.current,
+                targetTag: (e.target as HTMLElement | null)?.tagName || null,
+              });
+            }}
             onClick={(e) => {
-              if (e.target === e.currentTarget) onOpenChange(false);
+              const isBackdropClick = e.target === e.currentTarget;
+              const shouldClose = isBackdropClick && backdropPointerDownRef.current;
+              console.debug('[admin-modal][backdrop][onClick]', {
+                title,
+                pathname: window.location.pathname,
+                isBackdropClick,
+                backdropPointerDown: backdropPointerDownRef.current,
+                shouldClose,
+              });
+              if (shouldClose) {
+                console.log('[MODAL CLOSE]', {
+                  reason: 'overlay container onClick (backdrop)',
+                  title,
+                  pathname: window.location.pathname,
+                });
+                onOpenChange(false);
+              }
+              backdropPointerDownRef.current = false;
             }}
           >
             <DialogPrimitive.Content
               asChild
-              onPointerDownOutside={(e) => e.preventDefault()}
-              onInteractOutside={(e) => e.preventDefault()}
-              onFocusOutside={(e) => e.preventDefault()}
+              onCloseAutoFocus={(e) => {
+                console.debug('[admin-modal][onCloseAutoFocus]', {
+                  title,
+                  pathname: window.location.pathname,
+                  open,
+                  activeElement: document.activeElement
+                    ? {
+                        tag: (document.activeElement as HTMLElement).tagName,
+                        className: (document.activeElement as HTMLElement).className,
+                        dataRole: (document.activeElement as HTMLElement).getAttribute('data-role'),
+                      }
+                    : null,
+                });
+                e.preventDefault();
+                const focusTarget = previouslyFocusedRef.current;
+                if (focusTarget && document.contains(focusTarget)) {
+                  focusTarget.focus({ preventScroll: true });
+                }
+              }}
+              onPointerDownOutside={(e) => {
+                console.debug('[admin-modal][onPointerDownOutside]', {
+                  title,
+                  pathname: window.location.pathname,
+                  open,
+                  target: (e.target as HTMLElement | null)?.tagName || null,
+                });
+                e.preventDefault();
+              }}
+              onInteractOutside={(e) => {
+                console.debug('[admin-modal][onInteractOutside]', {
+                  title,
+                  pathname: window.location.pathname,
+                  open,
+                  target: (e.target as HTMLElement | null)?.tagName || null,
+                });
+                e.preventDefault();
+              }}
+              onEscapeKeyDown={(e) => {
+                console.debug('[admin-modal][onEscapeKeyDown]', {
+                  title,
+                  pathname: window.location.pathname,
+                  open,
+                });
+                e.preventDefault();
+              }}
               aria-describedby={undefined}
             >
               <div
@@ -92,7 +202,10 @@ export function AdminModal({
                       )}
                     </div>
                   </div>
-                  <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm p-1 opacity-70 transition-opacity hover:opacity-100">
+                  <DialogPrimitive.Close
+                    data-role="admin-modal-close"
+                    className="absolute top-4 right-4 rounded-sm p-1 opacity-70 transition-opacity hover:opacity-100"
+                  >
                     <XIcon className="h-4 w-4" />
                     <span className="sr-only">Close</span>
                   </DialogPrimitive.Close>

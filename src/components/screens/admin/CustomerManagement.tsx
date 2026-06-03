@@ -79,6 +79,7 @@ import {
   fetchCustomerPaymentMethods,
 } from './customerManagementApi';
 import { ResetCustomerPasswordModal } from './modals/ResetCustomerPasswordModal';
+import { CustomerOrderDetailsDrawer } from './CustomerOrderDetailsDrawer';
 
 const STATUS_CONFIG: Record<CustomerStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }> = {
   active: { label: 'Active', variant: 'default', className: 'bg-emerald-500 hover:bg-emerald-600 text-white' },
@@ -314,6 +315,10 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
   const [customerRisk, setCustomerRisk] = useState<any>(null);
   const [customerWallet, setCustomerWallet] = useState<any>(null);
   const [tabLoading, setTabLoading] = useState(false);
+  // Right-side drawer for order details
+  const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
+  const [orderDetailsOrder, setOrderDetailsOrder] = useState<any | null>(null);
+  const [orderDetailsLoading, setOrderDetailsLoading] = useState(false);
   const [walletCreditOpen, setWalletCreditOpen] = useState(false);
   const [walletCreditAmount, setWalletCreditAmount] = useState('');
   const [walletCreditReason, setWalletCreditReason] = useState('');
@@ -376,6 +381,32 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
       setTabLoading(false);
     }
   }, [selectedCustomer]);
+
+  const handleOpenOrderDetails = useCallback(
+    async (order: any) => {
+      setOrderDetailsOrder(order);
+      setOrderDetailsOpen(true);
+
+      // Re-fetch orders to keep drawer content up to date.
+      setOrderDetailsLoading(true);
+      try {
+        if (!selectedCustomer?._id) return;
+        const res = await apiRequest<{ success: boolean; data: any }>(
+          `/admin/customers/${selectedCustomer._id}/orders`
+        );
+        const orders: any[] = res.data?.orders || res.data || [];
+        const orderKey = String(order?._id || order?.order_id || order?.orderId || order?.orderNumber || '');
+        const latest =
+          orders.find((o) => String(o?._id || o?.order_id || o?.orderId || o?.orderNumber || '') === orderKey) || null;
+        if (latest) setOrderDetailsOrder(latest);
+      } catch {
+        // Keep current drawer order on failure.
+      } finally {
+        setOrderDetailsLoading(false);
+      }
+    },
+    [selectedCustomer]
+  );
 
   useEffect(() => {
     if (viewMode === 'detail' && selectedCustomer) {
@@ -863,7 +894,12 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
                     };
                     const statusClass = statusColors[order.status] || 'bg-gray-100 text-gray-800 border-gray-300';
                     return (
-                      <TableRow key={order._id || order.order_id}>
+                      <TableRow
+                        key={order._id || order.order_id}
+                        className="cursor-pointer"
+                        onClick={() => handleOpenOrderDetails(order)}
+                        title="View order details"
+                      >
                         <TableCell>
                           <span className="font-mono font-medium text-sm">{order.orderNumber || order.order_id || order.orderId || order._id?.slice(-8)}</span>
                         </TableCell>
@@ -999,6 +1035,22 @@ export function CustomerManagement({ onBreadcrumbChange }: CustomerManagementPro
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Order Details Drawer */}
+        <CustomerOrderDetailsDrawer
+          open={orderDetailsOpen}
+          onOpenChange={(open) => {
+            setOrderDetailsOpen(open);
+            if (!open) setOrderDetailsOrder(null);
+          }}
+          order={orderDetailsOrder}
+          loading={orderDetailsLoading}
+          onRefresh={
+            orderDetailsOrder
+              ? () => handleOpenOrderDetails(orderDetailsOrder)
+              : undefined
+          }
+        />
 
         {/* Wallet Credit Modal */}
         <AdminModal
