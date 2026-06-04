@@ -1,20 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Box, 
-  Calendar, 
-  ClipboardList, 
-  ShieldCheck, 
-  Wrench, 
-  Users, 
-  AlertTriangle, 
-  BarChart3, 
-  Settings,
-  Factory,
-  ChevronDown,
-  LogOut,
-  Loader2
-} from 'lucide-react';
+import { LayoutDashboard, Factory, ChevronDown, LogOut, Loader2 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { useProductionFactory } from '../../contexts/ProductionFactoryContext';
 
@@ -40,18 +25,7 @@ export function ProductionSidebar({ activeTab, setActiveTab, onLogout }: Product
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const navItems = [
-    { id: 'overview', label: 'Production Overview', icon: LayoutDashboard },
-    { id: 'raw_materials', label: 'Raw Material Mgmt', icon: Box },
-    { id: 'planning', label: 'Planning & Scheduling', icon: Calendar },
-    { id: 'work_orders', label: 'Work Orders & Jobs', icon: ClipboardList },
-    { id: 'qc', label: 'Quality Control', icon: ShieldCheck },
-    { id: 'maintenance', label: 'Maintenance & Assets', icon: Wrench },
-    { id: 'workforce', label: 'Workforce & Shifts', icon: Users },
-    { id: 'alerts', label: 'Exceptions & Alerts', icon: AlertTriangle },
-    { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
-    { id: 'utilities', label: 'Utilities', icon: Settings },
-  ];
+  const navItems: { id: string; label: string; icon: typeof LayoutDashboard }[] = [];
 
   return (
     <div className="w-[220px] h-screen bg-[#111827] text-[#E6E6E6] flex flex-col fixed left-0 top-0 z-50 shadow-xl border-r border-[#1F2937]">
@@ -123,7 +97,8 @@ export function ProductionSidebar({ activeTab, setActiveTab, onLogout }: Product
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation hidden — screens remain available via direct URL */}
+      {navItems.length > 0 && (
       <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -145,6 +120,7 @@ export function ProductionSidebar({ activeTab, setActiveTab, onLogout }: Product
           );
         })}
       </nav>
+      )}
 
       {/* User Profile */}
       <div className="p-4 border-t border-[#1F2937] bg-[#111827]">

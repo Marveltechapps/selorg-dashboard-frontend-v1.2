@@ -331,26 +331,17 @@ export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
   }, [showSearchPanel]);
 
   const handleSearchResultClick = useCallback(
-    (item: SearchItem) => {
+    (_item: SearchItem) => {
       closeSearchUi();
-      const tab = PRODUCTION_TAB_MAP[item.type] ?? 'work_orders';
-      setActiveTab?.(tab);
-      const search = item.id ? `?highlight=${encodeURIComponent(item.id)}` : '';
-      navigate(`/production/${tab}${search}`, { replace: true });
     },
-    [navigate, setActiveTab, closeSearchUi]
+    [closeSearchUi]
   );
 
   const handleSuggestionClick = useCallback(
-    (s: SearchSuggestion) => {
-      const cat = (s.category ?? '').toLowerCase();
-      const tab = cat.includes('order') || s.type === 'order' ? 'work_orders' : 'raw_materials';
+    (_s: SearchSuggestion) => {
       closeSearchUi();
-      setActiveTab?.(tab);
-      const search = s.text ? `?highlight=${encodeURIComponent(s.text)}` : '';
-      navigate(`/production/${tab}${search}`, { replace: true });
     },
-    [navigate, setActiveTab, closeSearchUi]
+    [closeSearchUi]
   );
 
   return (

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ProductionSidebar } from './production/ProductionSidebar';
 import { ProductionTopBar } from './production/ProductionTopBar';
-import { ProductionBreadcrumbs } from './production/ProductionBreadcrumbs';
 import { ProductionOverview } from './screens/production/ProductionOverview';
 import { RawMaterials } from './screens/production/RawMaterials';
 import { ProductionPlanning } from './screens/production/ProductionPlanning';
@@ -39,7 +38,6 @@ export function ProductionManagement({ onLogout }: { onLogout: () => void }) {
         <ProductionTopBar setActiveTab={setActiveTab} onOpenDowntime={() => { setActiveTab('overview'); setShowDowntimeModal(true); }} />
         
         <main className="pt-[88px] px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
-          <ProductionBreadcrumbs activeTab={effectiveTab} />
           {effectiveTab === 'overview' && (
             <ProductionOverview
               showDowntimeModal={showDowntimeModal}

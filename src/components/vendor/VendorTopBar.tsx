@@ -272,50 +272,31 @@ export function VendorTopBar({ filterQuery, onFilterQueryChange }: VendorTopBarP
   }, []);
 
   const goVendor = useCallback(
-    (tab: string, params?: Record<string, string>) => {
-      const t = VENDOR_TABS.has(tab) ? tab : 'overview';
-      const sp = new URLSearchParams();
-      if (params) {
-        Object.entries(params).forEach(([k, v]) => {
-          if (v != null && v !== '') sp.set(k, v);
-        });
-      }
-      const qs = sp.toString();
+    (_tab: string, params?: Record<string, string>) => {
       const q = params?.q?.trim() ?? '';
-      navigate(`/vendor/${t}${qs ? `?${qs}` : ''}`);
       closeSearchUi(q);
       onFilterQueryChange?.(q);
     },
-    [navigate, closeSearchUi, onFilterQueryChange]
+    [closeSearchUi, onFilterQueryChange]
   );
 
   const navigateSearchItem = useCallback(
-    (category: string, item: SearchItem) => {
-      const m = item.metadata as Record<string, unknown> | undefined;
-      if (m && typeof m.href === 'string' && m.href.startsWith('/')) {
-        navigate(m.href);
-        closeSearchUi();
-        return;
-      }
-      const fromMeta =
-        typeof m?.vendorTab === 'string' && VENDOR_TABS.has(m.vendorTab) ? m.vendorTab : null;
-      const tab = fromMeta ?? DEFAULT_TAB_BY_RESULT_CATEGORY[category] ?? 'overview';
-      goVendor(tab, { highlight: item.id, kind: item.type });
+    (_category: string, _item: SearchItem) => {
+      closeSearchUi();
     },
-    [navigate, goVendor, closeSearchUi]
+    [closeSearchUi]
   );
 
   const navigateSuggestionPick = useCallback(
     (s: SearchSuggestion) => {
-      const tab = suggestionCategoryToVendorTab(s.category, s.type);
-      goVendor(tab, { q: s.text });
+      goVendor('overview', { q: s.text });
     },
     [goVendor]
   );
 
   const navigateRecentTerm = useCallback(
     (term: string) => {
-      goVendor(inferVendorTabFromRecentQuery(term), { q: term.trim() });
+      goVendor('overview', { q: term.trim() });
     },
     [goVendor]
   );

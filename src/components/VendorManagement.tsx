@@ -4,7 +4,6 @@ import { VendorSidebar } from './vendor/VendorSidebar';
 import { VendorTopBar } from './vendor/VendorTopBar';
 import { CardSkeleton } from './ui/ux-components';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
-import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
 const VendorOverview = React.lazy(() =>
   import('./screens/vendor/VendorOverview').then((m) => ({ default: m.VendorOverview }))
@@ -44,16 +43,11 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
   const { activeTab, setActiveTab } = useDashboardNavigation('overview');
   const location = useLocation();
   const [vendorSearchQuery, setVendorSearchQuery] = React.useState('');
-  const [breadcrumbExtra, setBreadcrumbExtra] = React.useState<string | undefined>();
 
   useEffect(() => {
     const q = new URLSearchParams(location.search).get('q');
     if (q != null) setVendorSearchQuery(q);
   }, [location.search]);
-
-  useEffect(() => {
-    if (activeTab !== 'vendor-list') setBreadcrumbExtra(undefined);
-  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'onboarding' || activeTab === 'communication' || activeTab === 'system') {
@@ -69,7 +63,6 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
         <VendorTopBar filterQuery={vendorSearchQuery} onFilterQueryChange={setVendorSearchQuery} />
 
         <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
-          <DashboardBreadcrumbs dashboard="vendor" activeTab={activeTab} pageLabel={breadcrumbExtra} />
           <Suspense
             fallback={
               <div className="p-6">
@@ -78,12 +71,7 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
             }
           >
             {activeTab === 'overview' && <VendorOverview searchQuery={vendorSearchQuery} />}
-            {activeTab === 'vendor-list' && (
-              <VendorList
-                onNavigateTab={setActiveTab}
-                onBreadcrumbExtraChange={setBreadcrumbExtra}
-              />
-            )}
+            {activeTab === 'vendor-list' && <VendorList onNavigateTab={setActiveTab} />}
             {activeTab === 'po' && <PurchaseOrders />}
             {activeTab === 'inbound' && <InboundOperations />}
             {activeTab === 'inventory' && <InventoryCoordination />}

@@ -21,7 +21,8 @@ const ROLE_CONFIG: Record<RoleId, { name: string; color: string; bgSelected: str
   merch:      { name: 'Merch & Promo',     color: '#7C3AED', bgSelected: 'rgba(124,58,237,0.08)' },
 };
 
-const ROLE_ORDER: RoleId[] = ['admin', 'warehouse', 'production', 'darkstore', 'rider', 'vendor', 'finance', 'merch'];
+/** Production and Vendor dashboards are reachable by direct URL only — hidden from login picker. */
+const ROLE_ORDER: RoleId[] = ['admin', 'warehouse', 'darkstore', 'rider', 'finance', 'merch'];
 
 function formatCountdown(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);

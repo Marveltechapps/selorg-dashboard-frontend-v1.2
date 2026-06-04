@@ -37,19 +37,7 @@ export function VendorSidebar({ activeTab, setActiveTab, onLogout }: VendorSideb
   const { user, activeStoreId } = useAuth();
   const hubLabel = formatHubLabel(user?.hubKey ?? activeStoreId);
 
-  const navItems = [
-    { id: 'overview', label: 'Vendor Overview', icon: LayoutDashboard },
-    { id: 'vendor-list', label: 'Vendor List', icon: Users },
-    { id: 'po', label: 'Purchase Orders', icon: ShoppingCart },
-    { id: 'inbound', label: 'Inbound Operations', icon: Truck },
-    { id: 'inventory', label: 'Inventory Coordination', icon: Package },
-    { id: 'qc', label: 'QC & Compliance', icon: ClipboardCheck },
-    { id: 'approvals', label: 'Task Approvals', icon: CheckSquare },
-    { id: 'alerts', label: 'Alerts & Notifications', icon: AlertTriangle },
-    { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
-    { id: 'finance', label: 'Finance Integration', icon: CreditCard },
-    { id: 'utilities', label: 'Utilities & Tools', icon: Wrench },
-  ];
+  const navItems: { id: string; label: string; icon: typeof LayoutDashboard }[] = [];
 
   return (
     <div className="w-[240px] h-screen bg-[#111827] text-[#E6E6E6] flex flex-col fixed left-0 top-0 z-50 shadow-xl border-r border-[#1F2937]">
@@ -70,7 +58,8 @@ export function VendorSidebar({ activeTab, setActiveTab, onLogout }: VendorSideb
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation hidden — screens remain available via direct URL */}
+      {navItems.length > 0 && (
       <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[rgba(102,126,234,0.3)] [&::-webkit-scrollbar-thumb]:rounded-sm hover:[&::-webkit-scrollbar-thumb]:bg-[rgba(102,126,234,0.6)]">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -92,6 +81,7 @@ export function VendorSidebar({ activeTab, setActiveTab, onLogout }: VendorSideb
           );
         })}
       </nav>
+      )}
 
       {/* User Profile */}
       <div className="p-4 border-t border-[#1F2937] bg-[#111827]">
