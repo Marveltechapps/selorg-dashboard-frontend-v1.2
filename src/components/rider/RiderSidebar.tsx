@@ -59,6 +59,7 @@ export function RiderSidebar({ activeTab, setActiveTab, onLogout }: RiderSidebar
     { id: 'approvals', label: 'Task Approvals', icon: Icons.ClipboardCheck },
     { id: 'training-kit', label: 'Training & Kit', icon: Icons.Video },
     { id: 'group-delivery', label: 'Group Delivery', icon: Icons.Map },
+    { id: 'live-chat-support', label: 'Live Chat Support', icon: Icons.MessageCircle },
   ];
 
   // UI toggle: hide the Communication Hub button without deleting its code/entry.

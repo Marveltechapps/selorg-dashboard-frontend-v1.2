@@ -14,6 +14,7 @@ import { TaskApprovals } from './screens/rider/TaskApprovals';
 import { DeliveryEscalations } from './screens/rider/DeliveryEscalations';
 import { TrainingKitManagement } from './screens/rider/TrainingKitManagement';
 import { GroupDelivery } from './screens/rider/GroupDelivery';
+import { RiderLiveChatSupport } from './screens/rider/RiderLiveChatSupport';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
 
@@ -30,6 +31,7 @@ const RIDER_TABS = [
   'approvals',
   'training-kit',
   'group-delivery',
+  'live-chat-support',
 ] as const;
 
 export function RiderManagement({ onLogout }: { onLogout: () => void }) {
@@ -74,6 +76,7 @@ export function RiderManagement({ onLogout }: { onLogout: () => void }) {
             {tab === 'approvals' && <TaskApprovals searchQuery={riderSearchQuery} />}
             {tab === 'training-kit' && <TrainingKitManagement />}
             {tab === 'group-delivery' && <GroupDelivery searchQuery={riderSearchQuery} />}
+            {tab === 'live-chat-support' && <RiderLiveChatSupport />}
         </main>
       </div>
     </div>

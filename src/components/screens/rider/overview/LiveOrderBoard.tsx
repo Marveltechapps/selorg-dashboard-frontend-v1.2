@@ -31,6 +31,14 @@ import { Switch } from '../../../../components/ui/switch';
 import { Label } from '../../../../components/ui/label';
 import { websocketService } from '../../../../utils/websocket';
 import { useWebSocketConnection } from '../../../../hooks/useWebSocketConnection';
+import {
+  enrichOrderAssignment,
+  extractOrderAssignedAt,
+  extractOrderRiderId,
+  extractOrderRiderName,
+  findFleetRider,
+  mergeLiveOrdersWithApi,
+} from './orderAssignment';
 
 interface LiveOrderBoardProps {
   orders: Order[];
@@ -85,18 +93,24 @@ export function LiveOrderBoard({
       status = 'delayed';
     }
 
-    return {
-      id: id,
-      status,
-      riderId: o.riderId || o.rider_id || undefined,
-      etaMinutes: typeof o.etaMinutes === 'number' ? o.etaMinutes : undefined,
-      slaDeadline: o.sla_deadline || o.slaDeadline || new Date().toISOString(),
-      pickupLocation: o.pickup_location || o.pickupLocation || 'Store',
-      dropLocation: o.delivery_address || o.dropLocation || 'Customer',
-      customerName: o.customer_name || o.customer || 'Customer',
-      items: [],
-      timeline: [],
-    };
+    const raw = o as Record<string, unknown>;
+    return enrichOrderAssignment(
+      {
+        id: id,
+        status,
+        riderId: extractOrderRiderId(raw),
+        riderName: extractOrderRiderName(raw),
+        assignedAt: extractOrderAssignedAt(raw),
+        etaMinutes: typeof o.etaMinutes === 'number' ? o.etaMinutes : undefined,
+        slaDeadline: o.sla_deadline || o.slaDeadline || new Date().toISOString(),
+        pickupLocation: o.pickup_location || o.pickupLocation || 'Store',
+        dropLocation: o.delivery_address || o.dropLocation || 'Customer',
+        customerName: o.customer_name || o.customer || 'Customer',
+        items: [],
+        timeline: [],
+      },
+      raw
+    );
   }, []);
 
   // Subscribe to live order stream via Socket.IO (darkstore events) and keep a live view
@@ -125,8 +139,12 @@ export function LiveOrderBoard({
         if (!prev) return prev;
         return prev.map(o => {
           if (o.id !== data.order_id && o.id !== `#${data.order_id}`) return o;
-          const updated = mapBackendOrderToRiderOrder({ ...data, riderId: data.riderId ?? o.riderId });
-          return { ...o, ...updated };
+          const updated = mapBackendOrderToRiderOrder({
+            ...data,
+            riderId: data.riderId ?? data.rider_id ?? o.riderId,
+            assignee: data.assignee ?? (o.riderId ? { id: o.riderId, name: o.riderName || '' } : undefined),
+          });
+          return { ...o, ...updated, riderId: updated.riderId || o.riderId, riderName: updated.riderName || o.riderName };
         });
       });
     };
@@ -152,13 +170,17 @@ export function LiveOrderBoard({
     };
   }, [mapBackendOrderToRiderOrder]);
 
-  const effectiveOrders = wsOrders ?? orders;
+  const effectiveOrders = React.useMemo(
+    () => mergeLiveOrdersWithApi(wsOrders, orders),
+    [wsOrders, orders]
+  );
 
   // Filtering logic
   const filteredOrders = effectiveOrders.filter(order => {
     const matchesStatus = filterStatus === 'All' || order.status.toLowerCase() === filterStatus.toLowerCase();
     
-    const riderName = riders.find(r => r.id === order.riderId)?.name || '';
+    const fleetRider = findFleetRider(riders, order.riderId);
+    const riderName = fleetRider?.name || order.riderName || '';
     const matchesSearch = 
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -203,40 +225,6 @@ export function LiveOrderBoard({
       case 'pending': return 'bg-gray-100 text-gray-700 hover:bg-gray-100';
       default: return 'bg-gray-100 text-gray-700';
     }
-  };
-
-  const getRiderName = (riderId?: string) => {
-    if (!riderId) return null;
-    // Try exact match first
-    let rider = riders.find(r => r.id === riderId);
-    if (rider) return rider;
-    
-    // Try normalized matching for different ID formats
-    // Handle cases like: RIDER-1 vs RIDER-0001, r1 vs RIDER-1, etc.
-    const normalizeId = (id: string) => {
-      if (!id) return id;
-      const upperId = id.toUpperCase();
-      
-      // Handle new Pro Tip format: RDR-[Store]-[YYMM]-[Sequence]
-      if (upperId.startsWith('RDR-')) return upperId;
-      
-      // Handle legacy formats: RIDER-XXXX, RXXXX, RIDERXXXX
-      const match = upperId.match(/^(?:R|RIDER-?)(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        return `RIDER-${String(num).padStart(4, '0')}`;
-      }
-      
-      return upperId;
-    };
-    
-    const normalizedId = normalizeId(riderId);
-    rider = riders.find(r => {
-      const rNormalized = normalizeId(r.id);
-      return rNormalized === normalizedId || r.id === normalizedId || r.id === riderId;
-    });
-    
-    return rider || null;
   };
 
   return (
@@ -317,7 +305,24 @@ export function LiveOrderBoard({
                 </TableRow>
             ) : (
                 sortedOrders.map((order) => {
-                  const rider = getRiderName(order.riderId);
+                  const rider =
+                    findFleetRider(riders, order.riderId) ||
+                    (order.riderId && order.riderName
+                      ? {
+                          id: order.riderId,
+                          name: order.riderName,
+                          avatarInitials: order.riderName
+                            .split(' ')
+                            .map((p) => p[0])
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase(),
+                          status: 'online' as const,
+                          capacity: { currentLoad: 0, maxLoad: 5 },
+                          avgEtaMins: 10,
+                          rating: 4.5,
+                        }
+                      : null);
                   const isDelayed = order.status === 'delayed';
                   
                   return (
