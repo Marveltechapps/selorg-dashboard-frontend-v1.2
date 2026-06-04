@@ -22,10 +22,17 @@ function AlertDialogTrigger({
 }
 
 function AlertDialogPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
+  const resolvedContainer =
+    container ?? (typeof document !== "undefined" ? document.body : undefined);
   return (
-    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+    <AlertDialogPrimitive.Portal
+      data-slot="alert-dialog-portal"
+      container={resolvedContainer}
+      {...props}
+    />
   );
 }
 
@@ -37,7 +44,7 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[200] bg-black/50",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[11000] bg-black/50",
         className,
       )}
       {...props}
@@ -50,15 +57,18 @@ function AlertDialogContent({
   onInteractOutside,
   onPointerDownOutside,
   onFocusOutside,
+  container,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  container?: HTMLElement | null;
+}) {
   return (
-    <AlertDialogPortal>
+    <AlertDialogPortal container={container ?? undefined}>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         className={cn(
-          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[201] flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col gap-4 overflow-y-auto rounded-lg border border-[#e4e4e7] bg-white p-6 text-[#18181b] shadow-xl duration-200 sm:max-w-lg",
+          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[11001] flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col gap-4 overflow-y-auto rounded-lg border border-[#e4e4e7] bg-white p-6 text-[#18181b] shadow-xl duration-200 sm:max-w-lg",
           className,
         )}
         onInteractOutside={guardModalDismissOnPortaledOverlay(onInteractOutside)}

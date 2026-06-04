@@ -3,6 +3,7 @@ import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
 import { api, normalizeOrderId } from './overview/riderApi';
+import { findFleetRider } from './overview/orderAssignment';
 import { DashboardSummary, Order, Rider } from './overview/types';
 import { SummaryCards } from './overview/SummaryCards';
 import { LiveOrderBoard } from './overview/LiveOrderBoard';
@@ -10,6 +11,8 @@ import { OrderDetailsDrawer } from './overview/OrderDetailsDrawer';
 import { DispatchDrawer } from './overview/DispatchDrawer';
 import { RiderMapModal } from './overview/RiderMapModal';
 import { RiderOverviewMap } from './overview/RiderOverviewMap';
+import { AssignedRidersTable } from './overview/AssignedRidersTable';
+import { websocketService } from '../../../utils/websocket';
 import { ReassignRiderModal } from '../alerts/modals/ReassignRiderModal';
 import { MapPin } from 'lucide-react';
 
@@ -145,6 +148,26 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
     fetchData(!hit);
   }, []);
 
+  // Keep rider list in sync with mobile app (poll + WebSocket when backend is reachable)
+  useEffect(() => {
+    const pollMs = 20000;
+    const interval = setInterval(() => {
+      fetchData(false);
+    }, pollMs);
+    return () => clearInterval(interval);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    websocketService.connect();
+    const onFleetUpdate = () => {
+      fetchData(false);
+    };
+    websocketService.on('rider:fleet_updated', onFleetUpdate);
+    return () => {
+      websocketService.off('rider:fleet_updated', onFleetUpdate);
+    };
+  }, [searchQuery]);
+
   const searchFetchedRef = React.useRef(false);
   useEffect(() => {
     if (!searchFetchedRef.current) {
@@ -252,7 +275,12 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       delete localOrderUpdates.current[serverNormalizedId];
       
       // Update local state with server response - immediately update UI
-      const update = { riderId: serverRiderId, status: serverStatus };
+      const update = {
+        riderId: serverRiderId,
+        riderName: result.riderName || riderName,
+        status: serverStatus,
+        assignedAt: new Date().toISOString(),
+      };
       
       // Helper function to check if an order ID matches the target order
       const isTargetOrder = (o: Order) => {
@@ -463,11 +491,21 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
   };
 
   const handleDispatchAssign = async (orderId: string, riderId: string) => {
-    const patch = { riderId, status: 'assigned' as Order['status'], etaMinutes: 12 };
+    const riderMeta = findFleetRider(riders, riderId);
     try {
-      await api.assignOrder(orderId, riderId);
+      const result = await api.assignOrder(orderId, riderId);
+      const patch = {
+        riderId: result.riderId || riderId,
+        riderName: result.riderName || riderMeta?.name,
+        status: (result.status || 'assigned') as Order['status'],
+        etaMinutes: result.etaMinutes ?? 12,
+        assignedAt: new Date().toISOString(),
+      };
       localOrderUpdates.current[orderId] = { ...localOrderUpdates.current[orderId], ...patch };
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...patch } : o));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) => (prev ? { ...prev, ...patch } : null));
+      }
       toast.success(`Order ${orderId} assigned successfully`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Assign failed');
@@ -515,6 +553,8 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       {/* Summary Cards */}
       <SummaryCards data={summary} loading={loading} riders={riders} />
 
+      <AssignedRidersTable riders={riders} loading={loading} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Live Order Board */}
           <div className="lg:col-span-2 h-full">
@@ -561,7 +601,7 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
                   <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-sm p-3 rounded-lg border border-[#E0E0E0] shadow-sm">
                       <div className="flex justify-between items-center mb-2 border-b border-gray-100 pb-2">
                           <span className="text-xs text-[#757575] font-medium">Idle Riders</span>
-                          <span className="font-bold text-[#212121]">{summary?.idleRiders ?? riders.filter(r => r.status === 'idle').length ?? 0}</span>
+                          <span className="font-bold text-[#212121]">{summary?.idleRiders ?? riders.filter(r => r.status === 'online' || r.status === 'idle' || r.availability === 'available').length ?? 0}</span>
                       </div>
                       <div className="flex justify-between items-center">
                           <span className="text-xs text-[#757575] font-medium">Busy Riders</span>
@@ -575,37 +615,8 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       {/* Drawers & Modals */}
       <OrderDetailsDrawer 
         order={selectedOrder}
-        rider={selectedOrder?.riderId ? (() => {
-          // Try exact match first
-          let rider = riders.find(r => r.id === selectedOrder.riderId);
-          if (rider) return rider;
-          
-          // Try normalized matching for different ID formats
-          const normalizeId = (id: string) => {
-            if (!id) return id;
-            const upperId = id.toUpperCase();
-            
-            // Handle new Pro Tip format: RDR-[Store]-[YYMM]-[Sequence]
-            if (upperId.startsWith('RDR-')) return upperId;
-            
-            // Handle legacy formats: RIDER-XXXX, RXXXX, RIDERXXXX
-            const match = upperId.match(/^(?:R|RIDER-?)(\d+)$/);
-            if (match) {
-              const num = parseInt(match[1], 10);
-              return `RIDER-${String(num).padStart(4, '0')}`;
-            }
-            
-            return upperId;
-          };
-          
-          const normalizedId = normalizeId(selectedOrder.riderId);
-          rider = riders.find(r => {
-            const rNormalized = normalizeId(r.id);
-            return rNormalized === normalizedId || r.id === normalizedId || r.id === selectedOrder.riderId;
-          });
-          
-          return rider || undefined;
-        })() : undefined}
+        rider={selectedOrder?.riderId ? findFleetRider(riders, selectedOrder.riderId) : undefined}
+        riders={riders}
         isOpen={isDetailsOpen}
         onClose={() => {
           // Let the sheet handle its own close animation by only

@@ -117,9 +117,23 @@ export function ReassignRiderModal({ isOpen, onClose, onConfirm, riders: ridersP
   });
 
   const handleAssign = async () => {
-    if (!selectedRider) return;
+    if (!selectedRider) {
+      toast.error('Please select a rider');
+      return;
+    }
+    if (!selectedRider.id || !String(selectedRider.id).trim()) {
+      toast.error('Invalid rider selection (missing rider ID)');
+      return;
+    }
     setLoading(true);
     try {
+      if (import.meta.env.DEV) {
+        console.info('[ReassignRiderModal] assign', {
+          riderId: selectedRider.id,
+          riderName: selectedRider.name,
+          overrideSla,
+        });
+      }
       await onConfirm(selectedRider.id, selectedRider.name, overrideSla);
       toast.success(`Order reassigned to ${selectedRider.name}`);
       onClose();

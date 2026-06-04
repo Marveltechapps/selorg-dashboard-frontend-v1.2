@@ -11,6 +11,14 @@ export interface Rider {
   phone?: string;
   avatarInitials: string;
   status: RiderStatus;
+  /** Raw v2 availability: available | busy | offline */
+  availability?: 'available' | 'busy' | 'offline';
+  accountStatus?: string;
+  hubId?: string;
+  hubName?: string;
+  cityName?: string;
+  shiftLabel?: string | null;
+  vehicleType?: string;
   currentOrderId?: string;
   location?: { lat: number; lng: number };
   capacity: { currentLoad: number; maxLoad: number };
@@ -22,6 +30,9 @@ export interface Order {
   id: string;
   status: OrderStatus;
   riderId?: string;
+  /** From API assignee / rider populate when fleet rider row is not loaded */
+  riderName?: string;
+  assignedAt?: string;
   etaMinutes?: number;
   slaDeadline: string; // ISO string
   pickupLocation: string;

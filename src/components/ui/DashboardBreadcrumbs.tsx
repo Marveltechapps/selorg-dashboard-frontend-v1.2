@@ -64,6 +64,7 @@ const TAB_LABELS: Record<DashboardId, Record<string, string>> = {
     approvals: 'Task Approvals',
     'training-kit': 'Training & Kit',
     'group-delivery': 'Group Delivery',
+    'live-chat-support': 'Live Chat Support',
   },
   finance: {
     overview: 'Finance Overview',

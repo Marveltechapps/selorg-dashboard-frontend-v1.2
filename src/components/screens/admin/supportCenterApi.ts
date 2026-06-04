@@ -11,13 +11,16 @@ export interface SupportTicket {
   description: string;
   category: 'order' | 'payment' | 'delivery' | 'account' | 'technical' | 'feedback';
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  status: 'open' | 'in_progress' | 'waiting_for_customer' | 'resolved' | 'closed';
   customerName: string;
   customerEmail: string;
   customerPhone: string;
   customerId: string;
   assignedTo?: string;
   assignedToName?: string;
+  assignedAt?: string;
+  assignedAgentId?: string;
+  assignedAgentName?: string;
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string;

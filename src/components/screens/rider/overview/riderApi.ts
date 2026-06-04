@@ -1,6 +1,12 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../../../config/api';
 import { Rider, Order, DashboardSummary, OrderStatus } from './types';
 import { logger } from '../../../../utils/logger';
+import {
+  enrichOrderAssignment,
+  extractOrderAssignedAt,
+  extractOrderRiderId,
+  extractOrderRiderName,
+} from './orderAssignment';
 
 /**
  * API Response Types (from backend)
@@ -11,6 +17,13 @@ interface ApiRider {
   phoneNumber?: string;
   avatarInitials?: string;
   status: 'online' | 'offline' | 'busy' | 'idle' | 'available';
+  availability?: 'available' | 'busy' | 'offline';
+  accountStatus?: string;
+  hubId?: string;
+  hubName?: string;
+  cityName?: string;
+  shiftLabel?: string | null;
+  vehicleType?: string;
   currentOrderId?: string | null;
   location?: { lat: number; lng: number } | null;
   capacity?: { currentLoad: number; maxLoad: number };
@@ -57,6 +70,11 @@ interface ApiOrder {
   customer_name?: string; // Backend might use snake_case
   items: string[];
   timeline?: { status: OrderStatus; time: string; note?: string }[];
+  riderAssignment?: { riderId?: string; assignedAt?: string | Date; riderName?: string };
+  assignee?: { id?: string; name?: string; initials?: string };
+  rider?: { id?: string; name?: string };
+  riderName?: string;
+  assignedAt?: string;
   delivery?: {
     address?: {
       coordinates?: { lat: number; lng: number };
@@ -90,6 +108,9 @@ interface ApiListResponse<T> {
 function extractApiErrorMessage(error: any, fallback: string): string {
   if (!error) return fallback;
   if (typeof error === 'string') return error;
+  if (error.success === false && typeof error.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
   if (Array.isArray(error.details) && error.details.length > 0) {
     const first = error.details[0];
     const field = first.param || first.path || first.field;
@@ -164,10 +185,17 @@ function transformRider(apiRider: ApiRider): Rider {
     ? `${baseName} (${phone})`
     : baseName;
 
+  const rawAvailability = apiRider.availability ?? apiRider.status;
   const normalizedStatus =
-    apiRider.status === 'available'
+    rawAvailability === 'available'
       ? 'online'
-      : apiRider.status;
+      : rawAvailability === 'busy'
+        ? 'busy'
+        : rawAvailability === 'offline'
+          ? 'offline'
+          : apiRider.status === 'available'
+            ? 'online'
+            : apiRider.status;
 
   return {
     id: apiRider.id,
@@ -183,7 +211,17 @@ function transformRider(apiRider: ApiRider): Rider {
             .slice(0, 2)
             .toUpperCase()
         : 'R'),
-    status: normalizedStatus as any,
+    status: normalizedStatus as Rider['status'],
+    availability:
+      rawAvailability === 'available' || rawAvailability === 'busy' || rawAvailability === 'offline'
+        ? rawAvailability
+        : undefined,
+    accountStatus: apiRider.accountStatus,
+    hubId: apiRider.hubId,
+    hubName: apiRider.hubName,
+    cityName: apiRider.cityName,
+    shiftLabel: apiRider.shiftLabel ?? undefined,
+    vehicleType: apiRider.vehicleType,
     currentOrderId: apiRider.currentOrderId || undefined,
     location: (() => {
       const loc =
@@ -225,11 +263,13 @@ function transformOrder(apiOrder: ApiOrder): Order | null {
     };
   });
 
-  return {
+  const raw = apiOrder as Record<string, unknown>;
+  const base: Order = {
     id,
     status: apiOrder.status,
-    // Handle both camelCase and snake_case from backend
-    riderId: apiOrder.riderId || apiOrder.rider_id || undefined,
+    riderId: extractOrderRiderId(raw),
+    riderName: extractOrderRiderName(raw),
+    assignedAt: extractOrderAssignedAt(raw),
     etaMinutes: apiOrder.etaMinutes || apiOrder.eta_minutes || undefined,
     slaDeadline: typeof (apiOrder.slaDeadline || apiOrder.sla_deadline) === 'string' 
       ? (apiOrder.slaDeadline || apiOrder.sla_deadline || '')
@@ -241,6 +281,7 @@ function transformOrder(apiOrder: ApiOrder): Order | null {
     timeline,
     coordinates: apiOrder.delivery?.address?.coordinates,
   };
+  return enrichOrderAssignment(base, raw);
 }
 
 /**
@@ -349,11 +390,17 @@ export const api = {
     // Fallback to legacy dashboard riders list if the v2 endpoint is unavailable.
     try {
       const v2Riders = await apiRequest<any>('/delivery/riders');
-      const list: ApiRider[] = Array.isArray(v2Riders?.riders)
-        ? v2Riders.riders
-        : Array.isArray(v2Riders)
-          ? v2Riders
-          : [];
+      const payload =
+        v2Riders && typeof v2Riders === 'object' && v2Riders.data != null ? v2Riders.data : v2Riders;
+      const list: ApiRider[] = Array.isArray(payload?.riders)
+        ? payload.riders
+        : Array.isArray(v2Riders?.riders)
+          ? v2Riders.riders
+          : Array.isArray(payload)
+            ? payload
+            : Array.isArray(v2Riders)
+              ? v2Riders
+              : [];
       return list.map(transformRider);
     } catch (err: any) {
       logger.warn('[RiderAPI.getRiders] v2 /delivery/riders failed, falling back to legacy', err);
@@ -389,11 +436,26 @@ export const api = {
    * Returns order shape from API so UI shows server-assigned riderId (e.g. RIDER-0001).
    */
   assignOrder: async (orderId: string, riderId: string, overrideSla = false): Promise<{ orderId: string; riderId: string; riderName?: string; status: string; etaMinutes?: number }> => {
-    const res = await apiRequest<{ orderId: string; riderId: string; riderName?: string; status: string; etaMinutes?: number; message?: string }>(
-      API_ENDPOINTS.orders.assign(orderId),
-      { method: 'POST', body: JSON.stringify({ orderId, riderId, overrideSla }) }
-    );
-    // Return the full response so caller can use it
+    const payload = { orderId, riderId, overrideSla };
+    logger.info('[RiderAPI.assignOrder] request', payload);
+    const raw = await apiRequest<{
+      success?: boolean;
+      data?: { orderId?: string; riderId?: string; riderName?: string; status?: string; etaMinutes?: number };
+      orderId?: string;
+      riderId?: string;
+      riderName?: string;
+      status?: string;
+      etaMinutes?: number;
+      message?: string;
+    }>(API_ENDPOINTS.orders.assign(orderId), {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const res =
+      raw && typeof raw === 'object' && raw.data != null && typeof raw.data === 'object'
+        ? raw.data
+        : raw;
+    logger.info('[RiderAPI.assignOrder] response', res);
     return {
       orderId: res?.orderId ?? orderId,
       riderId: res?.riderId ?? riderId,

@@ -12,6 +12,7 @@ import { Button } from '../../../../components/ui/button';
 import { Separator } from '../../../../components/ui/separator';
 import { Badge } from '../../../../components/ui/badge';
 import { Order, Rider } from './types';
+import { findFleetRider } from './orderAssignment';
 import { MapPin, Clock, User, Package, Calendar, AlertTriangle } from 'lucide-react';
 import { Label } from '../../../../components/ui/label';
 import { Textarea } from '../../../../components/ui/textarea';
@@ -28,6 +29,7 @@ import { toast } from 'sonner';
 interface OrderDetailsDrawerProps {
   order: Order | null;
   rider: Rider | undefined;
+  riders?: Rider[];
   isOpen: boolean;
   onClose: () => void;
   onReassign: (order: Order) => void;
@@ -37,12 +39,35 @@ interface OrderDetailsDrawerProps {
 export function OrderDetailsDrawer({ 
   order, 
   rider,
+  riders = [],
   isOpen, 
   onClose,
   onReassign,
   onAlert
 }: OrderDetailsDrawerProps) {
   if (!order) return null;
+
+  const resolvedRider =
+    rider ||
+    findFleetRider(riders, order.riderId) ||
+    (order.riderId
+      ? ({
+          id: order.riderId,
+          name: order.riderName || order.riderId,
+          avatarInitials: (order.riderName || order.riderId)
+            .split(' ')
+            .map((p) => p[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase(),
+          status: 'online' as const,
+          capacity: { currentLoad: 1, maxLoad: 5 },
+          avgEtaMins: 10,
+          rating: 4.5,
+        } satisfies Rider)
+      : undefined);
+
+  const hasAssignment = Boolean(order.riderId || resolvedRider);
 
   const [isAlertMode, setIsAlertMode] = useState(false);
   const [alertReason, setAlertReason] = useState('Traffic');
@@ -118,34 +143,66 @@ export function OrderDetailsDrawer({
 
           <Separator />
 
-          {/* Rider Info */}
+          {/* Assigned Rider */}
           <div>
               <h3 className="font-medium mb-3 flex items-center gap-2">
-                  <User size={16} /> Current Rider
+                  <User size={16} /> Assigned Rider
               </h3>
-              {rider ? (
-                  <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100">
-                      <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
-                              {rider.avatarInitials}
-                          </div>
-                          <div>
-                              <p className="font-medium text-sm">{rider.name}</p>
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-                                  <span>⭐ {rider.rating.toFixed(1)}</span>
-                                  <span>•</span>
-                                  <span>{rider.status}</span>
-                              </div>
-                          </div>
+              {hasAssignment && resolvedRider ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
+                                {resolvedRider.avatarInitials}
+                            </div>
+                            <div>
+                                <p className="font-medium text-sm">{resolvedRider.name}</p>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>⭐ {resolvedRider.rating.toFixed(1)}</span>
+                                    <span>•</span>
+                                    <span className="capitalize">{resolvedRider.status}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => onReassign(order)}>
+                            Reassign
+                        </Button>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm bg-[#FAFAFA] p-3 rounded-lg border border-[#E0E0E0]">
+                      <div>
+                        <dt className="text-xs text-[#757575]">Rider ID</dt>
+                        <dd className="font-mono text-xs text-[#212121] mt-0.5">{order.riderId || resolvedRider.id}</dd>
                       </div>
-                      <Button variant="outline" size="sm" onClick={() => onReassign(order)}>
-                          Reassign
-                      </Button>
+                      <div>
+                        <dt className="text-xs text-[#757575]">Status</dt>
+                        <dd className="font-medium text-[#212121] mt-0.5 capitalize">Assigned</dd>
+                      </div>
+                      {order.assignedAt && (
+                        <div className="col-span-2">
+                          <dt className="text-xs text-[#757575]">Assigned at</dt>
+                          <dd className="text-[#212121] mt-0.5">
+                            {new Date(order.assignedAt).toLocaleString()}
+                          </dd>
+                        </div>
+                      )}
+                      {resolvedRider.hubName && (
+                        <div>
+                          <dt className="text-xs text-[#757575]">Hub</dt>
+                          <dd className="text-[#212121] mt-0.5">{resolvedRider.hubName}</dd>
+                        </div>
+                      )}
+                      {resolvedRider.vehicleType && (
+                        <div>
+                          <dt className="text-xs text-[#757575]">Vehicle</dt>
+                          <dd className="text-[#212121] mt-0.5 capitalize">{resolvedRider.vehicleType}</dd>
+                        </div>
+                      )}
+                    </dl>
                   </div>
               ) : (
                   <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 flex justify-between items-center">
-                      <span className="text-sm text-yellow-800">No rider assigned yet</span>
-                      <Button size="sm" onClick={() => onReassign(order)}>Assign Now</Button>
+                      <span className="text-sm text-yellow-800">Unassigned</span>
+                      <Button size="sm" onClick={() => onReassign(order)}>Assign Rider</Button>
                   </div>
               )}
           </div>

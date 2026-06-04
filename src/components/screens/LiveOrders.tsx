@@ -219,6 +219,8 @@ export function LiveOrders() {
   const [assignDialog, setAssignDialog] = useState({ open: false, orderId: '', order: null as any });
   const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
+  const [detailActionBusy, setDetailActionBusy] = useState<'none' | 'accept' | 'reject'>('none');
+  const isConfirmationOpen = cancelDialog.open || statusDialog.open;
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -241,6 +243,13 @@ export function LiveOrders() {
       setSearchQuery(q);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!isConfirmationOpen) return;
+    // Keep confirmation dialogs viewport-centered and avoid competing drawers.
+    setIsDetailsOpen(false);
+    setAssignDialog((prev) => (prev.open ? { open: false, orderId: '', order: null } : prev));
+  }, [isConfirmationOpen]);
 
   // Load orders when connection is established or store changes
   useEffect(() => {
@@ -669,22 +678,48 @@ export function LiveOrders() {
     }
   };
 
-  const handleUpdateStatus = (orderId: string, newStatus: string) => {
-    const order = orders.find(o => o.id === orderId);
-    if (order) {
-      setStatusDialog({
-        open: true,
-        orderId,
-        currentStatus: order.status,
-        newStatus
-      });
+  const handleUpdateStatus = (orderId: string, newStatus: string, currentStatusHint?: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    const currentStatus = currentStatusHint || order?.status || selectedOrder?.status || '';
+
+    if (!currentStatus) {
+      toast.error('Unable to determine current order status. Please refresh and try again.');
+      return;
     }
+
+    if (currentStatus === newStatus) {
+      toast.info(`Order already in "${newStatus}" status`);
+      return;
+    }
+
+    setStatusDialog({
+      open: true,
+      orderId,
+      currentStatus,
+      newStatus,
+    });
   };
 
   const confirmStatusUpdate = async () => {
     const rawId = statusDialog.orderId.replace(/^#/, '');
     try {
-      await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
+      if (statusDialog.newStatus === 'Picking') {
+        try {
+          await startPicking(rawId);
+        } catch {
+          // Fallback for environments where start-picking route/guards are strict.
+          await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
+        }
+      } else if (statusDialog.newStatus === 'Packing') {
+        try {
+          await completePicking(rawId);
+        } catch {
+          // Fallback for environments where complete-picking requires additional payload.
+          await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
+        }
+      } else {
+        await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
+      }
       setOrders(prev => prev.map(o => {
         if (o.id === statusDialog.orderId) return { ...o, status: statusDialog.newStatus };
         return o;
@@ -1059,8 +1094,7 @@ export function LiveOrders() {
                         <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault();
+                            onClick={() => {
                               void handleViewDetails(order);
                             }}
                           >
@@ -1068,16 +1102,14 @@ export function LiveOrders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={printingOrderId === resolveOrderId(order)}
-                            onSelect={(e) => {
-                              e.preventDefault();
+                            onClick={() => {
                               void handlePrintLabel(order);
                             }}
                           >
                             {printingOrderId === resolveOrderId(order) ? 'Printing…' : 'Print Label'}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault();
+                            onClick={() => {
                               openAssignPicker(order);
                             }}
                           >
@@ -1087,8 +1119,7 @@ export function LiveOrders() {
                           <DropdownMenuItem
                             variant="destructive"
                             disabled={order.status === 'Cancelled' || order.status === 'cancelled'}
-                            onSelect={(e) => {
-                              e.preventDefault();
+                            onClick={() => {
                               handleCancelOrder(order);
                             }}
                           >
@@ -1516,32 +1547,53 @@ export function LiveOrders() {
                   <div className="flex gap-3 pt-4 border-t border-gray-100">
                     <Button
                       className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      disabled={detailActionBusy !== 'none'}
                       onClick={async () => {
                         try {
+                          setDetailActionBusy('accept');
                           const rawId = selectedOrder.order_id || selectedOrder.id.replace('#', '');
-                          await updateOrder(rawId, { status: toApiStatus('Picking') });
+                          try {
+                            await startPicking(rawId);
+                          } catch {
+                            // Fallback to generic status update when start-picking route fails.
+                            await updateOrder(rawId, { status: toApiStatus('Picking') });
+                          }
                           setOrders(prev => prev.map(o =>
                             o.id === selectedOrder.id ? { ...o, status: 'Picking' } : o
                           ));
                           setSelectedOrder({ ...selectedOrder, status: 'Picking' });
                           toast.success('Order accepted and moved to processing');
-                        } catch {
-                          toast.error('Failed to accept order');
+                        } catch (err: any) {
+                          toast.error(err?.message || 'Failed to accept order');
+                        } finally {
+                          setDetailActionBusy('none');
                         }
                       }}
                     >
-                      <CheckCircle2 size={16} className="mr-1.5" /> Accept Order
+                      <CheckCircle2 size={16} className="mr-1.5" />
+                      {detailActionBusy === 'accept' ? 'Accepting...' : 'Accept Order'}
                     </Button>
                     <Button
                       variant="destructive"
                       className="flex-1"
-                      onClick={() => {
-                        toast.warning('Order rejected — triggering re-routing alert');
-                        setOrders(prev => prev.filter(o => o.id !== selectedOrder.id));
-                        setIsDetailsOpen(false);
+                      disabled={detailActionBusy !== 'none'}
+                      onClick={async () => {
+                        try {
+                          setDetailActionBusy('reject');
+                          const rawId = selectedOrder.order_id || selectedOrder.id.replace('#', '');
+                          await cancelOrder(rawId, 'Rejected from live order board');
+                          setOrders(prev => prev.filter(o => o.id !== selectedOrder.id));
+                          toast.success(`Order ${selectedOrder.id} rejected and cancelled`);
+                          setIsDetailsOpen(false);
+                        } catch {
+                          toast.error('Failed to reject order');
+                        } finally {
+                          setDetailActionBusy('none');
+                        }
                       }}
                     >
-                      <XCircle size={16} className="mr-1.5" /> Reject Order
+                      <XCircle size={16} className="mr-1.5" />
+                      {detailActionBusy === 'reject' ? 'Rejecting...' : 'Reject Order'}
                     </Button>
                   </div>
                 )}
@@ -1557,7 +1609,11 @@ export function LiveOrders() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => openAssignPicker(selectedOrder)}
+                    onClick={() => {
+                      // Avoid stacked focus-trap conflict from two open sheets.
+                      setIsDetailsOpen(false);
+                      openAssignPicker(selectedOrder);
+                    }}
                     className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     Assign Picker
@@ -1572,16 +1628,19 @@ export function LiveOrders() {
                         <ChevronDown size={16} />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuContent align="end" className="w-56 z-[200]">
                       <DropdownMenuLabel>Update Status</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Queued')}>
+                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Queued', selectedOrder.status)}>
                         <Clock className="mr-2 h-4 w-4 text-gray-500" /> Queued
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Picking')}>
+                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Picking', selectedOrder.status)}>
                         <Package className="mr-2 h-4 w-4 text-blue-500" /> Picking
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Packing')}>
+                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Packing', selectedOrder.status)}>
                         <CheckCircle2 className="mr-2 h-4 w-4 text-purple-500" /> Packing
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Ready for Dispatch', selectedOrder.status)}>
+                        <Truck className="mr-2 h-4 w-4 text-emerald-600" /> Ready for Dispatch
                       </DropdownMenuItem>
                       
                       <DropdownMenuSeparator />
@@ -1681,11 +1740,11 @@ export function LiveOrders() {
 
       <StatusChangeConfirmation
         open={statusDialog.open}
-        orderId={statusDialog.orderId}
+        onOpenChange={(open) => { if (!open) setStatusDialog({ open: false, orderId: '', currentStatus: '', newStatus: '' }); }}
+        itemName={statusDialog.orderId}
         currentStatus={statusDialog.currentStatus}
         newStatus={statusDialog.newStatus}
         onConfirm={confirmStatusUpdate}
-        onCancel={() => setStatusDialog({ open: false, orderId: '', currentStatus: '', newStatus: '' })}
       />
     </div>
   );
