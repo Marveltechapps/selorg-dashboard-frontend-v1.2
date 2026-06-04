@@ -414,6 +414,8 @@ export async function updateRiderStatus(id: string, payload: { status?: string; 
 export type MasterPickerRow = AdminPickerListRow;
 
 export interface MasterPickerDetail extends MasterPickerRow {
+  otp?: string | null;
+  otpLocationId?: string | null;
   email?: string;
   docsStatus?: string;
   onboardingStage?: string;
@@ -438,13 +440,27 @@ export async function fetchMasterPickers(params?: {
     status: params?.status && params.status !== 'all' ? params.status : undefined,
   });
   if (!res?.success || !res.data) throw new Error('Failed to load pickers');
-  return res.data;
+  const payload = res.data;
+  return {
+    ...payload,
+    data: (payload.data ?? []).map((row) => ({
+      ...row,
+      otp: row.otp ?? (row as { locationOtp?: string | null }).locationOtp ?? null,
+      otpLocationId: row.otpLocationId ?? row.currentLocationId ?? null,
+    })),
+  };
 }
 
 export async function getMasterPickerDetail(id: string): Promise<MasterPickerDetail> {
   const res = await apiRequest<{ success: boolean; data: MasterPickerDetail }>(`/admin/pickers/${id}`);
   if (!res?.success || !res.data) throw new Error('Picker not found');
-  return res.data;
+  const d = res.data;
+  return {
+    ...d,
+    id: d.id ?? d.pickerId ?? id,
+    otp: d.otp ?? (d as { locationOtp?: string | null }).locationOtp ?? null,
+    otpLocationId: d.otpLocationId ?? d.currentLocationId ?? null,
+  };
 }
 
 export async function updateMasterPickerStatus(id: string, status: string): Promise<MasterPickerDetail> {

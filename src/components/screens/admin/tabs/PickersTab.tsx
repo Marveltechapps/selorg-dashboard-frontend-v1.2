@@ -9,6 +9,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PickerMasterDetailModal } from '../modals/PickerMasterDetailModal';
 import { Button } from '@/components/ui/button';
+import { resolvePickerOtpForRow } from '@/utils/pickerLocationOtp';
 
 const PAGE_SIZE = 20;
 
@@ -113,6 +114,7 @@ export function PickersTab({ listRefreshKey = 0 }: { listRefreshKey?: number } =
                 <th className="px-6 py-3">Name</th>
                 <th className="px-6 py-3">Phone</th>
                 <th className="px-6 py-3">Location</th>
+                <th className="px-6 py-3">OTP</th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3">Onboarding</th>
                 <th className="px-6 py-3">Last seen</th>
@@ -125,6 +127,26 @@ export function PickersTab({ listRefreshKey = 0 }: { listRefreshKey?: number } =
                   <td className="px-6 py-4 font-medium text-[#18181b]">{row.name}</td>
                   <td className="px-6 py-4">{row.phone}</td>
                   <td className="px-6 py-4">{row.locationName}</td>
+                  <td className="px-6 py-4">
+                    {(() => {
+                      const displayOtp = resolvePickerOtpForRow(row);
+                      const isPendingStatus = row.status === 'PENDING';
+                      return displayOtp ? (
+                        <span
+                          className="font-mono text-sm tracking-widest text-[#18181b]"
+                          title={
+                            isPendingStatus
+                              ? `Pending picker OTP (Dark Store + User ID): ${displayOtp}`
+                              : `Permanent location OTP: ${displayOtp}`
+                          }
+                        >
+                          {displayOtp}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#a1a1aa]">—</span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${statusBadgeClass(row.status)}`}>
                       {row.status}

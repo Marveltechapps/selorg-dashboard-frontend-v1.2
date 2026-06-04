@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { 
   Smartphone, Battery, Wifi, AlertTriangle, RefreshCw, Lock, 
   Search, Filter, Activity, ScanLine, RotateCcw, UserPlus, 
   FileText, CheckCircle2, XCircle, ChevronRight, Tablet, MapPin,
-  Plus, X, Loader2
+  Plus, X, Loader2, Users, ChevronLeft
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { PageHeader } from '../ui/page-header';
@@ -13,7 +13,7 @@ import * as hsdApi from '../../api/hsd/hsdApi';
 import { useAuth } from '../../contexts/AuthContext';
 
 export function HSDManagement() {
-  const [activeTab, setActiveTab] = useState<'fleet' | 'live' | 'logs' | 'issues'>('fleet');
+  const [activeTab, setActiveTab] = useState<'fleet' | 'live' | 'logs' | 'issues' | 'users'>('fleet');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   return (
@@ -34,6 +34,7 @@ export function HSDManagement() {
       {/* Tabs Navigation */}
       <div className="flex items-center gap-1 border-b border-[#E0E0E0] mb-6 overflow-x-auto">
         <TabButton id="fleet" label="Fleet Overview" icon={Tablet} active={activeTab} onClick={setActiveTab} />
+        <TabButton id="users" label="HSD User List" icon={Users} active={activeTab} onClick={setActiveTab} />
         <TabButton id="live" label="Live Sessions (Scan/QC)" icon={ScanLine} active={activeTab} onClick={setActiveTab} />
         <TabButton id="issues" label="Issue Tracker" icon={AlertTriangle} active={activeTab} onClick={setActiveTab} />
         <TabButton id="logs" label="HSD Logs" icon={FileText} active={activeTab} onClick={setActiveTab} />
@@ -42,6 +43,7 @@ export function HSDManagement() {
       {/* Main Content Area */}
       <div className="min-h-[500px]">
         {activeTab === 'fleet' && <FleetOverview />}
+        {activeTab === 'users' && <HSDUserList />}
         {activeTab === 'live' && <LiveSessions />}
         {activeTab === 'issues' && <IssueTracker />}
         {activeTab === 'logs' && <HSDLogs />}
@@ -1276,6 +1278,291 @@ function ReportFaultModal({ onClose, onSuccess }: { onClose: () => void; onSucce
          </div>
       </div>
    );
+}
+
+// --- HSD User List Tab ---
+
+const HSD_USER_PAGE_SIZE = 20;
+const HSD_USER_REFRESH_MS = 15_000;
+
+/** Device Information is driven by login status (API + DB). */
+function resolveDeviceInformation(row: hsdApi.HSDUserLoginRow): 'Assigned' | 'Not Assigned' {
+  if (row.deviceInformation === 'Assigned' || row.deviceInformation === 'Not Assigned') {
+    return row.deviceInformation;
+  }
+  return row.loginStatus === 'Active' ? 'Assigned' : 'Not Assigned';
+}
+
+function HSDUserList() {
+  const [users, setUsers] = useState<hsdApi.HSDUserLoginRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'logged_out'>('all');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const { activeStoreId } = useAuth();
+  const storeId = activeStoreId || '';
+  const isMounted = useRef(true);
+  const requestSeq = useRef(0);
+  const paramsRef = useRef({ storeId, page, searchQuery, statusFilter });
+  paramsRef.current = { storeId, page, searchQuery, statusFilter };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const loadUsers = useCallback(async (isSilent = false) => {
+    const seq = ++requestSeq.current;
+    const { storeId: sid, page: p, searchQuery: q, statusFilter: st } = paramsRef.current;
+    try {
+      if (!isSilent) setLoading(true);
+      else setRefreshing(true);
+      setError(null);
+      const data = await hsdApi.getHSDUserList({
+        storeId: sid,
+        page: p,
+        limit: HSD_USER_PAGE_SIZE,
+        search: q || undefined,
+        status: st,
+        noCache: true,
+      });
+      if (!isMounted.current || seq !== requestSeq.current) return;
+      setUsers(data.users || []);
+      setTotalPages(Math.max(1, data.pagination.total_pages));
+      setTotalItems(data.pagination.total_items);
+      setLastUpdatedAt(new Date());
+    } catch (err: unknown) {
+      if (!isMounted.current || seq !== requestSeq.current) return;
+      const message = err instanceof Error ? err.message : 'Failed to load HSD user list';
+      setError(message);
+      if (!isSilent) toast.error(message);
+    } finally {
+      if (!isMounted.current || seq !== requestSeq.current) return;
+      if (!isSilent) setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    isMounted.current = true;
+    void loadUsers(false);
+    return () => {
+      isMounted.current = false;
+      requestSeq.current += 1;
+    };
+  }, [loadUsers, storeId, page, searchQuery, statusFilter]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isMounted.current) void loadUsers(true);
+    }, HSD_USER_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [loadUsers]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && isMounted.current) {
+        void loadUsers(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadUsers]);
+
+  const formatLastUpdated = () => {
+    if (!lastUpdatedAt) return null;
+    return lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const formatLoginDateTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden min-h-[600px]">
+      <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex flex-wrap items-center gap-3">
+        <div>
+          <h3 className="font-bold text-[#212121]">HSD User List</h3>
+          <p className="text-xs text-[#757575] mt-0.5">
+            Users who logged in on HSD devices · auto-refreshes every 15s
+            {lastUpdatedAt && (
+              <span className="text-[#9E9E9E]">
+                {' '}
+                · updated {formatLastUpdated()}
+                {refreshing ? ' · refreshing…' : ''}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex gap-2 ml-auto flex-wrap items-center">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9E9E9E]" />
+            <input
+              type="text"
+              placeholder="Search phone, name, assignment..."
+              className="pl-8 pr-3 py-1.5 text-xs border border-[#E0E0E0] rounded-lg w-52 focus:outline-none focus:border-[#1677FF]"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as typeof statusFilter);
+              setPage(1);
+            }}
+            className="px-3 py-1.5 text-xs border border-[#E0E0E0] rounded-lg bg-white"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="logged_out">Logged Out</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => loadUsers()}
+            className="p-1.5 border border-[#E0E0E0] rounded-lg hover:bg-[#F5F5F5] text-[#616161]"
+            title="Refresh now"
+          >
+            <RefreshCw size={16} className={loading || refreshing ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {loading && users.length === 0 ? (
+          <div className="p-20 flex flex-col items-center justify-center text-[#9E9E9E]">
+            <Loader2 className="animate-spin mb-2" size={24} />
+            <p className="text-xs">Loading user list...</p>
+          </div>
+        ) : error && users.length === 0 ? (
+          <div className="p-20 text-center">
+            <p className="text-sm text-[#EF4444] mb-2">{error}</p>
+            <button
+              type="button"
+              onClick={() => loadUsers()}
+              className="text-xs font-bold text-[#1677FF] underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : users.length === 0 ? (
+          <div className="p-20 text-center text-[#9E9E9E]">
+            <Users size={32} className="mx-auto mb-2 opacity-40" />
+            <p className="text-sm font-medium text-[#616161]">No HSD logins found</p>
+            <p className="text-xs mt-1">Logins appear when users sign in on handheld devices via phone OTP.</p>
+          </div>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0] sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-3 font-medium">Phone Number</th>
+                <th className="px-4 py-3 font-medium">User Name</th>
+                <th className="px-4 py-3 font-medium">User ID</th>
+                <th className="px-4 py-3 font-medium">Device Information</th>
+                <th className="px-4 py-3 font-medium">Login Date & Time</th>
+                <th className="px-4 py-3 font-medium">Login Status</th>
+                <th className="px-4 py-3 font-medium">Dark Store</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F0F0F0]">
+              {users.map((row) => {
+                const deviceInfo = resolveDeviceInformation(row);
+                return (
+                <tr key={row.sessionId} className="hover:bg-[#F9FAFB]">
+                  <td className="px-4 py-3 font-mono text-xs text-[#212121]">{row.phoneNumber}</td>
+                  <td className="px-4 py-3 text-[#212121]">
+                    {row.userName || <span className="text-[#9E9E9E] italic">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-[#616161] max-w-[120px] truncate" title={row.userId}>
+                    {row.userId}
+                  </td>
+                  <td className="px-4 py-3 text-xs max-w-[200px]">
+                    <span
+                      className={cn(
+                        'inline-flex px-2 py-0.5 rounded-full font-bold',
+                        deviceInfo === 'Assigned'
+                          ? 'bg-[#E0F2FE] text-[#0369A1]'
+                          : 'bg-[#F5F5F5] text-[#616161]'
+                      )}
+                    >
+                      {deviceInfo}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-[#616161] text-xs whitespace-nowrap">
+                    {formatLoginDateTime(row.loginDateTime)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={cn(
+                        'inline-flex px-2 py-0.5 rounded-full text-xs font-bold',
+                        row.loginStatus === 'Active'
+                          ? 'bg-[#DCFCE7] text-[#16A34A]'
+                          : 'bg-[#F5F5F5] text-[#616161]'
+                      )}
+                    >
+                      {row.loginStatus}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-[#616161] text-xs">
+                    <span className="flex items-center gap-1">
+                      <MapPin size={12} className="shrink-0" />
+                      {row.darkStoreLocation}
+                    </span>
+                  </td>
+                </tr>
+              );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {totalItems > 0 && (
+        <div className="p-3 border-t border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between text-xs text-[#616161]">
+          <span>
+            {totalItems} login record{totalItems !== 1 ? 's' : ''} · page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="flex items-center gap-1 px-3 py-1.5 border border-[#E0E0E0] rounded-lg bg-white disabled:opacity-40 hover:bg-[#F5F5F5]"
+            >
+              <ChevronLeft size={14} /> Previous
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => p + 1)}
+              className="flex items-center gap-1 px-3 py-1.5 border border-[#E0E0E0] rounded-lg bg-white disabled:opacity-40 hover:bg-[#F5F5F5]"
+            >
+              Next <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // --- HSD Logs Tab ---

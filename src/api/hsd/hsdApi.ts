@@ -126,6 +126,34 @@ export interface HSDLogsResponse {
   };
 }
 
+export interface HSDUserLoginRow {
+  sessionId: string;
+  phoneNumber: string;
+  userName: string | null;
+  userId: string;
+  deviceInformation: 'Assigned' | 'Not Assigned';
+  deviceId: string | null;
+  deviceType: string | null;
+  deviceSerial: string | null;
+  loginDateTime: string;
+  loginStatus: 'Active' | 'Logged Out';
+  darkStoreLocation: string;
+  lastActivityAt?: string;
+  logoutAt?: string | null;
+  source?: string;
+}
+
+export interface HSDUserListResponse {
+  success: boolean;
+  users: HSDUserLoginRow[];
+  pagination: {
+    current_page: number;
+    total_pages: number;
+    total_items: number;
+    items_per_page: number;
+  };
+}
+
 /**
  * API Request Helper
  */
@@ -182,8 +210,12 @@ export async function getFleetOverview(options?: {
   const params = new URLSearchParams();
   params.append('storeId', options?.storeId || getActiveStoreId() || '');
   if (options?.status) params.append('status', options.status);
+  params.append('_ts', String(Date.now()));
 
-  const response = await apiRequest(`${HSD_ENDPOINT}/fleet?${params.toString()}`) as FleetOverviewResponse;
+  const response = await apiRequest(`${HSD_ENDPOINT}/fleet?${params.toString()}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  }) as FleetOverviewResponse;
   
   if (!response.success) {
     throw new Error('Failed to fetch fleet overview');
@@ -492,6 +524,46 @@ export async function sessionAction(
   }
   
   return response;
+}
+
+/**
+ * Get HSD User List (users logged in on HSD devices)
+ * GET /api/v1/darkstore/hsd/users
+ */
+export async function getHSDUserList(options?: {
+  storeId?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: 'all' | 'active' | 'logged_out';
+  /** Bypass any intermediary cache on poll */
+  noCache?: boolean;
+}): Promise<{ users: HSDUserLoginRow[]; pagination: HSDUserListResponse['pagination'] }> {
+  const params = new URLSearchParams();
+  params.append('storeId', options?.storeId || getActiveStoreId() || '');
+  if (options?.page) params.append('page', options.page.toString());
+  params.append('limit', (options?.limit || 20).toString());
+  if (options?.search) params.append('search', options.search);
+  if (options?.status && options.status !== 'all') {
+    params.append('status', options.status);
+  }
+  if (options?.noCache !== false) {
+    params.append('_ts', String(Date.now()));
+  }
+
+  const response = await apiRequest(`${HSD_ENDPOINT}/users?${params.toString()}`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  }) as HSDUserListResponse;
+
+  if (!response.success) {
+    throw new Error('Failed to fetch HSD user list');
+  }
+
+  return {
+    users: response.users,
+    pagination: response.pagination,
+  };
 }
 
 /**

@@ -9,6 +9,10 @@ export interface AdminPickerListRow {
   status: string;
   currentLocationId: string | null;
   locationName: string;
+  /** Permanent 6-digit OTP for assigned dark store (null if no location). */
+  otp: string | null;
+  /** Dark store id used to derive OTP (membership / assignment). */
+  otpLocationId?: string | null;
   onboardingStep: string;
   createdAt?: string;
   lastSeenAt: string | null;

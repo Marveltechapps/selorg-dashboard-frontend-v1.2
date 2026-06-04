@@ -3,6 +3,7 @@ import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { getMasterPickerDetail, type MasterPickerDetail, type MasterPickerRow } from '../masterDataApi';
 import { toast } from 'sonner';
+import { resolvePickerOtpForRow } from '@/utils/pickerLocationOtp';
 
 interface PickerMasterDetailModalProps {
   open: boolean;
@@ -81,6 +82,17 @@ export function PickerMasterDetailModal({ open, onOpenChange, row }: PickerMaste
               <div>
                 <span className="text-gray-500">Location</span>
                 <p>{(d as MasterPickerDetail).locationName ?? d.locationName}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">OTP</span>
+                <p className="font-mono tracking-widest">
+                  {resolvePickerOtpForRow({
+                    id: d.id,
+                    otp: (d as MasterPickerDetail).otp ?? d.otp,
+                    currentLocationId: (d as MasterPickerDetail).currentLocationId ?? null,
+                    otpLocationId: (d as MasterPickerDetail).otpLocationId ?? null,
+                  }) ?? '—'}
+                </p>
               </div>
               <div>
                 <span className="text-gray-500">Last seen</span>
