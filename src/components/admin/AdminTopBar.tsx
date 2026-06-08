@@ -147,6 +147,7 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const searchDropdownPortalRef = useRef<HTMLDivElement | null>(null);
   const [dropdownBox, setDropdownBox] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [notifDropdownBox, setNotifDropdownBox] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
     const mac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -410,6 +411,26 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
     };
   }, [showSearchPanel]);
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setNotifDropdownBox(null);
+      return;
+    }
+    const el = buttonRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setNotifDropdownBox({ top: r.bottom + 8, right: Math.max(12, window.innerWidth - r.right) });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
   return (
     <>
       {searchOpen &&
@@ -642,41 +663,49 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
                 </span>
               )}
             </button>
-            {open && (
-              <div
-                ref={panelRef}
-                className="absolute right-0 top-full mt-2 z-50 bg-white border border-[#e4e4e7] rounded-xl shadow-2xl overflow-hidden"
-                style={{ width: '460px', maxWidth: 'calc(100vw - 24px)' }}
-              >
-                <div className="px-4 py-3 border-b border-[#e4e4e7] flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-[#18181b]">Notifications</h4>
-                  <span className="text-xs text-[#71717a]">{items.length} latest</span>
-                </div>
-                <div className="min-h-[300px] max-h-[min(75vh,540px)] overflow-y-auto">
-                  {loading ? (
-                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">Loading notifications...</div>
-                  ) : items.length === 0 ? (
-                    <div className="px-4 py-6 text-sm text-[#71717a] text-center">No notifications yet</div>
-                  ) : (
-                    items.map((item) => (
-                      <div key={item.id} className="px-4 py-3 border-b border-[#f4f4f5] last:border-b-0 hover:bg-[#fafafa]">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-[#18181b] truncate">
-                            {item.title || item.templateName || 'Notification'}
-                          </p>
-                          <span className="text-[10px] text-[#71717a] shrink-0">{formatTimeAgo(item.sentAt)}</span>
+            {open &&
+              notifDropdownBox &&
+              createPortal(
+                <div
+                  ref={panelRef}
+                  className="admin-notifications-panel fixed z-[200] bg-white border border-[#e4e4e7] rounded-xl shadow-2xl"
+                  style={{
+                    top: notifDropdownBox.top,
+                    right: notifDropdownBox.right,
+                    width: 460,
+                    maxWidth: 'calc(100vw - 24px)',
+                  }}
+                >
+                  <div className="px-4 py-3 border-b border-[#e4e4e7] flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-[#18181b]">Notifications</h4>
+                    <span className="text-xs text-[#71717a]">{items.length} latest</span>
+                  </div>
+                  <div className="admin-notifications-panel__list">
+                    {loading ? (
+                      <div className="px-4 py-6 text-sm text-[#71717a] text-center">Loading notifications...</div>
+                    ) : items.length === 0 ? (
+                      <div className="px-4 py-6 text-sm text-[#71717a] text-center">No notifications yet</div>
+                    ) : (
+                      items.map((item) => (
+                        <div key={item.id} className="px-4 py-3 border-b border-[#f4f4f5] last:border-b-0 hover:bg-[#fafafa]">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-[#18181b] truncate">
+                              {item.title || item.templateName || 'Notification'}
+                            </p>
+                            <span className="text-[10px] text-[#71717a] shrink-0">{formatTimeAgo(item.sentAt)}</span>
+                          </div>
+                          <p className="text-xs text-[#52525b] mt-1 line-clamp-2">{item.body || 'No message body'}</p>
+                          <div className="mt-2 flex items-center gap-2 text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-[#f4f4f5] text-[#52525b] uppercase">{item.channel}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 uppercase">{item.status}</span>
+                          </div>
                         </div>
-                        <p className="text-xs text-[#52525b] mt-1 line-clamp-2">{item.body || 'No message body'}</p>
-                        <div className="mt-2 flex items-center gap-2 text-[10px]">
-                          <span className="px-1.5 py-0.5 rounded bg-[#f4f4f5] text-[#52525b] uppercase">{item.channel}</span>
-                          <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 uppercase">{item.status}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+                      ))
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
           </div>
         </div>
       </div>

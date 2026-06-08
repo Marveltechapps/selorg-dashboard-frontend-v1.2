@@ -9,6 +9,11 @@ import {
   createRiderShift,
   updateRiderShift,
   deleteRiderShift,
+  fetchShiftAssignments,
+  assignRiderToShift,
+  unassignRiderFromShift,
+  type ShiftAssignment,
+  type ShiftAssignmentsResponse,
   type RiderShiftStatusFilter,
   type RiderShiftPeakFilter,
   type RiderShiftAvailabilityFilter,
@@ -33,6 +38,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useRiderPermissions } from '@/components/rider/useRiderPermissions';
 
 interface Props {
   searchQuery: string;
@@ -49,6 +55,8 @@ const defaultSummary: RiderShiftListSummary = {
 };
 
 export function RiderShiftManagement({ searchQuery }: Props) {
+  const { can } = useRiderPermissions();
+  const canManageShifts = can('shift.manage');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [shifts, setShifts] = useState<RiderShift[]>([]);
@@ -72,6 +80,10 @@ export function RiderShiftManagement({ searchQuery }: Props) {
   const [editing, setEditing] = useState<FormState | null>(null);
   const [bookingsShift, setBookingsShift] = useState<RiderShift | null>(null);
   const [bookingsOpen, setBookingsOpen] = useState(false);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsData, setBookingsData] = useState<ShiftAssignmentsResponse | null>(null);
+  const [assignRiderId, setAssignRiderId] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
 
   const combinedSearch = useMemo(() => {
     const parts = [searchQuery.trim(), debouncedSearch.trim()].filter(Boolean);
@@ -136,6 +148,58 @@ export function RiderShiftManagement({ searchQuery }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadBookings = useCallback(async (shift: RiderShift) => {
+    setBookingsLoading(true);
+    try {
+      const data = await fetchShiftAssignments(shift.id);
+      setBookingsData(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load shift bookings');
+      setBookingsData(null);
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, []);
+
+  const handleAssignRider = async () => {
+    if (!canManageShifts) {
+      toast.error('You do not have permission to manage shift assignments');
+      return;
+    }
+    if (!bookingsShift || !assignRiderId.trim()) {
+      toast.error('Enter a rider ID to assign');
+      return;
+    }
+    setAssignSaving(true);
+    try {
+      const data = await assignRiderToShift(bookingsShift.id, assignRiderId.trim());
+      setBookingsData(data);
+      setAssignRiderId('');
+      toast.success('Rider assigned to shift');
+      void load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to assign rider');
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+
+  const handleUnassignRider = async (assignment: ShiftAssignment) => {
+    if (!canManageShifts) {
+      toast.error('You do not have permission to manage shift assignments');
+      return;
+    }
+    if (!bookingsShift) return;
+    try {
+      const data = await unassignRiderFromShift(bookingsShift.id, assignment.riderId);
+      setBookingsData(data);
+      toast.success(`Removed ${assignment.riderName} from shift`);
+      void load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to unassign rider');
+    }
+  };
 
   const hasActiveFilters =
     !!date ||
@@ -483,6 +547,8 @@ export function RiderShiftManagement({ searchQuery }: Props) {
                     onClick={() => {
                       setBookingsShift(shift);
                       setBookingsOpen(true);
+                      setBookingsData(null);
+                      void loadBookings(shift);
                     }}
                   >
                     {shift.bookedCount}/{shift.capacity}
@@ -757,25 +823,99 @@ export function RiderShiftManagement({ searchQuery }: Props) {
         open={bookingsOpen && !!bookingsShift}
         onOpenChange={(open) => {
           setBookingsOpen(open);
-          if (!open) setBookingsShift(null);
+          if (!open) {
+            setBookingsShift(null);
+            setBookingsData(null);
+            setAssignRiderId('');
+          }
         }}
       >
-        <DialogContent className="max-w-lg gap-4 sm:max-w-lg">
+        <DialogContent className="max-w-2xl gap-4 sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Bookings for {bookingsShift?.id}</DialogTitle>
             <DialogDescription>
-              View booked slots and rider assignments for this shift.
+              {bookingsShift?.hubName} · {bookingsShift?.date} · {bookingsShift?.startTime}–{bookingsShift?.endTime}
             </DialogDescription>
           </DialogHeader>
           {bookingsShift && (
-            <div className="text-sm text-gray-600">
-              <p>
-                Booked slots: <strong>{bookingsShift.bookedCount}</strong>
-              </p>
-              <p className="mt-3 text-sm text-gray-500">
-                Rider details and assignment list will be shown here. (This view is a placeholder
-                — hook up /rider/shift-assignments endpoint to load actual riders.)
-              </p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-gray-500 text-xs">Booked</p>
+                  <p className="font-bold">{bookingsData?.summary.total ?? bookingsShift.bookedCount}/{bookingsShift.capacity}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-gray-500 text-xs">Available slots</p>
+                  <p className="font-bold">{bookingsData?.summary.available ?? Math.max(0, bookingsShift.capacity - bookingsShift.bookedCount)}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-gray-500 text-xs">Started</p>
+                  <p className="font-bold">{bookingsData?.summary.started ?? 0}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-gray-500 text-xs">Completed</p>
+                  <p className="font-bold">{bookingsData?.summary.completed ?? 0}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Rider ID (e.g. RIDER-1001)"
+                  value={assignRiderId}
+                  onChange={(e) => setAssignRiderId(e.target.value)}
+                />
+                <Button
+                  onClick={() => void handleAssignRider()}
+                  disabled={!canManageShifts || assignSaving || bookingsLoading}
+                  title={canManageShifts ? undefined : 'You do not have permission to manage shift assignments'}
+                >
+                  Assign
+                </Button>
+              </div>
+
+              {bookingsLoading ? (
+                <p className="text-sm text-gray-500 py-4 text-center">Loading assignments…</p>
+              ) : (bookingsData?.assignments.length ?? 0) === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center border border-dashed rounded-lg">
+                  No riders booked for this shift yet.
+                </p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-left">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Rider</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookingsData?.assignments.map((a) => (
+                        <tr key={a.id} className="border-t">
+                          <td className="px-3 py-2">
+                            <p className="font-medium">{a.riderName}</p>
+                            <p className="text-xs text-gray-500">{a.riderId}</p>
+                          </td>
+                          <td className="px-3 py-2 capitalize">{a.status.replace('_', ' ')}</td>
+                          <td className="px-3 py-2 text-right">
+                            {a.status === 'selected' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-red-600"
+                                disabled={!canManageShifts}
+                                onClick={() => void handleUnassignRider(a)}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -784,6 +924,7 @@ export function RiderShiftManagement({ searchQuery }: Props) {
               onClick={() => {
                 setBookingsOpen(false);
                 setBookingsShift(null);
+                setBookingsData(null);
               }}
             >
               Close

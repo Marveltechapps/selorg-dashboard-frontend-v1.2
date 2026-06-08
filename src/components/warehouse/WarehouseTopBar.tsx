@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Bell, BellRing, Search, X, ArrowRight, Clock } from 'lucide-react';
+import { Bell, BellRing, Search, X, ArrowRight, Clock, Menu } from 'lucide-react';
 import {
   globalSearch,
   getSearchSuggestions,
@@ -81,7 +81,11 @@ function formatResultSectionLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-export function WarehouseTopBar() {
+interface WarehouseTopBarProps {
+  onMenuClick?: () => void;
+}
+
+export function WarehouseTopBar({ onMenuClick }: WarehouseTopBarProps = {}) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<WarehouseFeedNotification[]>([]);
@@ -381,10 +385,20 @@ export function WarehouseTopBar() {
         )}
       <div
         className={cn(
-          'h-14 sm:h-16 bg-white border-b border-[#e4e4e7] fixed top-0 left-[240px] right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
+          'warehouse-topbar h-14 sm:h-16 bg-white border-b border-[#e4e4e7] fixed top-0 right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
           searchOpen ? 'z-[170] border-[#f0f0f3] shadow-[0_6px_24px_-8px_rgba(15,23,42,0.08)]' : 'z-40'
         )}
       >
+      {onMenuClick && (
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="warehouse-mobile-only p-2 -ml-1 rounded-lg text-[#52525b] hover:bg-[#f4f4f5]"
+          aria-label="Open menu"
+        >
+          <Menu size={24} />
+        </button>
+      )}
       {/* Real-time global search + ⌘K / Ctrl+K */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-xl">
         <div ref={searchWrapRef} className="relative z-[1] w-full min-w-0">

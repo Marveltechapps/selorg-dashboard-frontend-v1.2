@@ -120,3 +120,59 @@ export async function deleteRiderShift(id: string): Promise<void> {
     method: 'DELETE',
   });
 }
+
+export interface ShiftAssignment {
+  id: string;
+  riderId: string;
+  riderName: string;
+  riderPhone?: string | null;
+  riderStatus?: string | null;
+  status: 'selected' | 'started' | 'completed' | 'cancelled';
+  date?: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  createdAt?: string | null;
+}
+
+export interface ShiftAssignmentsResponse {
+  shift: RiderShift;
+  assignments: ShiftAssignment[];
+  summary: {
+    total: number;
+    selected: number;
+    started: number;
+    completed: number;
+    cancelled: number;
+    capacity: number;
+    available: number;
+  };
+}
+
+export async function fetchShiftAssignments(shiftId: string): Promise<ShiftAssignmentsResponse> {
+  const res = await apiRequest<{ success: boolean; data: ShiftAssignmentsResponse }>(
+    API_ENDPOINTS.riderShifts.assignments(shiftId)
+  );
+  return res.data!;
+}
+
+export async function assignRiderToShift(shiftId: string, riderId: string): Promise<ShiftAssignmentsResponse> {
+  const res = await apiRequest<{ success: boolean; data: ShiftAssignmentsResponse }>(
+    API_ENDPOINTS.riderShifts.assignments(shiftId),
+    {
+      method: 'POST',
+      body: JSON.stringify({ riderId }),
+    }
+  );
+  return res.data!;
+}
+
+export async function unassignRiderFromShift(
+  shiftId: string,
+  riderId: string
+): Promise<ShiftAssignmentsResponse> {
+  const res = await apiRequest<{ success: boolean; data: ShiftAssignmentsResponse }>(
+    API_ENDPOINTS.riderShifts.unassign(shiftId, riderId),
+    { method: 'DELETE' }
+  );
+  return res.data!;
+}

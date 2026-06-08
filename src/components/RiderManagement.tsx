@@ -1,84 +1,131 @@
-import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { Suspense, useEffect, useState } from 'react';
+import { RiderOpsProvider } from './rider/RiderOpsProvider';
 import { RiderSidebar } from './rider/RiderSidebar';
 import { RiderTopBar } from './rider/RiderTopBar';
-import { RiderOverview } from './screens/rider/RiderOverview';
-import { RiderHR } from './screens/rider/RiderHR';
-import { DispatchOps } from './screens/rider/DispatchOps';
-import { FleetManagement } from './screens/fleet/FleetManagement';
-import { AlertsDashboard as RiderAlerts } from './screens/AlertsDashboard';
-import { RiderAnalytics } from './screens/rider/RiderAnalytics';
-import { RiderShiftManagement } from './screens/rider/RiderShiftManagement';
-import { CommunicationHub } from './screens/rider/CommunicationHub';
-import { TaskApprovals } from './screens/rider/TaskApprovals';
-import { DeliveryEscalations } from './screens/rider/DeliveryEscalations';
-import { TrainingKitManagement } from './screens/rider/TrainingKitManagement';
-import { GroupDelivery } from './screens/rider/GroupDelivery';
-import { RiderLiveChatSupport } from './screens/rider/RiderLiveChatSupport';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
+import { HubRequiredGuard } from './dashboard/HubRequiredGuard';
+import { LoadingState } from './ui/ux-components';
+import { RIDER_TAB_ALIASES, RIDER_TAB_IDS } from '../layouts/sidebar/riderNavigationConfig';
+import { resolveOpsTab } from '../layouts/sidebar/opsNavigationTypes';
 
-const RIDER_TABS = [
-  'overview',
-  'hr',
-  'dispatch',
-  'fleet',
-  'escalations',
-  'alerts',
-  'analytics',
-  'rider-shifts',
-  'communication',
-  'approvals',
-  'training-kit',
-  'group-delivery',
-  'live-chat-support',
-] as const;
+const RiderOverview = React.lazy(() =>
+  import('./screens/rider/RiderOverview').then((m) => ({ default: m.RiderOverview }))
+);
+const RiderHR = React.lazy(() =>
+  import('./screens/rider/RiderHR').then((m) => ({ default: m.RiderHR }))
+);
+const DispatchOps = React.lazy(() =>
+  import('./screens/rider/DispatchOps').then((m) => ({ default: m.DispatchOps }))
+);
+const FleetManagement = React.lazy(() =>
+  import('./screens/fleet/FleetManagement').then((m) => ({ default: m.FleetManagement }))
+);
+const RiderAlerts = React.lazy(() =>
+  import('./screens/AlertsDashboard').then((m) => ({ default: m.AlertsDashboard }))
+);
+const RiderAnalytics = React.lazy(() =>
+  import('./screens/rider/RiderAnalytics').then((m) => ({ default: m.RiderAnalytics }))
+);
+const RiderShiftManagement = React.lazy(() =>
+  import('./screens/rider/RiderShiftManagement').then((m) => ({ default: m.RiderShiftManagement }))
+);
+const CommunicationHub = React.lazy(() =>
+  import('./screens/rider/CommunicationHub').then((m) => ({ default: m.CommunicationHub }))
+);
+const SystemHealth = React.lazy(() =>
+  import('./screens/rider/SystemHealth').then((m) => ({ default: m.SystemHealth }))
+);
+const TaskApprovals = React.lazy(() =>
+  import('./screens/rider/TaskApprovals').then((m) => ({ default: m.TaskApprovals }))
+);
+const DeliveryEscalations = React.lazy(() =>
+  import('./screens/rider/DeliveryEscalations').then((m) => ({ default: m.DeliveryEscalations }))
+);
+const TrainingKitManagement = React.lazy(() =>
+  import('./screens/rider/TrainingKitManagement').then((m) => ({ default: m.TrainingKitManagement }))
+);
+const GroupDelivery = React.lazy(() =>
+  import('./screens/rider/GroupDelivery').then((m) => ({ default: m.GroupDelivery }))
+);
+const RiderLiveChatSupport = React.lazy(() =>
+  import('./screens/rider/RiderLiveChatSupport').then((m) => ({ default: m.RiderLiveChatSupport }))
+);
+const RiderCashOps = React.lazy(() =>
+  import('./screens/rider/RiderCashOps').then((m) => ({ default: m.RiderCashOps }))
+);
+
+function ScreenFallback() {
+  return <LoadingState message="Loading screen…" />;
+}
 
 export function RiderManagement({ onLogout }: { onLogout: () => void }) {
-  const { activeTab, setActiveTab } = useDashboardNavigation('overview');
+  const { activeTab: rawTab, setActiveTab } = useDashboardNavigation('overview');
+  const activeTab = resolveOpsTab(rawTab, RIDER_TAB_ALIASES);
   const [riderSearchQuery, setRiderSearchQuery] = useState('');
-  // UI toggle: hide the Communication Hub screen (but keep code/integration intact).
-  const SHOW_COMMUNICATION_HUB = false;
-  const requestedTab = RIDER_TABS.includes(activeTab as any) ? activeTab : 'overview';
-  const tab =
-    !SHOW_COMMUNICATION_HUB && requestedTab === 'communication'
-      ? 'overview'
-      : requestedTab === 'shifts' || requestedTab === 'health'
-        ? 'overview'
-        : requestedTab;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Hidden routes: redirect direct URLs away from removed screens.
-  if (!SHOW_COMMUNICATION_HUB && activeTab === 'communication') {
-    return <Navigate to="/rider/overview" replace />;
-  }
-  if (activeTab === 'shifts' || activeTab === 'health') {
-    return <Navigate to="/rider/overview" replace />;
-  }
+  const effectiveTab = (RIDER_TAB_IDS as readonly string[]).includes(activeTab) ? activeTab : 'overview';
+
+  useEffect(() => {
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tab?: string };
+      if (detail?.tab) setActiveTab(resolveOpsTab(detail.tab, RIDER_TAB_ALIASES));
+    };
+    window.addEventListener('rider:navigate', onNav);
+    return () => window.removeEventListener('rider:navigate', onNav);
+  }, [setActiveTab]);
+
+  const navigateTo = (tab: string) => setActiveTab(tab);
 
   return (
+    <RiderOpsProvider>
     <div className="min-h-screen bg-[#fcfcfc] text-[#18181b] font-sans">
-      <RiderSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
+      <RiderSidebar
+        activeTab={effectiveTab}
+        setActiveTab={setActiveTab}
+        onLogout={onLogout}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+      />
 
       <div className="rider-content-area">
-        <RiderTopBar searchQuery={riderSearchQuery} onSearchChange={setRiderSearchQuery} />
+        <RiderTopBar
+          searchQuery={riderSearchQuery}
+          onSearchChange={setRiderSearchQuery}
+          onMenuClick={() => setSidebarOpen(true)}
+        />
 
-        <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px]">
-          <DashboardBreadcrumbs dashboard="rider" activeTab={tab} />
-            {tab === 'overview' && <RiderOverview searchQuery={riderSearchQuery} />}
-            {tab === 'hr' && <RiderHR searchQuery={riderSearchQuery} />}
-            {tab === 'dispatch' && <DispatchOps searchQuery={riderSearchQuery} />}
-            {tab === 'fleet' && <FleetManagement searchQuery={riderSearchQuery} />}
-            {tab === 'escalations' && <DeliveryEscalations searchQuery={riderSearchQuery} />}
-            {tab === 'alerts' && <RiderAlerts searchQuery={riderSearchQuery} />}
-            {tab === 'analytics' && <RiderAnalytics searchQuery={riderSearchQuery} />}
-            {tab === 'rider-shifts' && <RiderShiftManagement searchQuery={riderSearchQuery} />}
-            {tab === 'communication' && <CommunicationHub searchQuery={riderSearchQuery} />}
-            {tab === 'approvals' && <TaskApprovals searchQuery={riderSearchQuery} />}
-            {tab === 'training-kit' && <TrainingKitManagement />}
-            {tab === 'group-delivery' && <GroupDelivery searchQuery={riderSearchQuery} />}
-            {tab === 'live-chat-support' && <RiderLiveChatSupport />}
+        <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+          <DashboardBreadcrumbs dashboard="rider" activeTab={effectiveTab} />
+
+          <HubRequiredGuard title="Select a delivery hub">
+            <Suspense fallback={<ScreenFallback />}>
+              {effectiveTab === 'overview' && (
+                <RiderOverview
+                  searchQuery={riderSearchQuery}
+                  onNavigateTab={navigateTo}
+                />
+              )}
+              {effectiveTab === 'hr' && <RiderHR searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'dispatch' && <DispatchOps searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'fleet' && <FleetManagement searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'escalations' && <DeliveryEscalations searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'alerts' && <RiderAlerts searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'analytics' && <RiderAnalytics searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'rider-shifts' && <RiderShiftManagement searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'approvals' && <TaskApprovals searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'training-kit' && <TrainingKitManagement />}
+              {effectiveTab === 'group-delivery' && <GroupDelivery searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'live-chat-support' && <RiderLiveChatSupport />}
+              {effectiveTab === 'communication' && <CommunicationHub searchQuery={riderSearchQuery} />}
+              {effectiveTab === 'health' && <SystemHealth />}
+              {effectiveTab === 'rider-cash' && <RiderCashOps />}
+            </Suspense>
+          </HubRequiredGuard>
         </main>
       </div>
     </div>
+    </RiderOpsProvider>
   );
 }

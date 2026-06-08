@@ -8,6 +8,7 @@ import { DispatchOrder, DispatchRider } from "./types";
 import { Search, User } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fetchRecommendedRiders } from "./dispatchApi";
+import { useRiderPermissions } from "@/components/rider/useRiderPermissions";
 
 interface RiderWithEta extends DispatchRider {
   estimatedPickupMinutes?: number;
@@ -30,6 +31,8 @@ export function AssignRiderModal({
   riders,
   onConfirm,
 }: AssignRiderModalProps) {
+  const { can } = useRiderPermissions();
+  const canAssign = can('dispatch.assign');
   const [search, setSearch] = useState("");
   const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
   const [overrideSla, setOverrideSla] = useState(false);
@@ -233,7 +236,8 @@ export function AssignRiderModal({
             <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">Cancel</Button>
             <Button 
               className="bg-[#F97316] hover:bg-[#EA580C] flex-1 sm:flex-none"
-              disabled={!selectedRiderId}
+              disabled={!canAssign || !selectedRiderId}
+              title={canAssign ? undefined : 'You do not have permission to assign orders'}
               onClick={handleConfirm}
             >
               {isBatch ? "Assign Batch" : "Assign Rider"}

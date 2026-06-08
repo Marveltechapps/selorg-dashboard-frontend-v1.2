@@ -13,7 +13,7 @@ const BASE_PATH = '/api/v1/darkstore/inbound/putaway';
  */
 export async function fetchPutawayTasks(filters = {}) {
   const {
-    storeId = getActiveStoreId() || 'DS-Adyar-01',
+    storeId = getActiveStoreId() || '',
     status = 'all',
     grnId,
     page = 1,

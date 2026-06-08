@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useScreenTab } from '../../hooks/useScreenUrlState';
 import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { 
   CheckCircle2, AlertOctagon, ShieldAlert, FileText, 
@@ -6,7 +7,10 @@ import {
   ShieldCheck, BadgeAlert, Eye, Scale, Leaf, Thermometer, Droplets, HardHat
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
-import { PageHeader } from '../ui/page-header';
+import { DarkstoreScreenShell } from '../darkstore/DarkstoreScreenShell';
+import { DarkstoreTabBar } from '../darkstore/DarkstoreTabBar';
+import { MetricCard } from '../darkstore/MetricCard';
+import { StatusBadge } from '../darkstore/StatusBadge';
 import { EmptyState, LoadingState } from '../ui/ux-components';
 import { toast } from "sonner";
 import { 
@@ -23,8 +27,10 @@ import {
 import { ActionHistoryViewer } from '../ui/action-history-viewer';
 import { Button } from '../ui/button';
 
+const QC_TABS = ['dashboard', 'compliance'] as const;
+
 export function QualityControl() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'compliance'>('dashboard');
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(QC_TABS, 'dashboard');
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,65 +52,50 @@ export function QualityControl() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Quality & Compliance"
-        subtitle="Monitor product quality, track hygiene audits, and manage high-risk watchlist."
-        actions={
-          <div className="flex gap-4 items-center">
-            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-[#F0FDF4] text-[#16A34A] rounded-lg">
-                <ShieldCheck size={20} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-[#757575]">Pass Rate</div>
-                <div className="font-bold text-[#212121]">
-                  {loading ? '...' : `${summary?.summary.qc_pass_rate || 0}%`}
-                </div>
-              </div>
-            </div>
-            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-[#FEE2E2] text-[#EF4444] rounded-lg">
-                <BadgeAlert size={20} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-[#757575]">Failures</div>
-                <div className="font-bold text-[#212121]">
-                  {loading ? '...' : summary?.summary.critical_failures_today || 0} Critical
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      />
+    <DarkstoreScreenShell
+      title="Quality & Compliance"
+      subtitle="Monitor product quality, track hygiene audits, and manage high-risk watchlist."
+      actions={
+        <div className="flex gap-3 items-center flex-wrap">
+          <MetricCard
+            variant="inline"
+            label="Pass Rate"
+            value={`${summary?.summary.qc_pass_rate || 0}%`}
+            icon={ShieldCheck}
+            accent="success"
+            loading={loading}
+          />
+          <MetricCard
+            variant="inline"
+            label="Failures"
+            value={`${summary?.summary.critical_failures_today || 0} Critical`}
+            icon={BadgeAlert}
+            accent="danger"
+            loading={loading}
+          />
+        </div>
+      }
+      toolbar={{
+        onRefresh: loadSummary,
+        refreshing: loading,
+        showConnection: true,
+      }}
+    >
 
-      <div className="flex items-center gap-1 border-b border-[#E0E0E0] mb-6 overflow-x-auto">
-        <TabButton id="dashboard" label="QC Dashboard" icon={ShieldAlert} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="compliance" label="Compliance Logs" icon={FileText} active={activeTab} onClick={setActiveTab} />
-      </div>
+      <DarkstoreTabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: 'dashboard', label: 'QC Dashboard', icon: ShieldAlert },
+          { id: 'compliance', label: 'Compliance Logs', icon: FileText },
+        ]}
+      />
 
       <div className="min-h-[500px]">
         {activeTab === 'dashboard' && <QCDashboard summary={summary} loadSummary={loadSummary} />}
         {activeTab === 'compliance' && <ComplianceLogs />}
       </div>
-    </div>
-  );
-}
-
-function TabButton({ id, label, icon: Icon, active, onClick }: any) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      className={cn(
-        "flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 whitespace-nowrap",
-        active === id 
-          ? "border-[#1677FF] text-[#1677FF] bg-[#F0F7FF]" 
-          : "border-transparent text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5]"
-      )}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
+    </DarkstoreScreenShell>
   );
 }
 
@@ -185,22 +176,22 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
   return (
     <div className="space-y-6">
        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <MetricCard title="Auto QC Failures" value={summary?.summary.auto_qc_failures || 0} icon={AlertTriangle} color="red" />
-          <MetricCard title="Manual Checks" value={summary?.summary.manual_checks || 0} icon={Eye} color="blue" />
-          <MetricCard title="Weight Variance" value={`${summary?.summary.weight_variance || 0}%`} icon={Scale} color="orange" />
-          <MetricCard title="Freshness Score" value={`${summary?.summary.freshness_score || 0}/10`} icon={Leaf} color="green" />
+          <MetricCard label="Auto QC Failures" value={summary?.summary.auto_qc_failures || 0} icon={AlertTriangle} accent="danger" />
+          <MetricCard label="Manual Checks" value={summary?.summary.manual_checks || 0} icon={Eye} />
+          <MetricCard label="Weight Variance" value={`${summary?.summary.weight_variance || 0}%`} icon={Scale} accent="warning" />
+          <MetricCard label="Freshness Score" value={`${summary?.summary.freshness_score || 0}/10`} icon={Leaf} accent="success" />
        </div>
 
        <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 md:col-span-8 space-y-6">
-             <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-                   <h3 className="font-bold text-[#212121]">Recent QC Failures</h3>
+             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                   <h3 className="font-bold text-slate-900">Recent QC Failures</h3>
                    <button 
                      onClick={() => setShowFailureHistory(!showFailureHistory)}
                      className={cn(
                        "p-1.5 rounded-lg transition-colors",
-                       showFailureHistory ? "bg-[#1677FF] text-white" : "text-[#757575] hover:bg-[#F5F5F5]"
+                       showFailureHistory ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100"
                      )}
                    >
                      <History size={16} />
@@ -210,14 +201,14 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
                    {showFailureHistory ? (
                       <div className="p-4">
                          <div className="flex justify-between items-center mb-4">
-                            <h4 className="font-bold text-xs uppercase text-[#757575]">Resolution History</h4>
-                            <button onClick={() => setShowFailureHistory(false)} className="text-[10px] text-[#1677FF] font-bold">Back to Failures</button>
+                            <h4 className="font-bold text-xs uppercase text-slate-500">Resolution History</h4>
+                            <button onClick={() => setShowFailureHistory(false)} className="text-[10px] text-blue-600 font-bold">Back to Failures</button>
                          </div>
                          <ActionHistoryViewer module="qc" action="RESOLVE_FAILURE" />
                       </div>
                    ) : (
                       <table className="w-full text-left text-sm">
-                         <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                             <tr>
                                <th className="px-6 py-3 font-medium">Order ID</th>
                                <th className="px-6 py-3 font-medium">Product</th>
@@ -226,31 +217,27 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
                                <th className="px-6 py-3 font-medium">Action</th>
                             </tr>
                          </thead>
-                         <tbody className="divide-y divide-[#F0F0F0]">
+                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                <tr><td colSpan={5} className="text-center p-8"><LoadingState text="Loading failures..." /></td></tr>
                             ) : failures.length === 0 ? (
                                <tr><td colSpan={5} className="text-center p-8"><EmptyState title="No active failures" icon={CheckCircle2} /></td></tr>
                             ) : (
                                failures.map((f, i) => (
-                                  <tr key={i} className="hover:bg-[#F9FAFB]">
+                                  <tr key={i} className="hover:bg-slate-50">
                                      <td className="px-6 py-3 font-bold">{f.order_id}</td>
                                      <td className="px-6 py-3">
-                                        <div className="font-medium text-[#212121]">{f.product_name}</div>
-                                        <div className="text-[10px] text-[#757575]">{f.sku}</div>
+                                        <div className="font-medium text-slate-900">{f.product_name}</div>
+                                        <div className="text-[10px] text-slate-500">{f.sku}</div>
                                      </td>
-                                     <td className="px-6 py-3 text-[#616161]">{f.issue}</td>
+                                     <td className="px-6 py-3 text-slate-600">{f.issue}</td>
                                      <td className="px-6 py-3">
-                                        <span className={cn(
-                                           "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                           f.severity === 'high' ? "bg-red-100 text-red-700" :
-                                           f.severity === 'medium' ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"
-                                        )}>{f.severity}</span>
+                                        <StatusBadge variant="severity" status={f.severity} />
                                      </td>
                                      <td className="px-6 py-3">
                                         <Button 
                                          variant="ghost" 
-                                         className="text-[#1677FF] hover:underline p-0 h-auto font-bold text-xs"
+                                         className="text-blue-600 hover:underline p-0 h-auto font-bold text-xs"
                                          onClick={() => handleResolve(f.failure_id || f.order_id)}
                                         >
                                            Resolve
@@ -267,24 +254,24 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
           </div>
 
           <div className="col-span-12 md:col-span-4 flex flex-col gap-6">
-             <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm flex-1 flex flex-col">
+             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-[#212121] flex items-center gap-2">
-                     <AlertOctagon size={18} className="text-[#EF4444]" /> High-Risk Watchlist
+                  <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                     <AlertOctagon size={18} className="text-red-500" /> High-Risk Watchlist
                   </h3>
                   <div className="flex items-center gap-1">
                      <button 
                        onClick={() => setShowWatchHistory(!showWatchHistory)}
                        className={cn(
                          "p-1.5 rounded-lg transition-colors",
-                         showWatchHistory ? "bg-[#1677FF] text-white" : "text-[#757575] hover:bg-[#F5F5F5]"
+                         showWatchHistory ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100"
                        )}
                      >
                        <History size={16} />
                      </button>
                      <button 
                        onClick={() => setIsDialogOpen(true)}
-                       className="p-1 text-[#1677FF] hover:bg-[#F0F7FF] rounded-lg"
+                       className="p-1 text-blue-600 hover:bg-blue-50 rounded-lg"
                      >
                         <Plus size={18} />
                      </button>
@@ -297,8 +284,8 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
                    ) : showWatchHistory ? (
                       <div className="space-y-4">
                          <div className="flex justify-between items-center">
-                            <h4 className="font-bold text-xs uppercase text-[#757575]">Watchlist History</h4>
-                            <button onClick={() => setShowWatchHistory(false)} className="text-[10px] text-[#1677FF] font-bold">Back to List</button>
+                            <h4 className="font-bold text-xs uppercase text-slate-500">Watchlist History</h4>
+                            <button onClick={() => setShowWatchHistory(false)} className="text-[10px] text-blue-600 font-bold">Back to List</button>
                          </div>
                          <ActionHistoryViewer module="qc" action="LOG_CHECK" />
                       </div>
@@ -306,17 +293,17 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
                       <EmptyState title="Empty Watchlist" description="No high-risk items currently tracked." />
                    ) : (
                       watchItems.map((item, i) => (
-                         <div key={i} className="p-3 bg-[#FEF2F2] border border-[#FECACA] rounded-lg">
+                         <div key={i} className="p-3 bg-red-50 border border-red-200 rounded-lg">
                             <div className="flex justify-between items-start mb-1">
-                               <span className="font-bold text-[#B91C1C] text-sm">{item.product_name}</span>
-                               <span className="text-[10px] bg-white/50 px-1.5 py-0.5 rounded text-[#B91C1C] font-bold border border-[#FECACA]">{item.sku}</span>
+                               <span className="font-bold text-red-700 text-sm">{item.product_name}</span>
+                               <span className="text-[10px] bg-white/50 px-1.5 py-0.5 rounded text-red-700 font-bold border border-red-200">{item.sku}</span>
                             </div>
-                            <div className="text-xs text-[#7F1D1D] mb-2">Risk: {item.reason}</div>
-                            <div className="flex justify-between items-center text-xs text-[#7F1D1D]/80 border-t border-[#FECACA] pt-2">
+                            <div className="text-xs text-red-800 mb-2">Risk: {item.reason}</div>
+                            <div className="flex justify-between items-center text-xs text-red-800/80 border-t border-red-200 pt-2">
                                <span>Req Check: {item.required_check}</span>
                                <button 
                                  onClick={() => handleLogCheck(item.sku)}
-                                 className="underline font-bold hover:text-[#B91C1C]"
+                                 className="underline font-bold hover:text-red-700"
                                >
                                   Log Check
                                </button>
@@ -333,29 +320,29 @@ function QCDashboard({ summary, loadSummary }: { summary: any, loadSummary: () =
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" {...stopModalPointerPropagation}>
                <div className="flex justify-between items-center mb-6">
-                 <h3 className="font-bold text-[#212121] text-lg">Add Watch Item</h3>
+                 <h3 className="font-bold text-slate-900 text-lg">Add Watch Item</h3>
                  <button onClick={() => setIsDialogOpen(false)}><X size={20}/></button>
                </div>
                <form onSubmit={handleAddWatch} className="space-y-4">
                  <div>
-                   <label className="block text-sm font-bold text-[#212121] mb-2">Product Name *</label>
-                   <input type="text" value={formData.productName} onChange={(e) => setFormData({ ...formData, productName: e.target.value })} className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" required />
+                   <label className="block text-sm font-bold text-slate-900 mb-2">Product Name *</label>
+                   <input type="text" value={formData.productName} onChange={(e) => setFormData({ ...formData, productName: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" required />
                  </div>
                  <div>
-                   <label className="block text-sm font-bold text-[#212121] mb-2">SKU *</label>
-                   <input type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" required />
+                   <label className="block text-sm font-bold text-slate-900 mb-2">SKU *</label>
+                   <input type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" required />
                  </div>
                  <div>
-                   <label className="block text-sm font-bold text-[#212121] mb-2">Risk Reason</label>
-                   <input type="text" value={formData.reason} onChange={(e) => setFormData({ ...formData, reason: e.target.value })} className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" placeholder="e.g. Temp Sensitive" />
+                   <label className="block text-sm font-bold text-slate-900 mb-2">Risk Reason</label>
+                   <input type="text" value={formData.reason} onChange={(e) => setFormData({ ...formData, reason: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. Temp Sensitive" />
                  </div>
                  <div>
-                   <label className="block text-sm font-bold text-[#212121] mb-2">Required Check *</label>
-                   <input type="text" value={formData.reqCheck} onChange={(e) => setFormData({ ...formData, reqCheck: e.target.value })} className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" required />
+                   <label className="block text-sm font-bold text-slate-900 mb-2">Required Check *</label>
+                   <input type="text" value={formData.reqCheck} onChange={(e) => setFormData({ ...formData, reqCheck: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" required />
                  </div>
                  <div className="flex gap-3 pt-4">
                     <Button type="button" variant="outline" className="flex-1" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                    <Button type="submit" className="flex-1 bg-[#1677FF] text-white hover:bg-[#409EFF]">Add Item</Button>
+                    <Button type="submit" className="flex-1 bg-blue-600 text-white hover:bg-blue-500">Add Item</Button>
                  </div>
                </form>
             </div>
@@ -424,9 +411,9 @@ getAuditStatus()
   return (
     <div className="grid grid-cols-12 gap-6">
        <div className="col-span-12 md:col-span-3 space-y-4">
-          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
-             <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]">
-                <h4 className="font-bold text-xs uppercase text-[#757575]">Categories</h4>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+             <div className="p-4 border-b border-slate-200 bg-slate-50">
+                <h4 className="font-bold text-xs uppercase text-slate-500">Categories</h4>
              </div>
              <div className="p-2 space-y-1">
                 {categories.map(cat => (
@@ -435,7 +422,7 @@ getAuditStatus()
                     onClick={() => setActiveCategory(cat.id)}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-colors",
-                      activeCategory === cat.id ? "bg-[#F0F7FF] text-[#1677FF]" : "text-[#616161] hover:bg-[#F5F5F5]"
+                      activeCategory === cat.id ? "bg-blue-50 text-blue-600" : "text-slate-600 hover:bg-slate-100"
                     )}
                    >
                       <cat.icon size={18} />
@@ -448,28 +435,28 @@ getAuditStatus()
           {auditStatus && (
             <div className={cn(
               "p-4 rounded-xl border shadow-sm",
-              auditStatus.status === 'compliant' ? "bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]" : "bg-red-50 border-red-200 text-red-800"
+              auditStatus.status === 'compliant' ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-800"
             )}>
                <div className="flex items-center gap-2 mb-2">
                   <ShieldCheck size={18} />
                   <span className="font-bold">Audit Status</span>
                </div>
-               <div className="text-xl font-black mb-1 capitalize">{auditStatus.status}</div>
+               <div className="mb-1"><StatusBadge variant="workflow" status={auditStatus.status} /></div>
                <div className="text-[10px] font-bold opacity-80 uppercase">Last Passed: {new Date(auditStatus.last_passed).toLocaleDateString()}</div>
                <p className="text-xs mt-3 leading-relaxed">{auditStatus.message}</p>
             </div>
           )}
        </div>
 
-       <div className="col-span-12 md:col-span-9 bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
+       <div className="col-span-12 md:col-span-9 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
              <div className="flex items-center gap-3">
-                <h3 className="font-bold text-[#212121]">{categories.find(c => c.id === activeCategory)?.label}</h3>
+                <h3 className="font-bold text-slate-900">{categories.find(c => c.id === activeCategory)?.label}</h3>
                 <button 
                   onClick={() => setShowHistory(!showHistory)}
                   className={cn(
                     "p-1.5 rounded-lg transition-colors",
-                    showHistory ? "bg-[#1677FF] text-white" : "text-[#757575] hover:bg-[#F5F5F5]"
+                    showHistory ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100"
                   )}
                   title="View History"
                 >
@@ -478,7 +465,7 @@ getAuditStatus()
              </div>
              <Button 
                size="sm" 
-               className="bg-[#212121] text-white hover:bg-black text-xs font-bold"
+               className="bg-slate-900 text-white hover:bg-black text-xs font-bold"
                onClick={() => setIsReadingDialogOpen(true)}
              >
                 <Plus size={14} className="mr-1" /> Add Reading
@@ -489,14 +476,14 @@ getAuditStatus()
              {showHistory ? (
                 <div className="p-6">
                    <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-bold text-sm text-[#212121]">Action History</h4>
-                      <button onClick={() => setShowHistory(false)} className="text-xs text-[#1677FF] font-bold">Back to Logs</button>
+                      <h4 className="font-bold text-sm text-slate-900">Action History</h4>
+                      <button onClick={() => setShowHistory(false)} className="text-xs text-blue-600 font-bold">Back to Logs</button>
                    </div>
                    <ActionHistoryViewer module="qc" action="ADD_COMPLIANCE_LOG" />
                 </div>
              ) : (
                 <table className="w-full text-left text-sm">
-                   <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+                   <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                       <tr>
                          <th className="px-6 py-3 font-medium">Time</th>
                          <th className="px-6 py-3 font-medium">Zone / Unit</th>
@@ -506,25 +493,22 @@ getAuditStatus()
                          <th className="px-6 py-3 font-medium">Logged By</th>
                       </tr>
                    </thead>
-                   <tbody className="divide-y divide-[#F0F0F0]">
+                   <tbody className="divide-y divide-slate-100">
                       {loading ? (
                          <tr><td colSpan={6} className="text-center p-8"><LoadingState text="Loading logs..." /></td></tr>
                       ) : logs.length === 0 ? (
                          <tr><td colSpan={6} className="text-center p-8"><EmptyState title="No logs found" description="No entries for this category today." icon={History} /></td></tr>
                       ) : (
                          logs.map((log, i) => (
-                            <tr key={i} className="hover:bg-[#F9FAFB]">
-                               <td className="px-6 py-3 text-[#616161]">{new Date(log.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                            <tr key={i} className="hover:bg-slate-50">
+                               <td className="px-6 py-3 text-slate-600">{new Date(log.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                                <td className="px-6 py-3 font-bold">{log.zone}</td>
-                               <td className="px-6 py-3 font-medium text-[#212121]">{log.reading}</td>
-                               <td className="px-6 py-3 text-[#757575]">{log.threshold}</td>
+                               <td className="px-6 py-3 font-medium text-slate-900">{log.reading}</td>
+                               <td className="px-6 py-3 text-slate-500">{log.threshold}</td>
                                <td className="px-6 py-3">
-                                  <span className={cn(
-                                     "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                     log.status === 'ok' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                                  )}>{log.status}</span>
+                                  <StatusBadge variant="workflow" status={log.status} />
                                </td>
-                               <td className="px-6 py-3 text-[#616161]">{log.logged_by}</td>
+                               <td className="px-6 py-3 text-slate-600">{log.logged_by}</td>
                             </tr>
                          ))
                       )}
@@ -538,57 +522,57 @@ getAuditStatus()
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" {...stopModalPointerPropagation}>
                <div className="flex justify-between items-center mb-6">
-                 <h3 className="font-bold text-[#212121] text-lg">Add {categories.find(c => c.id === activeCategory)?.label}</h3>
+                 <h3 className="font-bold text-slate-900 text-lg">Add {categories.find(c => c.id === activeCategory)?.label}</h3>
                  <button onClick={() => setIsReadingDialogOpen(false)}><X size={20}/></button>
                </div>
                <form onSubmit={handleAddReading} className="space-y-4">
                  <div>
-                   <label className="block text-sm font-bold text-[#212121] mb-2">Zone / Unit *</label>
+                   <label className="block text-sm font-bold text-slate-900 mb-2">Zone / Unit *</label>
                    <input 
                      type="text" 
                      value={formData.zone} 
                      onChange={(e) => setFormData({ ...formData, zone: e.target.value })} 
-                     className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" 
+                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" 
                      placeholder="e.g. Freezer-01"
                      required 
                    />
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-bold text-[#212121] mb-2">Reading *</label>
+                      <label className="block text-sm font-bold text-slate-900 mb-2">Reading *</label>
                       <input 
                         type="text" 
                         value={formData.reading} 
                         onChange={(e) => setFormData({ ...formData, reading: e.target.value })} 
-                        className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" 
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" 
                         placeholder="-18°C"
                         required 
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-[#212121] mb-2">Threshold *</label>
+                      <label className="block text-sm font-bold text-slate-900 mb-2">Threshold *</label>
                       <input 
                         type="text" 
                         value={formData.threshold} 
                         onChange={(e) => setFormData({ ...formData, threshold: e.target.value })} 
-                        className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm" 
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" 
                         placeholder="-15°C"
                         required 
                       />
                     </div>
                  </div>
                  <div>
-                   <label className="block text-sm font-bold text-[#212121] mb-2">Notes</label>
+                   <label className="block text-sm font-bold text-slate-900 mb-2">Notes</label>
                    <textarea 
                      value={formData.notes} 
                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })} 
-                     className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm h-20 resize-none" 
+                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm h-20 resize-none" 
                      placeholder="Any additional observations..."
                    />
                  </div>
                  <div className="flex gap-3 pt-4">
                     <Button type="button" variant="outline" className="flex-1" onClick={() => setIsReadingDialogOpen(false)}>Cancel</Button>
-                    <Button type="submit" className="flex-1 bg-[#212121] text-white hover:bg-black">Save Reading</Button>
+                    <Button type="submit" className="flex-1 bg-slate-900 text-white hover:bg-black">Save Reading</Button>
                  </div>
                </form>
             </div>
@@ -598,23 +582,3 @@ getAuditStatus()
   );
 }
 
-function MetricCard({ title, value, icon: Icon, color }: any) {
-  const colors: any = {
-    red: "bg-red-50 text-red-600 border-red-100",
-    blue: "bg-blue-50 text-blue-600 border-blue-100",
-    orange: "bg-orange-50 text-orange-600 border-orange-100",
-    green: "bg-green-50 text-green-600 border-green-100"
-  };
-
-  return (
-    <div className={cn("bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4", colors[color])}>
-       <div className={cn("p-2 rounded-lg bg-white shadow-sm border", colors[color])}>
-          <Icon size={20} />
-       </div>
-       <div>
-          <div className="text-[10px] uppercase font-bold opacity-70">{title}</div>
-          <div className="text-xl font-black text-[#212121]">{value}</div>
-       </div>
-    </div>
-  );
-}

@@ -1,0 +1,162 @@
+/* Darkstore design tokens & layout utilities */
+
+:root {
+  --ds-primary: #5289CD;
+  --ds-primary-hover: #4578b8;
+  --ds-primary-muted: #e8f0fa;
+  --ds-success: #16a34a;
+  --ds-success-muted: #dcfce7;
+  --ds-warning: #f59e0b;
+  --ds-warning-muted: #fff7e6;
+  --ds-danger: #ef4444;
+  --ds-danger-muted: #fee2e2;
+  --ds-surface: #ffffff;
+  --ds-surface-subtle: #f5f7fa;
+  --ds-surface-elevated: #ffffff;
+  --ds-border: #e5e7eb;
+  --ds-row-hover: #f8fafc;
+  --ds-muted: #9ca3af;
+  --ds-text: #111827;
+  --ds-text-muted: #6b7280;
+  --ds-sidebar-width: 260px;
+  --ds-sidebar-collapsed-width: 72px;
+  --ds-drawer-width: 30vw;
+}
+
+.darkstore-shell {
+  background-color: var(--ds-surface-subtle);
+  color: var(--ds-text);
+}
+
+.darkstore-card {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.darkstore-card-elevated {
+  background: var(--ds-surface-elevated);
+  border: 1px solid var(--ds-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.darkstore-canvas {
+  background: var(--ds-surface-subtle);
+}
+
+.darkstore-kpi-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+
+.darkstore-kpi-value {
+  font-size: 1.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.darkstore-icon-inline { width: 1rem; height: 1rem; }
+.darkstore-icon-card { width: 1.25rem; height: 1.25rem; }
+.darkstore-icon-empty { width: 1.5rem; height: 1.5rem; }
+
+.darkstore-content-loaded {
+  animation: ds-fade-in 0.3s ease-out;
+}
+
+.darkstore-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: inherit;
+}
+
+/* Table density */
+.darkstore-density-compact .darkstore-table th,
+.darkstore-density-compact .darkstore-table td {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+}
+
+.darkstore-density-compact .darkstore-table th {
+  font-size: 0.6875rem;
+}
+
+/* Collapsed sidebar */
+@media (min-width: 768px) {
+  .darkstore-sidebar-collapsed .darkstore-sidebar-nav {
+    width: var(--ds-sidebar-collapsed-width) !important;
+  }
+
+  .darkstore-sidebar-collapsed .darkstore-content-area,
+  .darkstore-sidebar-collapsed .darkstore-content-area--v2 {
+    margin-left: var(--ds-sidebar-collapsed-width);
+  }
+
+  .darkstore-sidebar-collapsed .darkstore-topbar,
+  .darkstore-sidebar-collapsed .darkstore-topbar--v2 {
+    left: var(--ds-sidebar-collapsed-width);
+  }
+
+  .darkstore-sidebar-collapsed .darkstore-sidebar-label,
+  .darkstore-sidebar-collapsed .darkstore-sidebar-section-title,
+  .darkstore-sidebar-collapsed .darkstore-sidebar-store-detail,
+  .darkstore-sidebar-collapsed .darkstore-sidebar-user-detail {
+    display: none;
+  }
+
+  .darkstore-sidebar-collapsed .darkstore-sidebar-nav-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* SLA countdown pulse for critical */
+@keyframes ds-critical-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+.ds-sla-critical {
+  animation: ds-critical-pulse 1.5s ease-in-out infinite;
+}
+
+.ds-sla-critical-row {
+  animation: ds-critical-pulse 2s ease-in-out infinite;
+}
+
+.darkstore-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(4px);
+}
+
+.darkstore-fade-in {
+  animation: ds-fade-in 0.25s ease-out;
+}
+
+@keyframes ds-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Side drawer — 30% viewport width on sm+; full width on mobile */
+.darkstore-sheet-content {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (min-width: 640px) {
+  .darkstore-sheet-content {
+    width: var(--ds-drawer-width) !important;
+    max-width: var(--ds-drawer-width) !important;
+  }
+}

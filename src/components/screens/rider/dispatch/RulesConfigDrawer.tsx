@@ -5,9 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { AutoAssignRule } from "./types";
-import { updateAutoAssignRule } from "./dispatchApi";
+import { updateAutoAssignRule, simulateAutoAssignOrders } from "./dispatchApi";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, PlayCircle } from "lucide-react";
 
 const DEFAULT_CRITERIA: AutoAssignRule["criteria"] = {
   maxRadiusKm: 5,
@@ -25,6 +25,8 @@ interface RulesConfigDrawerProps {
 export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: RulesConfigDrawerProps) {
   const [activeRule, setActiveRule] = useState<AutoAssignRule | null>(null);
   const [loading, setLoading] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [simulationResult, setSimulationResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (rules.length > 0) {
@@ -56,6 +58,25 @@ export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: Rul
       toast.error("Failed to update rules");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSimulate = async () => {
+    setSimulating(true);
+    setSimulationResult(null);
+    try {
+      const result = await simulateAutoAssignOrders([]);
+      const preview = result.assignments?.slice(0, 5).map((a) =>
+        a.riderName ? `${a.orderId} → ${a.riderName}` : `${a.orderId} (unassigned)`
+      ).join(', ') || 'No matches';
+      setSimulationResult(
+        `${result.message || 'Simulation complete'} — ${preview}${(result.assignments?.length ?? 0) > 5 ? '…' : ''}`
+      );
+      toast.info(result.message || `Would assign ${result.assigned} order(s)`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Simulation failed');
+    } finally {
+      setSimulating(false);
     }
   };
 
@@ -136,17 +157,32 @@ export function RulesConfigDrawer({ isOpen, onClose, rules, onRulesUpdate }: Rul
                 onCheckedChange={(c) => updateCriteria("preferSameZone", c)}
               />
             </div>
+
+            {simulationResult && (
+              <p className="text-xs text-[#757575] bg-[#FAFAFA] border rounded-lg p-3">{simulationResult}</p>
+            )}
           </div>
         </div>
 
-        <SheetFooter className="shrink-0 flex-row gap-2 border-t border-[#E0E0E0] px-6 py-4">
-          <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
+        <SheetFooter className="shrink-0 flex-col sm:flex-row gap-2 border-t border-[#E0E0E0] px-6 py-4">
+          <Button
+            variant="outline"
+            onClick={() => void handleSimulate()}
+            disabled={simulating || loading}
+            className="w-full sm:w-auto"
+          >
+            {simulating ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+            Simulate Now
+          </Button>
+          <div className="flex gap-2 flex-1 justify-end w-full">
+          <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1 sm:flex-none">
             Cancel
           </Button>
-          <Button onClick={handleSave} className="flex-1 bg-[#F97316] hover:bg-[#EA580C]" disabled={loading}>
+          <Button onClick={handleSave} className="flex-1 sm:flex-none bg-[#F97316] hover:bg-[#EA580C]" disabled={loading}>
             {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : null}
             Save Configuration
           </Button>
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>

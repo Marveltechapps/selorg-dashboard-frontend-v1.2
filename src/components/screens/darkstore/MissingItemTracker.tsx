@@ -2,25 +2,67 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { websocketService } from '@/utils/websocket';
 import { getMissingItems, type MissingItemRow } from '@/api/darkstore/operations.api';
-import { RefreshCw, PackageX } from 'lucide-react';
+import { PackageX, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { EmptyState, LoadingState } from '@/components/ui/ux-components';
+import { DarkstoreScreenShell } from '@/components/darkstore/DarkstoreScreenShell';
+import { DarkstoreDataTable, type DarkstoreColumn } from '@/components/darkstore/DarkstoreDataTable';
+import { OrderDetailsDrawer } from '@/components/darkstore/OrderDetailsDrawer';
 import { toast } from 'sonner';
 
-export function MissingItemTracker() {
+const formatDate = (d: string) => {
+  if (!d) return '—';
+  return new Date(d).toLocaleString();
+};
+
+const columns: DarkstoreColumn<MissingItemRow>[] = [
+  {
+    key: 'product',
+    header: 'Product',
+    sticky: true,
+    render: (row) => <span className="font-medium text-slate-800">{row.productName}</span>,
+  },
+  {
+    key: 'orderId',
+    header: 'Order ID',
+    render: (row) => <span className="font-mono text-sm">{row.orderId}</span>,
+  },
+  { key: 'picker', header: 'Picker', render: (row) => row.pickerName },
+  { key: 'ordered', header: 'Ordered', render: (row) => row.orderedQty },
+  { key: 'scanned', header: 'Scanned', render: (row) => row.scannedQty },
+  {
+    key: 'reason',
+    header: 'Reason',
+    render: (row) => (
+      <span className="max-w-[200px] truncate block" title={row.reason}>
+        {row.reason || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'reportedAt',
+    header: 'Reported At',
+    render: (row) => <span className="text-sm text-slate-500">{formatDate(row.reportedAt)}</span>,
+  },
+];
+
+export function MissingItemTracker({
+  initialOrderFilter = '',
+  setActiveTab,
+}: {
+  initialOrderFilter?: string;
+  setActiveTab?: (tab: string) => void;
+} = {}) {
+  const [orderFilter, setOrderFilter] = useState(initialOrderFilter);
   const { activeStoreId } = useAuth();
   const [data, setData] = useState<MissingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [orderFilter, setOrderFilter] = useState('');
+  const [lastSync, setLastSync] = useState<Date>();
+  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialOrderFilter) setOrderFilter(initialOrderFilter);
+  }, [initialOrderFilter]);
 
   const load = useCallback(async (orderId?: string) => {
     setLoading(true);
@@ -30,6 +72,7 @@ export function MissingItemTracker() {
         orderId: orderId ?? (orderFilter || undefined),
       });
       setData(res.data || []);
+      setLastSync(new Date());
     } catch (e) {
       toast.error('Failed to load missing items');
       setData([]);
@@ -43,8 +86,7 @@ export function MissingItemTracker() {
   }, [load]);
 
   useEffect(() => {
-    const reloadOnMissing = (payload?: any) => {
-      // Support legacy + current event contracts from picker/darkstore flows.
+    const reloadOnMissing = (payload?: { missingItems?: unknown; order_id?: string; orderId?: string }) => {
       if (!payload || payload.missingItems || payload.order_id || payload.orderId) {
         load();
       }
@@ -52,83 +94,58 @@ export function MissingItemTracker() {
     websocketService.on('MISSING_ITEM_REPORTED', reloadOnMissing);
     websocketService.on('missing_item_reported', reloadOnMissing);
     websocketService.on('ORDER_COMPLETED', reloadOnMissing);
+    websocketService.on('order:updated', reloadOnMissing);
     return () => {
       websocketService.off('MISSING_ITEM_REPORTED', reloadOnMissing);
       websocketService.off('missing_item_reported', reloadOnMissing);
       websocketService.off('ORDER_COMPLETED', reloadOnMissing);
+      websocketService.off('order:updated', reloadOnMissing);
     };
   }, [load]);
 
-  const formatDate = (d: string) => {
-    if (!d) return '—';
-    return new Date(d).toLocaleString();
-  };
-
-  const filteredData = data;
-
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-[#212121]">Missing Item Tracker</h1>
-          <p className="text-[#757575] text-sm">
-            Product, order, picker, and reason for items reported missing during picking
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <DarkstoreScreenShell
+      title="Missing Item Tracker"
+      subtitle="Product, order, picker, and reason for items reported missing during picking"
+      toolbar={{
+        onRefresh: () => load(),
+        refreshing: loading,
+        showConnection: true,
+        lastSync,
+        filters: (
           <Input
             placeholder="Filter by Order ID"
             value={orderFilter}
             onChange={(e) => setOrderFilter(e.target.value)}
-            className="w-48"
+            className="w-48 h-8"
           />
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+        ),
+      }}
+    >
+      <DarkstoreDataTable
+        columns={columns}
+        data={data}
+        loading={loading}
+        rowKey={(row) => `${row.orderId}-${row.productName}-${row.reportedAt}`}
+        onRowClick={(row) => setDrawerOrderId(row.orderId)}
+        emptyIcon={PackageX}
+        emptyTitle="No missing items"
+        emptyDescription="No missing item reports found. Missing items are recorded when pickers report items not found during picking."
+        emptyAction={
+          setActiveTab ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab('pickpackops')}>
+              <List size={14} className="mr-1.5" />
+              View Pick & Pack
+            </Button>
+          ) : undefined
+        }
+      />
 
-      <div className="rounded-lg border border-[#e4e4e7] bg-white overflow-hidden">
-        {loading ? (
-          <LoadingState message="Loading missing items..." />
-        ) : filteredData.length === 0 ? (
-          <EmptyState
-            icon={PackageX}
-            title="No missing items"
-            description="No missing item reports found. Missing items are recorded when pickers report items not found during picking."
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Picker</TableHead>
-                <TableHead>Ordered</TableHead>
-                <TableHead>Scanned</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Reported At</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.map((row, idx) => (
-                <TableRow key={`${row.orderId}-${row.productName}-${idx}`}>
-                  <TableCell className="font-medium">{row.productName}</TableCell>
-                  <TableCell className="font-mono text-sm">{row.orderId}</TableCell>
-                  <TableCell>{row.pickerName}</TableCell>
-                  <TableCell>{row.orderedQty}</TableCell>
-                  <TableCell>{row.scannedQty}</TableCell>
-                  <TableCell className="max-w-[200px] truncate" title={row.reason}>
-                    {row.reason || '—'}
-                  </TableCell>
-                  <TableCell className="text-sm text-[#71717a]">{formatDate(row.reportedAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
+      <OrderDetailsDrawer
+        orderId={drawerOrderId}
+        open={!!drawerOrderId}
+        onOpenChange={(open) => !open && setDrawerOrderId(null)}
+      />
+    </DarkstoreScreenShell>
   );
 }

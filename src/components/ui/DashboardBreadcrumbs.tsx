@@ -1,44 +1,51 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { WORKFLOW_CONTEXT } from '@/utils/orderWorkflow';
+import { getWorkflowContext, type QCommerceDashboard } from '@/utils/qCommerceWorkflow';
 
-type DashboardId = 'darkstore' | 'merch' | 'rider' | 'finance' | 'vendor';
+type DashboardId = QCommerceDashboard;
 
 const DASHBOARD_ROOT_LABEL: Record<DashboardId, string> = {
   darkstore: 'Darkstore',
+  warehouse: 'Warehouse',
+  production: 'Production',
   merch: 'Merchandising',
   rider: 'Rider',
   finance: 'Finance',
   vendor: 'Vendor',
+  admin: 'Admin',
 };
 
 const TAB_LABELS: Record<DashboardId, Record<string, string>> = {
   darkstore: {
+    'my-shift': 'My Shift',
     overview: 'Store Overview',
+    regional: 'Regional Command',
     liveorders: 'Live Orders',
-    cancelledorders: 'Cancelled Orders',
-    pickpackops: 'Pick & Pack Ops',
-    livepickingmonitor: 'Live Picking Monitor',
+    'exception-inbox': 'Exception Inbox',
+    fulfillment: 'Fulfillment Floor',
+    pickpackops: 'Fulfillment Floor',
+    'packing-station': 'Fulfillment Floor',
+    livepickingmonitor: 'Fulfillment Floor',
+    picklists: 'Fulfillment Floor',
     slamonitor: 'SLA Monitor',
     missingitems: 'Missing Item Tracker',
-    exceptionqueue: 'Exception Queue',
     livepickerboard: 'Live Picker Board',
     pickerperformance: 'Picker Performance',
     issues: 'Issue Management',
     inventory: 'Inventory Mgmt',
     staff: 'Staff & Shifts',
     health: 'Store Health',
-    alerts: 'Alerts',
-    'ops-alerts': 'Operations Alerts',
     reports: 'Reports',
+    'ops-analytics': 'Ops Analytics',
     hsd: 'HSD Devices',
     inbound: 'Inbound Ops',
     outbound: 'Outbound Ops',
     qc: 'QC & Compliance',
-    escalations: 'Escalations',
-    utilities: 'Utilities',
+    'store-settings': 'Store Settings',
+    utilities: 'Store Settings',
     replenishment: 'Replenishment',
-    'replenishment-tracking': 'Replenishment tracking',
   },
   merch: {
     overview: 'Merchandising Overview',
@@ -65,6 +72,8 @@ const TAB_LABELS: Record<DashboardId, Record<string, string>> = {
     'training-kit': 'Training & Kit',
     'group-delivery': 'Group Delivery',
     'live-chat-support': 'Live Chat Support',
+    health: 'System Health',
+    'rider-cash': 'Rider Cash & COD',
   },
   finance: {
     overview: 'Finance Overview',
@@ -94,26 +103,86 @@ const TAB_LABELS: Record<DashboardId, Record<string, string>> = {
     finance: 'Finance Integration',
     utilities: 'Utilities & Tools',
   },
+  warehouse: {
+    overview: 'Warehouse Overview',
+    navigation: 'Floor Navigation',
+    inbound: 'Inbound Ops',
+    inventory: 'Inventory & Storage',
+    outbound: 'Outbound Ops',
+    transfers: 'Transfers',
+    qc: 'QC & Compliance',
+    workforce: 'Workforce & Shifts',
+    'shift-master': 'Shift Master',
+    'shift-roster': 'Shift Roster',
+    equipment: 'Equipment & Assets',
+    devices: 'Devices',
+    exceptions: 'Exception Inbox',
+    analytics: 'Reports & Analytics',
+    utilities: 'Utilities',
+    logistics: 'Hub Logistics',
+    'logistics-tracking': 'Hub Logistics',
+    'logistics-estimate': 'Hub Logistics',
+  },
+  production: {
+    overview: 'Production Overview',
+    raw_materials: 'Raw Materials',
+    planning: 'Production Planning',
+    work_orders: 'Work Orders',
+    qc: 'QC & Compliance',
+    maintenance: 'Maintenance & Assets',
+    workforce: 'Workforce',
+    alerts: 'Alerts & Exceptions',
+    reports: 'Reports',
+    utilities: 'Utilities',
+  },
+  admin: {
+    citywide: 'Citywide Control',
+    'master-data': 'Master Data',
+    users: 'Users & Roles',
+    customers: 'Customers',
+    catalog: 'Catalog',
+    pricing: 'Coupons',
+    finance: 'Finance Rules',
+    support: 'Support Center',
+    fraud: 'Fraud & Risk',
+    analytics: 'Analytics',
+    notifications: 'Notifications',
+    geofence: 'Geofence Manager',
+    compliance: 'Compliance Center',
+    audit: 'Audit Logs',
+    'app-cms': 'App CMS',
+    'system-tools': 'System Tools',
+    pickers: 'Picker Management',
+  },
 };
 
 export function DashboardBreadcrumbs({
   dashboard,
   activeTab,
   pageLabel,
+  workflowContext,
 }: {
   dashboard: DashboardId;
   activeTab: string;
   /** Extra trailing segment (e.g. vendor name on detail view). */
   pageLabel?: string;
+  /** Workflow context e.g. "Fulfillment › Order #1234" */
+  workflowContext?: string;
 }) {
   const base = `/${dashboard}`;
   const rootLabel = DASHBOARD_ROOT_LABEL[dashboard];
   const currentLabel = TAB_LABELS[dashboard]?.[activeTab] ?? activeTab;
+  const contextLabel =
+    workflowContext ||
+    (dashboard === 'darkstore' ? WORKFLOW_CONTEXT[activeTab] : getWorkflowContext(dashboard, activeTab));
 
   const crumbs: { label: string; to?: string }[] = [
     { label: rootLabel, to: `${base}/overview` },
-    { label: currentLabel, to: pageLabel ? `${base}/${activeTab}` : undefined },
   ];
+  if (contextLabel && contextLabel !== currentLabel) {
+    crumbs.push({ label: contextLabel });
+  }
+  crumbs.push({ label: currentLabel, to: pageLabel ? `${base}/${activeTab}` : undefined });
   if (pageLabel?.trim()) {
     crumbs.push({ label: pageLabel.trim() });
   }

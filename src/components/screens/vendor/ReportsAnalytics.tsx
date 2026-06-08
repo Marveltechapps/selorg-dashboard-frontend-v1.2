@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useScreenTab } from '@/hooks/useScreenUrlState';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -64,7 +65,8 @@ import {
 } from 'lucide-react';
 
 export function ReportsAnalytics() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const ANALYTICS_TABS = ['overview', 'products', 'orders', 'customers', 'financial'] as const;
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(ANALYTICS_TABS, 'overview');
   const [dateRange, setDateRange] = useState('week');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

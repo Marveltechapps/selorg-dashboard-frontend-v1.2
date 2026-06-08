@@ -1,11 +1,17 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Loader2, Download } from "lucide-react";
-import { exportReport } from "@/api/analytics/analyticsApi";
+import { Input } from "@/components/ui/input";
+import { Loader2, Download, CalendarClock } from "lucide-react";
+import {
+  exportReport,
+  scheduleAnalyticsReport,
+  listAnalyticsSchedules,
+  type ReportSchedule,
+} from "@/api/analytics/analyticsApi";
 import { toast } from "sonner";
 import { exportToPDF } from "@/utils/pdfExport";
 import { exportToCSVForExcel } from "@/utils/csvExport";
@@ -17,8 +23,20 @@ interface ExportReportModalProps {
 
 export function ExportReportModal({ isOpen, onClose }: ExportReportModalProps) {
   const [loading, setLoading] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [metric, setMetric] = useState("rider");
   const [format, setFormat] = useState("pdf");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleEmail, setScheduleEmail] = useState("");
+  const [scheduleFrequency, setScheduleFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [existingSchedules, setExistingSchedules] = useState<ReportSchedule[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    listAnalyticsSchedules()
+      .then(setExistingSchedules)
+      .catch(() => setExistingSchedules([]));
+  }, [isOpen]);
 
   const doClientSideExport = (fmt: string) => {
     const name = `RiderFleet_Report_${metric}_${new Date().toISOString().slice(0, 10)}`;
@@ -33,7 +51,40 @@ export function ExportReportModal({ isOpen, onClose }: ExportReportModalProps) {
     }
   };
 
+  const handleSchedule = async () => {
+    if (!scheduleEmail.trim()) {
+      toast.error("Enter an email address for scheduled delivery");
+      return;
+    }
+    setScheduling(true);
+    try {
+      await scheduleAnalyticsReport({
+        email: scheduleEmail.trim(),
+        metric,
+        format: format === "xlsx" ? "excel" : format,
+        frequency: scheduleFrequency,
+        dateRange: "7d",
+        active: true,
+      });
+      toast.success(`Scheduled ${scheduleFrequency} ${metric} report to ${scheduleEmail.trim()}`);
+      const updated = await listAnalyticsSchedules();
+      setExistingSchedules(updated);
+      setScheduleEnabled(false);
+    } catch (e: unknown) {
+      toast.error("Failed to schedule report", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setScheduling(false);
+    }
+  };
+
   const handleExport = async () => {
+    if (scheduleEnabled) {
+      await handleSchedule();
+      return;
+    }
+
     setLoading(true);
     try {
       const apiFormat = format === "xlsx" ? "excel" : (format as "pdf" | "csv");
@@ -119,30 +170,72 @@ export function ExportReportModal({ isOpen, onClose }: ExportReportModalProps) {
              </div>
           </div>
 
-          <div className="space-y-3 pt-2">
-             <Label>Include Breakdowns</Label>
-             <div className="flex flex-col gap-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="by-rider" />
-                  <Label htmlFor="by-rider" className="font-normal">By individual rider</Label>
+          <div className="space-y-3 pt-2 border-t">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="schedule-report"
+                checked={scheduleEnabled}
+                onCheckedChange={(v) => setScheduleEnabled(Boolean(v))}
+              />
+              <Label htmlFor="schedule-report" className="font-normal flex items-center gap-1.5">
+                <CalendarClock size={14} /> Schedule recurring email delivery
+              </Label>
+            </div>
+
+            {scheduleEnabled && (
+              <div className="space-y-3 pl-6 animate-in fade-in slide-in-from-top-1">
+                <div className="space-y-2">
+                  <Label>Recipient email</Label>
+                  <Input
+                    type="email"
+                    placeholder="ops@company.com"
+                    value={scheduleEmail}
+                    onChange={(e) => setScheduleEmail(e.target.value)}
+                  />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="by-zone" />
-                  <Label htmlFor="by-zone" className="font-normal">By delivery zone</Label>
+                <div className="space-y-2">
+                  <Label>Frequency</Label>
+                  <Select value={scheduleFrequency} onValueChange={(v) => setScheduleFrequency(v as typeof scheduleFrequency)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="by-time" />
-                  <Label htmlFor="by-time" className="font-normal">By time of day (hourly)</Label>
-                </div>
-             </div>
+              </div>
+            )}
           </div>
+
+          {existingSchedules.length > 0 && (
+            <div className="space-y-2 pt-2 border-t">
+              <Label className="text-xs text-gray-500">Active schedules</Label>
+              <ul className="text-xs text-gray-600 space-y-1 max-h-24 overflow-y-auto">
+                {existingSchedules.slice(0, 5).map((s) => (
+                  <li key={s._id || `${s.email}-${s.metric}`} className="flex justify-between gap-2">
+                    <span className="truncate">{s.email}</span>
+                    <span className="shrink-0 capitalize text-gray-400">{s.frequency} · {s.metric}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button onClick={handleExport} disabled={loading}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Export Report
+          <Button variant="outline" onClick={onClose} disabled={loading || scheduling}>Cancel</Button>
+          <Button onClick={handleExport} disabled={loading || scheduling}>
+            {(loading || scheduling) ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : scheduleEnabled ? (
+              <CalendarClock className="mr-2 h-4 w-4" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            {scheduleEnabled ? "Schedule Report" : "Export Report"}
           </Button>
         </DialogFooter>
       </DialogContent>

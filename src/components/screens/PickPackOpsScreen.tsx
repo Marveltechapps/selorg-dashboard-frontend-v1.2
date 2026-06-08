@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { websocketService } from '@/utils/websocket';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPickOps, type PickOpsOrder } from '../../api/darkstore/pickers.api';
-import { PageHeader } from '../ui/page-header';
-
-const SLA_RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  safe: { bg: 'bg-[#DCFCE7]', text: 'text-[#16A34A]', border: 'border-[#86EFAC]' },
-  warning: { bg: 'bg-[#FEF3C7]', text: 'text-[#D97706]', border: 'border-[#FCD34D]' },
-  critical: { bg: 'bg-[#FEE2E2]', text: 'text-[#EF4444]', border: 'border-[#FECACA]' },
-};
+import { DarkstoreScreenShell } from '../darkstore/DarkstoreScreenShell';
+import { DarkstoreDataTable, type DarkstoreColumn } from '../darkstore/DarkstoreDataTable';
+import { AlertCard } from '../darkstore/AlertCard';
+import { StatusBadge } from '../darkstore/StatusBadge';
+import { AlertTriangle, Package, ExternalLink } from 'lucide-react';
+import { OrderDetailsDrawer } from '../darkstore/OrderDetailsDrawer';
+import { Button } from '../ui/button';
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -23,17 +23,99 @@ function formatDate(d: string | null | undefined): string {
   });
 }
 
-export function PickPackOpsScreen() {
+const columns: DarkstoreColumn<PickOpsOrder>[] = [
+  {
+    key: 'orderId',
+    header: 'Order ID',
+    sticky: true,
+    render: (o) => <span className="font-semibold text-slate-800">{o.orderId}</span>,
+  },
+  { key: 'picker', header: 'Picker', render: (o) => o.pickerName },
+  { key: 'started', header: 'Started At', render: (o) => formatDate(o.startedAt) },
+  {
+    key: 'progress',
+    header: 'Progress',
+    render: (o) => (
+      <div className="flex items-center gap-2 min-w-[120px]">
+        <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all',
+              o.progress >= 100 ? 'bg-emerald-500' : o.progress >= 50 ? 'bg-blue-500' : 'bg-amber-500'
+            )}
+            style={{ width: `${Math.min(100, o.progress)}%` }}
+          />
+        </div>
+        <span className="text-sm font-medium tabular-nums">{o.progress}%</span>
+      </div>
+    ),
+  },
+  {
+    key: 'missing',
+    header: 'Missing',
+    render: (o) => (
+      <div className="flex items-center gap-1.5">
+        <StatusBadge variant="workflow" status={o.missingItemsCount > 0 ? 'missing_items' : 'clear'} />
+        <span className="text-sm font-bold tabular-nums">{o.missingItemsCount}</span>
+      </div>
+    ),
+  },
+  {
+    key: 'sla',
+    header: 'SLA Risk',
+    render: (o) => <StatusBadge variant="sla" status={o.slaRisk} />,
+  },
+  { key: 'zone', header: 'Zone', render: (o) => o.zone || '—' },
+  {
+    key: 'packStation',
+    header: 'Pack Station',
+    render: (o) => (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 text-xs font-semibold">
+        {o.packStation || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'substitution',
+    header: 'Substitution',
+    render: (o) =>
+      o.missingItemsCount > 0 ? (
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-7 text-xs text-amber-700 px-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent('darkstore:navigate', { detail: { tab: 'missingitems', orderId: o.orderId } }));
+          }}
+        >
+          <ExternalLink size={12} className="mr-1" />
+          Resolve
+        </Button>
+      ) : (
+        <span className="text-xs text-slate-400">—</span>
+      ),
+  },
+];
+
+export function PickPackOpsScreen({
+  setActiveTab,
+  embedded,
+}: { setActiveTab?: (tab: string) => void; embedded?: boolean } = {}) {
   const { activeStoreId } = useAuth();
   const [orders, setOrders] = useState<PickOpsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<Date>();
+  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     try {
       setError(null);
       const res = await getPickOps({ storeId: activeStoreId || undefined });
       setOrders(res?.data ?? []);
+      setLastSync(new Date());
     } catch (e) {
       setOrders([]);
       setError(e instanceof Error ? e.message : 'Failed to load pick ops');
@@ -43,99 +125,82 @@ export function PickPackOpsScreen() {
   }, [activeStoreId]);
 
   useEffect(() => {
+    setLoading(true);
     fetchOrders();
-    const interval = setInterval(fetchOrders, 30000); // auto-refresh every 30s
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchOrders, 30000);
+    const onWs = () => fetchOrders();
+    websocketService.on('order:updated', onWs);
+    websocketService.on('order:created', onWs);
+    websocketService.on('MISSING_ITEM_REPORTED', onWs);
+    websocketService.on('missing_item_reported', onWs);
+    return () => {
+      clearInterval(interval);
+      websocketService.off('order:updated', onWs);
+      websocketService.off('order:created', onWs);
+      websocketService.off('MISSING_ITEM_REPORTED', onWs);
+      websocketService.off('missing_item_reported', onWs);
+    };
   }, [fetchOrders]);
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Pick & Pack Ops"
-        subtitle="Orders currently being picked or assigned"
-        actions={
-          <button
-            onClick={() => { setLoading(true); fetchOrders(); }}
-            disabled={loading}
-            className="px-4 py-2 border border-[#E0E0E0] rounded-lg text-sm font-medium text-[#616161] hover:bg-[#F5F5F5] disabled:opacity-50 flex items-center gap-2"
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Refresh
-          </button>
+  const stuckOrders = orders.filter((o) => {
+    if (!o.startedAt) return false;
+    const elapsedMin = (Date.now() - new Date(o.startedAt).getTime()) / 60000;
+    return elapsedMin > 8 && o.progress < 100;
+  });
+
+  const content = (
+    <>
+      {error && (
+        <AlertCard title={error} severity="danger" icon={AlertTriangle} className="mb-4" />
+      )}
+      {stuckOrders.length > 0 && (
+        <AlertCard
+          title={`${stuckOrders.length} order${stuckOrders.length > 1 ? 's' : ''} stuck in pick/pack > 8 min`}
+          subtitle={stuckOrders.map((o) => o.orderId).slice(0, 3).join(', ')}
+          severity="warning"
+          icon={AlertTriangle}
+          className="mb-4"
+          actions={[{ label: 'View first', onClick: () => setDrawerOrderId(stuckOrders[0].orderId) }]}
+        />
+      )}
+      <DarkstoreDataTable
+        columns={columns}
+        data={orders}
+        loading={loading}
+        rowKey={(o) => o.orderId}
+        emptyIcon={Package}
+        emptyTitle="No active picks"
+        emptyDescription="Orders with status PICKING or ASSIGNED will appear here."
+        onRowClick={(o) => setDrawerOrderId(o.orderId)}
+        rowClassName={(o) =>
+          o.slaRisk === 'critical' ? 'border-l-2 border-l-red-500' : o.slaRisk === 'warning' ? 'border-l-2 border-l-amber-400' : ''
         }
       />
+      <OrderDetailsDrawer
+        orderId={drawerOrderId}
+        open={!!drawerOrderId}
+        onOpenChange={(open) => !open && setDrawerOrderId(null)}
+      />
+    </>
+  );
 
-      {loading && orders.length === 0 ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={32} className="animate-spin text-[#1677FF]" />
-        </div>
-      ) : error ? (
-        <div className="bg-[#FEE2E2] border border-[#FECACA] rounded-xl p-6 text-center">
-          <p className="text-[#B91C1C] font-medium">{error}</p>
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="bg-white border border-[#E0E0E0] rounded-xl p-12 text-center">
-          <p className="text-[#757575]">No active picks. Orders with status PICKING or ASSIGNED will appear here.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
-                <tr>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Order ID</th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Picker</th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Started At</th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Progress</th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Missing Items</th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">SLA Risk</th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-[#757575] uppercase tracking-wider">Zone</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => {
-                  const slaColors = SLA_RISK_COLORS[o.slaRisk] ?? SLA_RISK_COLORS.safe;
-                  return (
-                    <tr key={o.orderId} className="border-b border-[#F5F5F5] hover:bg-[#FAFAFA]">
-                      <td className="py-3 px-4 font-medium text-[#212121]">{o.orderId}</td>
-                      <td className="py-3 px-4 text-[#616161]">{o.pickerName}</td>
-                      <td className="py-3 px-4 text-[#616161]">{formatDate(o.startedAt)}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 bg-[#F5F5F5] h-2 rounded-full overflow-hidden">
-                            <div
-                              className={cn(
-                                'h-full rounded-full',
-                                o.progress >= 100 ? 'bg-[#16A34A]' : o.progress >= 50 ? 'bg-[#1677FF]' : 'bg-[#D46B08]'
-                              )}
-                              style={{ width: `${Math.min(100, o.progress)}%` }}
-                            />
-                          </div>
-                          <span className="text-sm font-medium text-[#212121]">{o.progress}%</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={cn(
-                          'px-2 py-0.5 rounded text-xs font-bold',
-                          o.missingItemsCount > 0 ? 'bg-[#FEF3C7] text-[#D97706]' : 'bg-[#F0FDF4] text-[#16A34A]'
-                        )}>
-                          {o.missingItemsCount}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', slaColors.bg, slaColors.text, slaColors.border)}>
-                          {o.slaRisk}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-[#616161]">{o.zone}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+  if (embedded) return content;
+
+  return (
+    <DarkstoreScreenShell
+      title="Pick & Pack Ops"
+      subtitle="Orders currently being picked or assigned"
+      toolbar={{
+        onRefresh: () => {
+          setLoading(true);
+          fetchOrders();
+        },
+        refreshing: loading,
+        lastSync,
+        showConnection: true,
+      }}
+    >
+      {content}
+    </DarkstoreScreenShell>
   );
 }

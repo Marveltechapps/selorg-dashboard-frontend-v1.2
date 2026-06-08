@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, AlertCircle, Package, User, BarChart3, TrendingUp, AlertTriangle, Users, ClipboardList, Bike, RotateCcw, XCircle, CheckCircle2, Clock, History, ChevronDown, ChevronUp } from 'lucide-react';
-import { cn } from "../../lib/utils";
+import { useScreenTab } from '../../hooks/useScreenUrlState';
 import { useAuth } from '../../contexts/AuthContext';
-import { PageHeader } from '../ui/page-header';
 import { toast } from "sonner";
+import { DashboardOverviewView } from '../darkstore/overview/DashboardOverviewView';
+import { OrderDetailsDrawer } from '../darkstore/OrderDetailsDrawer';
+import { ConfirmationDialog } from '../ui/confirmation-dialog';
 import {
   getDashboardSummary,
   getStaffLoad,
@@ -20,6 +21,8 @@ import { websocketService } from '../../utils/websocket';
 import { getPaymentDisplay } from '../../utils/orderPaymentDisplay';
 import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
 import { getPickersLive } from '../../api/darkstore/pickers.api';
+import { getPipelineStats, getActivityFeed, type PipelineStats, type ActivityFeedItem } from '../../api/darkstore/operations.api';
+import { StoreRequiredGuard } from '../darkstore/StoreRequiredGuard';
 
 interface DashboardHomeProps {
   setActiveTab?: (tab: string) => void;
@@ -39,13 +42,14 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       setActiveTab(tab);
     }
   };
-  const [orderTab, setOrderTab] = useState<OrderBoardTab>('new');
+  const ORDER_TABS = ['new', 'returns', 'cancelled'] as const;
+  const { activeTab: orderTab, changeTab: setOrderTab } = useScreenTab(ORDER_TABS, 'new');
   const orderTabRef = useRef<OrderBoardTab>('new');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || 'DS-Adyar-01';
+  const { activeStoreId, switchStore } = useAuth();
+  const storeId = activeStoreId || '';
   const isWsConnected = useWebSocketConnection();
   
   // Dashboard data state
@@ -81,6 +85,14 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
   const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
   const [historyData, setHistoryData] = useState<Map<string, any[]>>(new Map());
   const [loadingHistory, setLoadingHistory] = useState<Set<string>>(new Set());
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [orderDrawerOpen, setOrderDrawerOpen] = useState(false);
+  const [confirmRtoId, setConfirmRtoId] = useState<string | null>(null);
+  const [confirmRestockSku, setConfirmRestockSku] = useState<string | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineStats | null>(null);
+  const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
+  const [pipelineLoading, setPipelineLoading] = useState(true);
+  const prevStatsRef = useRef<{ queue: number; slaThreat: number } | null>(null);
 
   const applyOrdersSnapshot = (orders: any[]) => {
     const ordersWithDeadline = orders.map((o: any) => ({
@@ -368,6 +380,13 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       const results = await Promise.all(promises);
       const [summary, staff, stock, rto] = results;
       const livePickers = await getPickersLive().catch(() => null);
+      const [pipelineRes, feedRes] = await Promise.all([
+        getPipelineStats({ storeId }).catch(() => null),
+        getActivityFeed({ storeId, minutes: 5 }).catch(() => null),
+      ]);
+      if (pipelineRes?.data) setPipeline(pipelineRes.data);
+      if (feedRes?.data) setActivityFeed(feedRes.data);
+      setPipelineLoading(false);
 
       // Update summary stats
       if (summary) {
@@ -555,7 +574,7 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
       
       if (response && response.success) {
         // Use phone number from backend response if available
-        const phoneNumber = response.called_number || `+91${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+        const phoneNumber = response.called_number || 'Customer phone unavailable';
         
         // Update with actual phone number
         setCallingOrders((prev) => {
@@ -685,519 +704,141 @@ export function DashboardHome({ setActiveTab }: DashboardHomeProps = {}) {
     }
   };
 
-  const orderTabs: { id: OrderBoardTab; label: string; count: number; color: string; bg: string }[] = [
-    { id: 'new', label: 'New Orders', count: stats.newOrders, color: 'text-[#1677FF]', bg: 'bg-[#E6F7FF]' },
-    { id: 'returns', label: 'Returns', count: stats.returnsOrders, color: 'text-[#F97316]', bg: 'bg-[#FFF7E6]' },
-    { id: 'cancelled', label: 'Cancelled', count: stats.cancelledOrders, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2]' },
-  ];
+  const queueTrend =
+    prevStatsRef.current != null && stats.queue !== prevStatsRef.current.queue
+      ? `${stats.queue >= prevStatsRef.current.queue ? '+' : ''}${stats.queue - prevStatsRef.current.queue}`
+      : stats.newOrders > 0
+        ? `+${stats.newOrders} new`
+        : undefined;
+
+  const slaTrend =
+    prevStatsRef.current != null && stats.slaThreat !== prevStatsRef.current.slaThreat
+      ? `${Math.abs(stats.slaThreat - prevStatsRef.current.slaThreat)}%`
+      : stats.ordersUnder5Min > 0
+        ? `${stats.ordersUnder5Min} critical`
+        : undefined;
+
+  useEffect(() => {
+    if (!isLoading) {
+      prevStatsRef.current = { queue: stats.queue, slaThreat: stats.slaThreat };
+    }
+  }, [stats.queue, stats.slaThreat, isLoading]);
+
+  const handleShiftHandoffExport = () => {
+    const storeId = activeStoreId || 'unknown';
+    const now = new Date();
+    const body = [
+      'SELORG DARKSTORE — SHIFT HANDOFF SUMMARY',
+      '========================================',
+      `Store: ${storeId}`,
+      `Generated: ${now.toLocaleString()}`,
+      '',
+      'PIPELINE SNAPSHOT',
+      `  Queue: ${stats.queue}`,
+      `  SLA Threat: ${stats.slaThreat}%`,
+      `  Orders < 5m: ${stats.ordersUnder5Min}`,
+      `  Pipeline Active: ${pipeline?.totalActive ?? '—'}`,
+      `  Pickers: ${staffLoad.pickers.active}/${staffLoad.pickers.total}`,
+      `  Packers: ${staffLoad.packers.active}/${staffLoad.packers.total}`,
+      '',
+      'OPEN ITEMS',
+      `  Stock alerts: ${stockAlerts.length}`,
+      `  RTO alerts: ${rtoAlerts.length}`,
+      '',
+      'NOTES FOR NEXT MANAGER:',
+      '  ___________________________',
+    ].join('\n');
+    const blob = new Blob([body], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `shift-handoff-${storeId}-${now.toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    toast.success('Shift handoff summary downloaded');
+  };
+
+  if (!storeId) {
+    return <StoreRequiredGuard title="Select a store for Store Overview"><span className="sr-only">overview</span></StoreRequiredGuard>;
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Page Header with Breadcrumbs */}
-      <PageHeader
-        title="Store Overview"
-        subtitle="Live operational metrics and active queues."
-        actions={
-          <div className="flex items-center gap-2">
-            {isWsConnected && (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-xs font-bold uppercase tracking-wide">
-                <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse"></span>
-                Live Updates
-              </span>
-            )}
-            <div className="flex items-center gap-2 text-sm text-[#9E9E9E] bg-white px-3 py-1.5 rounded-lg border border-[#E0E0E0]">
-              <span>Last sync: {currentTime.toLocaleTimeString()}</span>
-              <button 
-                onClick={handleManualRefresh}
-                className={cn("p-1 hover:bg-gray-100 rounded-full transition-all", isRefreshing && "animate-spin")}
-              >
-                <RotateCcw size={14} />
-              </button>
-            </div>
-          </div>
-        }
+    <>
+      <DashboardOverviewView
+        currentTime={currentTime}
+        isRefreshing={isRefreshing}
+        isLoading={isLoading}
+        isWsConnected={isWsConnected}
+        stats={stats}
+        staffLoad={staffLoad}
+        stockAlerts={stockAlerts}
+        rtoAlerts={rtoAlerts}
+        liveOrders={liveOrders}
+        orderTab={orderTab}
+        setOrderTab={setOrderTab}
+        restockedItems={restockedItems}
+        callingOrders={callingOrders}
+        rtoMarkedOrders={rtoMarkedOrders}
+        expandedHistory={expandedHistory}
+        historyData={historyData}
+        loadingHistory={loadingHistory}
+        onRefresh={handleManualRefresh}
+        onNavigate={handleNavigate}
+        onOrderClick={(orderId) => {
+          setSelectedOrderId(orderId);
+          setOrderDrawerOpen(true);
+        }}
+        onRestock={(sku) => setConfirmRestockSku(sku)}
+        onCallCustomer={handleCallCustomer}
+        onMarkRTO={(orderId) => setConfirmRtoId(orderId)}
+        onToggleHistory={handleToggleHistory}
+        queueTrend={queueTrend}
+        slaTrend={slaTrend}
+        pipeline={pipeline}
+        pipelineLoading={pipelineLoading}
+        activityFeed={activityFeed}
+        onPipelineStageClick={(stage) => {
+          if (setActiveTab) setActiveTab('liveorders');
+        }}
+        onActivityClick={(item) => {
+          if (item.orderId) {
+            setSelectedOrderId(item.orderId);
+            setOrderDrawerOpen(true);
+          } else if (setActiveTab) {
+            setActiveTab('exception-inbox');
+          }
+        }}
+        onShiftHandoffExport={handleShiftHandoffExport}
+        onStoreSwitch={(storeId) => switchStore(storeId)}
       />
-
-      {/* Row 1: Key Operational Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-         {/* Order Queue */}
-         <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col justify-between h-full">
-            <div className="flex justify-between items-start">
-               <div>
-                 <p className="text-[#757575] text-xs font-bold uppercase tracking-wider">Order Queue</p>
-                 <div className="flex items-baseline gap-2 mt-1">
-                   <h3 className="text-3xl font-bold text-[#212121] transition-all duration-300 ease-out">
-                     {stats.queue}
-                   </h3>
-                   <span className="text-xs font-bold text-[#22C55E] bg-[#DCFCE7] px-1.5 py-0.5 rounded">+{stats.newOrders} new</span>
-                 </div>
-               </div>
-               <div className="p-2 bg-[#E6F7FF] text-[#1677FF] rounded-lg">
-                 <ClipboardList size={20} />
-               </div>
-            </div>
-            <div className="mt-4 flex gap-1 h-1.5 w-full bg-[#F5F5F5] rounded-full overflow-hidden">
-               {stats.queue > 0 ? (
-                 <>
-                   <div className="bg-[#1677FF] transition-all duration-500" style={{ width: `${(stats.breakdown.normal / stats.queue) * 100}%` }} />
-                   <div className="bg-[#FACC15] transition-all duration-500" style={{ width: `${(stats.breakdown.priority / stats.queue) * 100}%` }} />
-                   <div className="bg-[#EF4444] transition-all duration-500" style={{ width: `${(stats.breakdown.express / stats.queue) * 100}%` }} />
-                 </>
-               ) : null}
-            </div>
-            <div className="flex justify-between mt-2 text-[10px] font-medium text-[#757575]">
-              <span>{stats.breakdown.normal} Normal</span>
-              <span>{stats.breakdown.priority} Priority</span>
-              <span>{stats.breakdown.express} Express</span>
-            </div>
-         </div>
-
-         {/* SLA Threat Meter */}
-         <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-[#EF4444]" />
-            <div className="flex justify-between items-start pl-2">
-               <div>
-                 <p className="text-[#757575] text-xs font-bold uppercase tracking-wider">SLA Threat Meter</p>
-                 <h3 className="text-3xl font-bold text-[#EF4444] mt-1">{stats.slaThreat}%</h3>
-               </div>
-               <div className="p-2 bg-[#FEE2E2] text-[#EF4444] rounded-lg">
-                 <AlertTriangle size={20} />
-               </div>
-            </div>
-            <div className="pl-2 mt-4">
-              <div className="w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-[#22C55E] via-[#FACC15] to-[#EF4444] h-full rounded-full transition-all duration-500" 
-                  style={{ width: `${stats.slaThreat}%` }}
-                />
-              </div>
-              <p className="text-xs text-[#757575] mt-2">
-                <span className="font-bold text-[#EF4444]">{stats.ordersUnder5Min} orders</span> &lt; 5 mins to breach
-              </p>
-            </div>
-         </div>
-
-         {/* Store Capacity */}
-         <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
-            <div className="flex justify-between items-start">
-               <div>
-                 <p className="text-[#757575] text-xs font-bold uppercase tracking-wider">Store Capacity</p>
-                 <h3 className="text-3xl font-bold text-[#212121] mt-1">{stats.capacity}%</h3>
-               </div>
-               <div className="p-2 bg-[#F3E8FF] text-[#9333EA] rounded-lg">
-                 <BarChart3 size={20} />
-               </div>
-            </div>
-            <div className="mt-4 w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden">
-               <div 
-                 className="bg-[#9333EA] h-full rounded-full transition-all duration-500" 
-                 style={{ width: `${stats.capacity}%` }}
-               />
-            </div>
-            <p className="text-xs text-[#757575] mt-2">High load expected at {stats.expectedPeakTime}</p>
-         </div>
-
-         {/* Rider Wait Times */}
-         <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
-            <div className="flex justify-between items-start">
-               <div>
-                 <p className="text-[#757575] text-xs font-bold uppercase tracking-wider">Rider Wait Times</p>
-                 <h3 className="text-3xl font-bold text-[#212121] mt-1">{stats.riderWait}</h3>
-               </div>
-               <div className="p-2 bg-[#DCFCE7] text-[#16A34A] rounded-lg">
-                 <Bike size={20} />
-               </div>
-            </div>
-            <div className="flex items-end gap-1 mt-4 h-8 w-full">
-               {stats.lastHourData.length > 0 ? (
-                 stats.lastHourData.map((h: number, i: number) => (
-                   <div key={i} className="flex-1 bg-[#BBF7D0] rounded-t-sm" style={{ height: `${Math.min(100, h)}%` }} />
-                 ))
-               ) : (
-                 <div className="text-xs text-[#9E9E9E] py-2">No wait time data</div>
-               )}
-            </div>
-            <p className="text-xs text-[#757575] mt-2">Avg wait time (last hour)</p>
-         </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Alerts & Staff Load */}
-        <div className="space-y-6">
-           {/* Picker & Packer Load */}
-           <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <h3 className="font-bold text-[#212121] mb-4 flex items-center gap-2">
-               <Users size={18} className="text-[#1677FF]" />
-               Picker & Packer Load
-             </h3>
-             <div className="space-y-4">
-                <div>
-                   <div className="flex justify-between text-sm mb-1">
-                      <span className="text-[#616161]" title="HHD pickers in shift (punched in)">Pickers ({staffLoad.pickers.active}/{staffLoad.pickers.total} in shift)</span>
-                      <span className="font-bold text-[#212121]">{staffLoad.pickers.load_percentage}% Load</span>
-                   </div>
-                   <div className="w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden">
-                      <div className="bg-[#1677FF] h-full rounded-full transition-all duration-500" style={{ width: `${staffLoad.pickers.load_percentage}%` }} />
-                   </div>
-                </div>
-                <div>
-                   <div className="flex justify-between text-sm mb-1">
-                      <span className="text-[#616161]">Packers ({staffLoad.packers.active}/{staffLoad.packers.total} Active)</span>
-                      <span className="font-bold text-[#212121]">{staffLoad.packers.load_percentage}% Load</span>
-                   </div>
-                   <div className="w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden">
-                      <div className="bg-[#3B82F6] h-full rounded-full transition-all duration-500" style={{ width: `${staffLoad.packers.load_percentage}%` }} />
-                   </div>
-                </div>
-             </div>
-           </div>
-
-           {/* Stock-Out Alerts */}
-           <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <h3 className="font-bold text-[#212121] mb-4 flex items-center gap-2">
-               <AlertCircle size={18} className="text-[#F97316]" />
-               Stock-Out Alerts
-             </h3>
-             <div className="space-y-3">
-               {isLoading ? (
-                 <div className="text-center py-4 text-[#9E9E9E] text-sm">Loading alerts...</div>
-               ) : stockAlerts.filter((alert: any) => !restockedItems.has(alert.sku)).length === 0 ? (
-                 <div className="text-center py-4 text-[#9E9E9E] text-sm">No stock alerts</div>
-               ) : (
-                 stockAlerts
-                   .filter((alert: any) => !restockedItems.has(alert.sku)) // Filter out restocked items
-                   .slice(0, 5)
-                   .map((alert: any, i: number) => (
-                   <div key={i} className="p-3 bg-[#FFF7E6] border border-[#FFD591] rounded-lg">
-                     <div className="flex items-center justify-between">
-                       <div className="flex-1">
-                         <p className="text-sm font-bold text-[#D46B08]">{alert.item_name}</p>
-                         <p className="text-xs text-[#FA8C16]">{alert.sku}</p>
-                       </div>
-                       <div className="text-right flex items-center gap-2">
-                         <div>
-                           <p className="text-xs font-bold text-[#D46B08]">{alert.current_count} left</p>
-                           <button 
-                             onClick={() => handleRestock(alert.sku)}
-                             disabled={restockedItems.has(alert.sku)}
-                             className={restockedItems.has(alert.sku) 
-                               ? "text-[10px] font-bold text-[#16A34A] mt-1 cursor-not-allowed"
-                               : "text-[10px] font-bold text-[#D46B08] underline mt-1 hover:no-underline"
-                             }
-                           >
-                             {restockedItems.has(alert.sku) ? 'Restocked' : 'Restock'}
-                           </button>
-                         </div>
-                         <button
-                           onClick={() => handleToggleHistory('STOCK', alert.sku)}
-                           className="p-1 text-[#D46B08] hover:text-[#B45309] transition-colors flex items-center gap-1"
-                           title="Toggle History"
-                         >
-                           <History size={14} />
-                           {expandedHistory.has(`STOCK-${alert.sku}`) ? (
-                             <ChevronUp size={12} />
-                           ) : (
-                             <ChevronDown size={12} />
-                           )}
-                         </button>
-                       </div>
-                     </div>
-                     
-                     {/* Inline History Section */}
-                     {expandedHistory.has(`STOCK-${alert.sku}`) && (
-                       <div className="mt-3 pt-3 border-t border-[#FFD591]">
-                         {loadingHistory.has(`STOCK-${alert.sku}`) ? (
-                           <div className="text-center py-2 text-xs text-[#9E9E9E]">Loading history...</div>
-                         ) : (() => {
-                           const historyKey = `STOCK-${alert.sku}`;
-                           const history = historyData.get(historyKey) || [];
-                           return history.length === 0 ? (
-                             <div className="text-center py-2 text-xs text-[#9E9E9E]">No history found</div>
-                           ) : (
-                             <div className="space-y-2">
-                               {history.map((entry: any, idx: number) => (
-                                 <div key={idx} className="text-xs bg-white/50 rounded p-2 border border-[#FFD591]/50">
-                                   {entry.action === 'RESTOCK' && entry.metadata && (
-                                     <>
-                                       <div className="font-semibold text-[#D46B08]">
-                                         Restocked +{entry.metadata.quantity_added ?? 'N/A'}
-                                       </div>
-                                       <div className="text-[#757575] mt-0.5">
-                                         Stock: {entry.metadata.previous_stock ?? 'N/A'} → <span className="text-[#16A34A] font-semibold">{entry.metadata.updated_stock ?? 'N/A'}</span>
-                                       </div>
-                                       <div className="text-[#9E9E9E] mt-0.5 text-[10px]">
-                                         {new Date(entry.performed_at).toLocaleString()}
-                                       </div>
-                                     </>
-                                   )}
-                                 </div>
-                               ))}
-                             </div>
-                           );
-                         })()}
-                       </div>
-                     )}
-                   </div>
-                 ))
-               )}
-             </div>
-           </div>
-
-           {/* RTO Risk Alerts */}
-           <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <h3 className="font-bold text-[#212121] mb-4 flex items-center gap-2">
-               <RotateCcw size={18} className="text-[#EF4444]" />
-               RTO Risk Alerts
-             </h3>
-             <div className="space-y-3">
-               {isLoading ? (
-                 <div className="text-center py-4 text-[#9E9E9E] text-sm">Loading alerts...</div>
-               ) : rtoAlerts.length === 0 ? (
-                 <div className="text-center py-4 text-[#9E9E9E] text-sm">No RTO alerts</div>
-               ) : (
-                 rtoAlerts
-                   .filter((alert: any) => !rtoMarkedOrders.has(alert.order_id)) // Filter out marked RTO orders
-                   .slice(0, 3)
-                   .map((alert: any, i: number) => {
-                     const isCalling = callingOrders.has(alert.order_id);
-                     const phoneNumber = callingOrders.get(alert.order_id);
-                     
-                     return (
-                   <div key={i} className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-lg">
-                     <div className="flex items-start gap-3">
-                       <AlertTriangle size={16} className="text-[#EF4444] mt-0.5" />
-                       <div className="flex-1">
-                          <p className="text-sm font-bold text-[#991B1B]">Order {alert.order_id} - {alert.issue_type?.replace('_', ' ')}</p>
-                          <p className="text-xs text-[#B91C1C] mt-1">{alert.description}</p>
-                          {isCalling && (
-                            <p className="text-xs text-[#991B1B] mt-1 font-semibold">Calling {phoneNumber}...</p>
-                          )}
-                          <div className="flex gap-2 mt-2 items-center">
-                            <button 
-                              onClick={() => handleCallCustomer(alert.order_id)}
-                              disabled={isCalling}
-                              className={isCalling
-                                ? "px-2 py-1 bg-[#FEE2E2] border border-[#FECACA] rounded text-[10px] font-bold text-[#991B1B] cursor-not-allowed opacity-75"
-                                : "px-2 py-1 bg-white border border-[#FECACA] rounded text-[10px] font-bold text-[#991B1B] hover:bg-[#FEE2E2]"
-                              }
-                            >
-                              {isCalling ? 'Calling...' : 'Call Cust.'}
-                            </button>
-                            <button 
-                              onClick={() => handleMarkRTO(alert.order_id)}
-                              disabled={rtoMarkedOrders.has(alert.order_id)}
-                              className={rtoMarkedOrders.has(alert.order_id)
-                                ? "px-2 py-1 bg-[#16A34A] text-white rounded text-[10px] font-bold cursor-not-allowed"
-                                : "px-2 py-1 bg-[#EF4444] text-white rounded text-[10px] font-bold hover:bg-[#DC2626]"
-                              }
-                            >
-                              {rtoMarkedOrders.has(alert.order_id) ? 'Marked RTO' : 'Mark RTO'}
-                            </button>
-                            <button
-                              onClick={() => handleToggleHistory('RTO', alert.order_id)}
-                              className="p-1 text-[#991B1B] hover:text-[#7F1D1D] transition-colors flex items-center gap-1"
-                              title="Toggle History"
-                            >
-                              <History size={14} />
-                              {expandedHistory.has(`RTO-${alert.order_id}`) ? (
-                                <ChevronUp size={12} />
-                              ) : (
-                                <ChevronDown size={12} />
-                              )}
-                            </button>
-                          </div>
-                       </div>
-                     </div>
-                     
-                     {/* Inline History Section */}
-                     {expandedHistory.has(`RTO-${alert.order_id}`) && (
-                       <div className="mt-3 pt-3 border-t border-[#FECACA]">
-                         {loadingHistory.has(`RTO-${alert.order_id}`) ? (
-                           <div className="text-center py-2 text-xs text-[#9E9E9E]">Loading history...</div>
-                         ) : (() => {
-                           const historyKey = `RTO-${alert.order_id}`;
-                           const history = historyData.get(historyKey) || [];
-                           return history.length === 0 ? (
-                             <div className="text-center py-2 text-xs text-[#9E9E9E]">No history found</div>
-                           ) : (
-                             <div className="space-y-2">
-                               {history.map((entry: any, idx: number) => (
-                                 <div key={idx} className="text-xs bg-white/50 rounded p-2 border border-[#FECACA]/50">
-                                   {entry.action === 'CALL_CUSTOMER' && entry.metadata && (
-                                     <>
-                                       <div className="font-semibold text-[#991B1B]">
-                                         Called {entry.metadata.called_number || 'N/A'}
-                                       </div>
-                                       <div className="text-[#757575] mt-0.5">
-                                         Status: <span className={`font-semibold ${
-                                           entry.metadata.call_status === 'initiated' ? 'text-[#3B82F6]' : 
-                                           entry.metadata.call_status === 'success' ? 'text-[#16A34A]' : 
-                                           'text-[#EF4444]'
-                                         }`}>{entry.metadata.call_status || 'initiated'}</span>
-                                       </div>
-                                       <div className="text-[#9E9E9E] mt-0.5 text-[10px]">
-                                         {new Date(entry.performed_at).toLocaleString()}
-                                       </div>
-                                     </>
-                                   )}
-                                   {entry.action === 'MARK_RTO' && entry.metadata && (
-                                     <>
-                                       <div className="font-semibold text-[#EF4444]">
-                                         Marked as RTO
-                                       </div>
-                                       <div className="text-[#757575] mt-0.5">
-                                         Status: {entry.metadata.previous_status || 'N/A'} → <span className="text-[#EF4444] font-semibold">{entry.metadata.new_status || 'RTO'}</span>
-                                       </div>
-                                       {entry.metadata.reason && (
-                                         <div className="text-[#757575] mt-0.5">
-                                           Reason: {entry.metadata.reason}
-                                         </div>
-                                       )}
-                                       <div className="text-[#9E9E9E] mt-0.5 text-[10px]">
-                                         {new Date(entry.performed_at).toLocaleString()}
-                                       </div>
-                                     </>
-                                   )}
-                                 </div>
-                               ))}
-                             </div>
-                           );
-                         })()}
-                       </div>
-                     )}
-                   </div>
-                 )})
-               )}
-             </div>
-           </div>
-        </div>
-
-        {/* Right Column: Live Order Board */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-[#E0E0E0] flex flex-col h-full">
-           <div className="p-4 border-b border-[#E0E0E0]">
-              <div className="flex items-center justify-between mb-4">
-                 <h2 className="text-lg font-bold text-[#212121] flex items-center gap-2">
-                   Live Order Board
-                   {isWsConnected && (
-                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#DCFCE7] text-[#16A34A]" title="Real-time updates via WebSocket">
-                       <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
-                       Live
-                     </span>
-                   )}
-                 </h2>
-                 <button 
-                   onClick={() => handleNavigate('liveorders')}
-                   className="text-sm font-medium text-[#1677FF] hover:underline flex items-center gap-1"
-                 >
-                   View All <ArrowRight size={14} />
-                 </button>
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                 {orderTabs.map(tab => (
-                   <button
-                     key={tab.id}
-                     onClick={() => setOrderTab(tab.id as OrderBoardTab)}
-                     className={cn(
-                       "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border",
-                       orderTab === tab.id 
-                         ? `${tab.bg} ${tab.color} border-current` 
-                         : "bg-white text-[#757575] border-[#E0E0E0] hover:bg-[#F5F5F5]"
-                     )}
-                   >
-                     {tab.label}
-                     <span className={cn(
-                       "px-1.5 py-0.5 rounded-full text-[10px]",
-                       orderTab === tab.id ? "bg-white/50" : "bg-[#F5F5F5] text-[#9E9E9E]"
-                     )}>{tab.count}</span>
-                   </button>
-                 ))}
-              </div>
-           </div>
-
-           <div className="flex-1 overflow-y-auto p-0">
-             <table className="w-full text-left text-sm">
-               <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0] sticky top-0">
-                 <tr>
-                   <th className="px-6 py-3 font-medium">Order ID</th>
-                   <th className="px-6 py-3 font-medium">Items</th>
-                   <th className="px-6 py-3 font-medium">Payment</th>
-                   <th className="px-6 py-3 font-medium">SLA Timer</th>
-                   <th className="px-6 py-3 font-medium">Assignee</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-[#F0F0F0]">
-                 {isLoading ? (
-                   <tr>
-                     <td colSpan={5} className="px-6 py-8 text-center text-[#9E9E9E]">Loading orders...</td>
-                   </tr>
-                 ) : liveOrders.length === 0 ? (
-                   <tr>
-                     <td colSpan={5} className="px-6 py-8 text-center text-[#9E9E9E]">
-                       No {orderTabs.find(t => t.id === orderTab)?.label.toLowerCase() || 'orders'} found
-                     </td>
-                   </tr>
-                 ) : (
-                   liveOrders.map((order: any) => {
-                     const slaColor = order.sla_status === 'critical' ? 'text-[#EF4444]' : order.sla_status === 'warning' ? 'text-[#FACC15]' : 'text-[#212121]';
-                     const initials = order.assignee?.initials || 'UA';
-                     const assigneeName = order.assignee?.name || 'Unassigned';
-                     
-                     return (
-                       <tr key={order.order_id} className="hover:bg-[#FAFAFA] group cursor-pointer" onClick={() => { setPendingOrderSearch(order.order_id); handleNavigate('liveorders'); }}>
-                         <td className="px-6 py-4">
-                           <div className="flex flex-col">
-                             <span className="font-bold text-[#212121]">{order.order_id}</span>
-                             <span className="text-[10px] text-[#9E9E9E] uppercase tracking-wider">{order.order_type}</span>
-                           </div>
-                         </td>
-                         <td className="px-6 py-4">
-                           <div className="flex items-center gap-2 text-[#616161]">
-                             <Package size={16} />
-                             <span>{order.item_count} items</span>
-                           </div>
-                         </td>
-                         <td className="px-6 py-4">
-                           {(() => {
-                             const pd = getPaymentDisplay(order);
-                             return (
-                               <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide", pd.className)}>
-                                 {pd.label}
-                               </span>
-                             );
-                           })()}
-                         </td>
-                         <td className="px-6 py-4">
-                           <div className="flex items-center gap-2">
-                             <Clock size={16} className={slaColor} />
-                             <span className={cn("font-mono font-bold", slaColor)}>
-                               {order.sla_timer}
-                             </span>
-                           </div>
-                         </td>
-                         <td className="px-6 py-4">
-                           <div className="flex items-center gap-2">
-                             <div className="w-6 h-6 rounded-full bg-[#E0E7FF] text-[#4F46E5] flex items-center justify-center text-[10px] font-bold">
-                               {initials}
-                             </div>
-                             <span className="text-[#616161]">{assigneeName}</span>
-                           </div>
-                         </td>
-                       </tr>
-                     );
-                   })
-                 )}
-               </tbody>
-             </table>
-             
-             {/* Empty State for Returns/Cancelled if needed */}
-             {/* <div className="flex flex-col items-center justify-center h-48 text-[#9E9E9E]">
-               <CheckCircle2 size={32} className="mb-2 opacity-20" />
-               <p>No active orders in this queue</p>
-             </div> */}
-           </div>
-        </div>
-      </div>
-
-    </div>
+      <OrderDetailsDrawer
+        orderId={selectedOrderId}
+        open={orderDrawerOpen}
+        onOpenChange={setOrderDrawerOpen}
+      />
+      <ConfirmationDialog
+        open={!!confirmRtoId}
+        onOpenChange={(o) => !o && setConfirmRtoId(null)}
+        title="Mark order as RTO?"
+        description="This will move the order to returns. Confirm only if the customer is unreachable."
+        variant="destructive"
+        confirmText="Mark RTO"
+        onConfirm={async () => {
+          if (confirmRtoId) await handleMarkRTO(confirmRtoId);
+        }}
+      />
+      <ConfirmationDialog
+        open={!!confirmRestockSku}
+        onOpenChange={(o) => !o && setConfirmRestockSku(null)}
+        title="Initiate restock?"
+        description="A replenishment task will be created for this SKU."
+        confirmText="Restock"
+        onConfirm={async () => {
+          if (confirmRestockSku) await handleRestock(confirmRestockSku);
+        }}
+      />
+    </>
   );
 }

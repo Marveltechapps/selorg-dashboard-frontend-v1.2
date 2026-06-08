@@ -1,6 +1,5 @@
 import { API_CONFIG, API_ENDPOINTS } from '../../../config/api';
 import { getAuthToken } from '../../../contexts/AuthContext';
-// TODO: delete warehouseMockData.ts after UAT
 
 function authHeaders(): Record<string, string> {
   const token = getAuthToken();

@@ -3,6 +3,7 @@ import { AdminModal } from './AdminModal';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DIALOG_SELECT_CONTENT_CLASS } from '@/components/ui/dialogSelect';
 import { toast } from 'sonner';
 import { fetchAgencies, fetchStoreShiftSlots, type AgencyItem, type ShiftSlotItem } from '@/api/admin/pickerOpsApi';
 import { fetchStores, type Store } from '@/components/screens/admin/storeWarehouseApi';
@@ -103,11 +104,11 @@ export function AssignPickerModal({
         <div className="space-y-4 px-6 py-4">
           <div className="space-y-1.5">
             <Label>Agency</Label>
-            <Select value={agencyId} onValueChange={setAgencyId}>
+            <Select value={agencyId} onValueChange={setAgencyId} modal={false}>
               <SelectTrigger>
                 <SelectValue placeholder="Select agency" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={4} className={DIALOG_SELECT_CONTENT_CLASS}>
                 <SelectItem value="none">Unassigned</SelectItem>
                 {agencies.map((a) => (
                   <SelectItem key={a.agencyId} value={a.agencyId}>
@@ -120,11 +121,11 @@ export function AssignPickerModal({
 
           <div className="space-y-1.5">
             <Label>Store</Label>
-            <Select value={storeId} onValueChange={setStoreId}>
+            <Select value={storeId} onValueChange={setStoreId} modal={false}>
               <SelectTrigger>
                 <SelectValue placeholder="Select store" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={4} className={DIALOG_SELECT_CONTENT_CLASS}>
                 <SelectItem value="none">Unassigned</SelectItem>
                 {stores.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
@@ -137,11 +138,16 @@ export function AssignPickerModal({
 
           <div className="space-y-1.5">
             <Label>Shift slot</Label>
-            <Select value={shiftSlotId} onValueChange={setShiftSlotId} disabled={storeId === 'none' || slots.length === 0}>
+            <Select
+              value={shiftSlotId}
+              onValueChange={setShiftSlotId}
+              disabled={storeId === 'none' || slots.length === 0}
+              modal={false}
+            >
               <SelectTrigger>
                 <SelectValue placeholder={storeId === 'none' ? 'Pick store first' : 'Select shift slot'} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={4} className={DIALOG_SELECT_CONTENT_CLASS}>
                 <SelectItem value="none">Unassigned</SelectItem>
                 {slots.map((slot) => (
                   <SelectItem key={slot.shiftSlotId} value={slot.shiftSlotId}>

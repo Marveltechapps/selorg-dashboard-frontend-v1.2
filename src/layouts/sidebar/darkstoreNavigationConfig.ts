@@ -1,12 +1,8 @@
 import {
   LayoutDashboard,
   List,
-  Ban,
   Package,
-  PackageSearch,
-  Clock,
   PackageX,
-  AlertTriangle,
   UserCheck,
   FileBarChart,
   Bug,
@@ -16,10 +12,12 @@ import {
   ClipboardCheck,
   Users,
   Activity,
-  Bell,
   Smartphone,
   Settings,
   Truck,
+  Inbox,
+  Clock,
+  BarChart3,
   LucideIcon,
 } from 'lucide-react';
 
@@ -27,65 +25,93 @@ export interface DarkstoreNavItem {
   id: string;
   label: string;
   icon: LucideIcon;
+  badgeKey?: keyof DarkstoreNavBadgeKeys;
+  /** Legacy route ids that redirect to this item */
+  aliases?: string[];
 }
 
 export interface DarkstoreNavSection {
   category: string;
   items: DarkstoreNavItem[];
+  collapseDefault?: boolean;
 }
 
+export type DarkstoreNavBadgeKeys =
+  | 'liveOrders'
+  | 'exceptions'
+  | 'slaCritical'
+  | 'alerts'
+  | 'stockAlerts';
+
+/** Hub-based navigation — Command Center focused */
 export const DARKSTORE_NAV_SECTIONS: DarkstoreNavSection[] = [
   {
-    category: 'Store',
-    items: [{ id: 'overview', label: 'Store Overview', icon: LayoutDashboard }],
-  },
-  {
-    category: 'Orders',
+    category: 'Command Center',
     items: [
-      { id: 'liveorders', label: 'Live Orders', icon: List },
-      { id: 'cancelledorders', label: 'Cancelled Orders', icon: Ban },
+      { id: 'my-shift', label: 'My Shift', icon: UserCheck },
+      { id: 'overview', label: 'Store Overview', icon: LayoutDashboard },
+      { id: 'liveorders', label: 'Live Orders', icon: List, badgeKey: 'liveOrders' },
+      { id: 'exception-inbox', label: 'Exception Inbox', icon: Inbox, badgeKey: 'exceptions' },
+      { id: 'slamonitor', label: 'SLA Monitor', icon: Clock, badgeKey: 'slaCritical' },
     ],
   },
   {
-    category: 'Pick & Pack',
+    category: 'Fulfillment',
+    collapseDefault: true,
     items: [
-      { id: 'pickpackops', label: 'Pick & Pack Ops', icon: Package },
-      { id: 'livepickingmonitor', label: 'Live Picking Monitor', icon: PackageSearch },
-      { id: 'slamonitor', label: 'SLA Monitor', icon: Clock },
-      { id: 'missingitems', label: 'Missing Item Tracker', icon: PackageX },
-      { id: 'exceptionqueue', label: 'Exception Queue', icon: AlertTriangle },
+      {
+        id: 'fulfillment',
+        label: 'Fulfillment Floor',
+        icon: Package,
+        aliases: ['pickpackops', 'packing-station', 'livepickingmonitor', 'picklists', 'pickpack'],
+      },
       { id: 'livepickerboard', label: 'Live Picker Board', icon: UserCheck },
       { id: 'pickerperformance', label: 'Picker Performance', icon: FileBarChart },
+      { id: 'missingitems', label: 'Missing Item Tracker', icon: PackageX },
       { id: 'issues', label: 'Issue Management', icon: Bug },
     ],
   },
   {
-    category: 'Inventory & Logistics',
+    category: 'Inventory & Dispatch',
     items: [
-      { id: 'inventory', label: 'Inventory Mgmt', icon: Warehouse },
+      { id: 'inventory', label: 'Inventory Mgmt', icon: Warehouse, badgeKey: 'stockAlerts' },
       { id: 'inbound', label: 'Inbound Ops', icon: ArrowDownToLine },
       { id: 'outbound', label: 'Outbound Ops', icon: Send },
-      { id: 'replenishment', label: 'Replenishment', icon: Truck },
-      { id: 'replenishment-tracking', label: 'Replenishment tracking', icon: Truck },
+      { id: 'replenishment', label: 'Replenishment', icon: Truck, aliases: ['replenishment-tracking'] },
     ],
   },
   {
     category: 'People & Compliance',
     items: [
-      { id: 'qc', label: 'QC & Compliance', icon: ClipboardCheck },
       { id: 'staff', label: 'Staff & Shifts', icon: Users },
+      { id: 'qc', label: 'QC & Compliance', icon: ClipboardCheck },
       { id: 'health', label: 'Store Health', icon: Activity },
-      { id: 'escalations', label: 'Escalations', icon: AlertTriangle },
-      { id: 'alerts', label: 'Alerts', icon: Bell },
-      { id: 'ops-alerts', label: 'Operations Alerts', icon: AlertTriangle },
       { id: 'reports', label: 'Reports', icon: FileBarChart },
+      { id: 'ops-analytics', label: 'Ops Analytics', icon: BarChart3 },
     ],
   },
   {
-    category: 'System',
+    category: 'Store Systems',
     items: [
       { id: 'hsd', label: 'HSD Devices', icon: Smartphone },
-      { id: 'utilities', label: 'Utilities', icon: Settings },
+      { id: 'regional', label: 'Regional Command', icon: LayoutDashboard },
+      { id: 'store-settings', label: 'Store Settings', icon: Settings, aliases: ['utilities'] },
     ],
   },
 ];
+
+export const DARKSTORE_FAVORITE_DEFAULTS = ['overview', 'liveorders', 'exception-inbox', 'slamonitor', 'fulfillment'];
+
+/** Map legacy tab ids to canonical nav ids */
+export const DARKSTORE_TAB_ALIASES: Record<string, string> = DARKSTORE_NAV_SECTIONS.flatMap((s) =>
+  s.items.flatMap((item) => (item.aliases ?? []).map((alias) => [alias, item.id] as const))
+).reduce<Record<string, string>>((acc, [alias, id]) => {
+  acc[alias] = id;
+  return acc;
+}, {
+  cancelledorders: 'liveorders',
+  exceptionqueue: 'exception-inbox',
+  alerts: 'exception-inbox',
+  'ops-alerts': 'exception-inbox',
+  escalations: 'exception-inbox',
+});

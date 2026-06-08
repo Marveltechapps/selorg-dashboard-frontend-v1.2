@@ -16,9 +16,14 @@ import { TaskApprovals } from './screens/finance/TaskApprovals';
 import { UtilitiesTools } from './screens/finance/UtilitiesTools';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
 import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
+import { HubRequiredGuard } from './dashboard/HubRequiredGuard';
+import { FINANCE_TAB_ALIASES, FINANCE_TAB_IDS } from '../layouts/sidebar/financeNavigationConfig';
+import { resolveOpsTab } from '../layouts/sidebar/opsNavigationTypes';
 
 export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
-  const { activeTab, setActiveTab } = useDashboardNavigation('overview');
+  const { activeTab: rawTab, setActiveTab } = useDashboardNavigation('overview');
+  const activeTab = resolveOpsTab(rawTab, FINANCE_TAB_ALIASES);
+  const effectiveTab = (FINANCE_TAB_IDS as readonly string[]).includes(activeTab) ? activeTab : 'overview';
   const [analyticsView, setAnalyticsView] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -41,10 +46,13 @@ export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
   }, [setActiveTab]);
 
   useEffect(() => {
-    if (activeTab === 'monitoring' || activeTab === 'communication') {
-      setActiveTab('overview');
-    }
-  }, [activeTab, setActiveTab]);
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tab?: string };
+      if (detail?.tab) setActiveTab(resolveOpsTab(detail.tab, FINANCE_TAB_ALIASES));
+    };
+    window.addEventListener('finance:navigate', onNav);
+    return () => window.removeEventListener('finance:navigate', onNav);
+  }, [setActiveTab]);
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#212121] font-sans">
@@ -60,20 +68,22 @@ export function FinanceManagement({ onLogout }: { onLogout: () => void }) {
         <FinanceTopBar onMenuClick={() => setSidebarOpen(true)} />
 
         <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
-          <DashboardBreadcrumbs dashboard="finance" activeTab={activeTab} />
-            {activeTab === 'overview' && <FinanceOverview />}
-            {activeTab === 'customer-payments' && <CustomerPayments />}
-            {activeTab === 'vendor-payments' && <VendorPayments />}
-            {activeTab === 'rider-cash' && <RiderCashReconciliation />}
-            {activeTab === 'refunds' && <RefundsReturns />}
-            {activeTab === 'picker-payouts' && <PickerPayouts />}
-            {activeTab === 'reconciliation' && <ReconciliationAudits />}
-            {activeTab === 'ledger' && <LedgerAccounting />}
-            {activeTab === 'billing' && <BillingInvoicing />}
-            {activeTab === 'alerts' && <FinanceAlerts />}
-            {activeTab === 'analytics' && <FinanceAnalytics initialView={analyticsView} />}
-            {activeTab === 'approvals' && <TaskApprovals />}
-            {activeTab === 'utilities' && <UtilitiesTools />}
+          <DashboardBreadcrumbs dashboard="finance" activeTab={effectiveTab} />
+          <HubRequiredGuard title="Select a finance entity" requireStore={false}>
+            {effectiveTab === 'overview' && <FinanceOverview />}
+            {effectiveTab === 'customer-payments' && <CustomerPayments />}
+            {effectiveTab === 'vendor-payments' && <VendorPayments />}
+            {effectiveTab === 'rider-cash' && <RiderCashReconciliation />}
+            {effectiveTab === 'refunds' && <RefundsReturns />}
+            {effectiveTab === 'picker-payouts' && <PickerPayouts />}
+            {effectiveTab === 'reconciliation' && <ReconciliationAudits />}
+            {effectiveTab === 'ledger' && <LedgerAccounting />}
+            {effectiveTab === 'billing' && <BillingInvoicing />}
+            {effectiveTab === 'alerts' && <FinanceAlerts />}
+            {effectiveTab === 'analytics' && <FinanceAnalytics initialView={analyticsView} />}
+            {effectiveTab === 'approvals' && <TaskApprovals />}
+            {effectiveTab === 'utilities' && <UtilitiesTools />}
+          </HubRequiredGuard>
         </main>
       </div>
     </div>

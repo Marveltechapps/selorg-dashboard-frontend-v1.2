@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { stopModalPointerPropagation } from "@/components/ui/modalOverlayGuards";
 import { 
   Smartphone, Battery, Wifi, AlertTriangle, RefreshCw, Lock, 
@@ -7,38 +8,99 @@ import {
   Plus, X, Loader2, Users, ChevronLeft
 } from 'lucide-react';
 import { cn } from "../../lib/utils";
-import { PageHeader } from '../ui/page-header';
+import { DarkstoreScreenShell } from '../darkstore/DarkstoreScreenShell';
+import { DarkstoreTabBar } from '../darkstore/DarkstoreTabBar';
+import { MetricCard } from '../darkstore/MetricCard';
+import { StatusBadge } from '../darkstore/StatusBadge';
+import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import * as hsdApi from '../../api/hsd/hsdApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { HSDUserDetailsDrawer } from './darkstore/HSDUserDetailsDrawer';
+
+
+const HSD_TABS = ['fleet', 'users', 'live', 'issues', 'logs'] as const;
+type HsdTab = (typeof HSD_TABS)[number];
+
+function parseHsdTab(value: string | null): HsdTab {
+  if (value && (HSD_TABS as readonly string[]).includes(value)) {
+    return value as HsdTab;
+  }
+  return 'fleet';
+}
+
+function findHsdUserMatch(
+  list: hsdApi.HSDUserLoginRow[],
+  userId: string,
+  sessionId: string | null
+): hsdApi.HSDUserLoginRow | undefined {
+  if (sessionId) {
+    const bySession = list.find((u) => u.sessionId === sessionId);
+    if (bySession) return bySession;
+  }
+  return list.find((u) => u.userId === userId);
+}
+
+function resolveHsdStoreId(activeStoreId: string | null | undefined): string {
+  return activeStoreId?.trim() || '';
+}
 
 export function HSDManagement() {
-  const [activeTab, setActiveTab] = useState<'fleet' | 'live' | 'logs' | 'issues' | 'users'>('fleet');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = parseHsdTab(searchParams.get('tab'));
+  const activeTab =
+    searchParams.get('userId') && tabFromUrl !== 'users' ? 'users' : tabFromUrl;
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    const userId = searchParams.get('userId');
+
+    if (tab && (!userId || tab === 'users')) return;
+
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (userId) next.set('tab', 'users');
+      else if (!tab) next.set('tab', 'fleet');
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const changeHsdTab = useCallback((tab: HsdTab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      if (tab !== 'users') {
+        next.delete('userId');
+        next.delete('sessionId');
+      }
+      return next;
+    }, { replace: false });
+  }, [setSearchParams]);
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="HSD Device Management"
-        subtitle="Manage handheld fleet, monitor live scan sessions, and track hardware issues"
-        actions={
-          <button 
-            onClick={() => setShowRegisterModal(true)}
-            className="px-4 py-2 bg-[#16A34A] text-white font-medium rounded-lg hover:bg-[#15803D] flex items-center gap-2"
-          >
-            <Plus size={16} />
-            Register Device
-          </button>
-        }
+    <DarkstoreScreenShell
+      title="HSD Device Management"
+      subtitle="Manage handheld fleet, monitor live scan sessions, and track hardware issues"
+      actions={
+        <Button onClick={() => setShowRegisterModal(true)} className="gap-2">
+          <Plus size={16} />
+          Register Device
+        </Button>
+      }
+      toolbar={{ showConnection: true }}
+    >
+      <DarkstoreTabBar
+        active={activeTab}
+        onChange={(id) => changeHsdTab(id as HsdTab)}
+        tabs={[
+          { id: 'fleet', label: 'Fleet Overview', icon: Tablet },
+          { id: 'users', label: 'HSD User List', icon: Users },
+          { id: 'live', label: 'Live Sessions (Scan/QC)', icon: ScanLine },
+          { id: 'issues', label: 'Issue Tracker', icon: AlertTriangle },
+          { id: 'logs', label: 'HSD Logs', icon: FileText },
+        ]}
       />
-      {/* Tabs Navigation */}
-      <div className="flex items-center gap-1 border-b border-[#E0E0E0] mb-6 overflow-x-auto">
-        <TabButton id="fleet" label="Fleet Overview" icon={Tablet} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="users" label="HSD User List" icon={Users} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="live" label="Live Sessions (Scan/QC)" icon={ScanLine} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="issues" label="Issue Tracker" icon={AlertTriangle} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="logs" label="HSD Logs" icon={FileText} active={activeTab} onClick={setActiveTab} />
-      </div>
 
       {/* Main Content Area */}
       <div className="min-h-[500px]">
@@ -59,7 +121,7 @@ export function HSDManagement() {
           }}
         />
       )}
-    </div>
+    </DarkstoreScreenShell>
   );
 }
 
@@ -89,28 +151,28 @@ function RegisterDeviceModal({ onClose, onSuccess }: { onClose: () => void; onSu
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4" {...stopModalPointerPropagation}>
-        <div className="p-6 border-b border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
-          <h3 className="text-lg font-bold text-[#212121]">Register New Device</h3>
-          <button onClick={onClose} className="p-1 text-[#616161] hover:text-[#212121] rounded-lg">
+        <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-900">Register New Device</h3>
+          <button onClick={onClose} className="p-1 text-slate-600 hover:text-slate-900 rounded-lg">
             <X size={20} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Device ID</label>
+            <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Device ID</label>
             <input
               type="text"
               required
-              className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
               placeholder="e.g. HSD-010"
               value={formData.deviceId}
               onChange={e => setFormData({ ...formData, deviceId: e.target.value })}
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Device Type</label>
+            <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Device Type</label>
             <select
-              className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
               value={formData.deviceType}
               onChange={e => setFormData({ ...formData, deviceType: e.target.value })}
             >
@@ -120,22 +182,22 @@ function RegisterDeviceModal({ onClose, onSuccess }: { onClose: () => void; onSu
             </select>
           </div>
           <div>
-            <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Serial Number</label>
+            <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Serial Number</label>
             <input
               type="text"
               required
-              className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
               placeholder="e.g. SN-998877"
               value={formData.serialNumber}
               onChange={e => setFormData({ ...formData, serialNumber: e.target.value })}
             />
           </div>
           <div className="flex gap-3 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-[#E0E0E0] rounded-lg font-medium">Cancel</button>
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-slate-200 rounded-lg font-medium">Cancel</button>
             <button 
               type="submit" 
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-[#16A34A] text-white rounded-lg font-medium flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : 'Register'}
             </button>
@@ -146,28 +208,13 @@ function RegisterDeviceModal({ onClose, onSuccess }: { onClose: () => void; onSu
   );
 }
 
-function TabButton({ id, label, icon: Icon, active, onClick }: any) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      className={cn(
-        "flex items-center gap-2 px-5 py-3 text-sm font-bold transition-all border-b-2 whitespace-nowrap",
-        active === id 
-          ? "border-[#1677FF] text-[#1677FF] bg-[#F0F7FF]" 
-          : "border-transparent text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5]"
-      )}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
-  );
-}
-
 // --- Fleet Overview Tab ---
 
 function FleetOverview() {
   const [devices, setDevices] = useState<any[]>([]);
+  const [fleetSummary, setFleetSummary] = useState<hsdApi.FleetOverviewResponse['summary'] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigning, setAssigning] = useState(false);
@@ -176,7 +223,7 @@ function FleetOverview() {
   const [deviceHistory, setDeviceHistory] = useState<Map<string, any[]>>(new Map());
   const [loadingHistory, setLoadingHistory] = useState<Set<string>>(new Set());
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
+  const storeId = resolveHsdStoreId(activeStoreId);
   const [controlLoading, setControlLoading] = useState<string | null>(null);
   const isMounted = useRef(true);
 
@@ -197,38 +244,34 @@ function FleetOverview() {
   const loadFleetData = async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
+      setLoadError(null);
       const response = await hsdApi.getFleetOverview({ storeId });
-      if (isMounted.current) {
-        // Transform backend data to match frontend format
-        const transformedDevices = response.devices.map((device: any) => ({
-          id: device.deviceId,
-          user: device.assignedTo ? device.assignedTo.userName : '-',
-          userId: device.assignedTo?.userId || null,
-          status: device.status === 'online' ? 'Online' : 
-                  device.status === 'offline' ? 'Offline' :
-                  device.status === 'charging' ? 'Charging' : 'Error',
-          battery: device.battery || 0,
-          signal: device.signal === 'strong' ? 'Strong' :
-                  device.signal === 'good' ? 'Good' :
-                  device.signal === 'weak' ? 'Weak' : 
-                  device.signal === 'strong' ? 'Strong' : 'No Signal',
-          lastSync: formatLastSync(device.lastSync),
-          type: device.assignedTo?.userType || 'Spare',
-        }));
-        setDevices(transformedDevices);
-        if (!isSilent) {
-          toast.success('Fleet data refreshed');
-        }
-      }
+      if (!isMounted.current) return;
+      setFleetSummary(response.summary);
+      const transformedDevices = response.devices.map((device: any) => ({
+        id: device.deviceId,
+        user: device.assignedTo ? device.assignedTo.userName : '-',
+        userId: device.assignedTo?.userId || null,
+        status: device.status === 'online' ? 'Online' : 
+                device.status === 'offline' ? 'Offline' :
+                device.status === 'charging' ? 'Charging' : 'Error',
+        battery: device.battery || 0,
+        signal: device.signal === 'strong' ? 'Strong' :
+                device.signal === 'good' ? 'Good' :
+                device.signal === 'weak' ? 'Weak' : 
+                device.signal === 'strong' ? 'Strong' : 'No Signal',
+        lastSync: formatLastSync(device.lastSync),
+        type: device.assignedTo?.userType || 'Spare',
+      }));
+      setDevices(transformedDevices);
     } catch (error: any) {
       console.error('Failed to load fleet data:', error);
-      if (isMounted.current && !isSilent) {
-        toast.error('Failed to load fleet data');
-      }
+      if (!isMounted.current) return;
+      const message = error?.message || 'Failed to load fleet data';
+      setLoadError(message);
+      if (!isSilent) toast.error(message);
     } finally {
-      if (isMounted.current && !isSilent) {
-        setLoading(false);
-      }
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -391,18 +434,45 @@ function FleetOverview() {
   return (
     <div className="space-y-6">
        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <FleetStatCard title="Online Status" value="18/25" sub="Devices Active" icon={Wifi} color="bg-[#DCFCE7] text-[#16A34A]" />
-          <FleetStatCard title="Battery Health" value="4 Low" sub="< 20% Charge" icon={Battery} color="bg-[#FFF7ED] text-[#F59E0B]" />
-          <FleetStatCard title="Sync Latency" value="120ms" sub="Avg. Response" icon={RefreshCw} color="bg-[#E6F7FF] text-[#1677FF]" />
-          <FleetStatCard title="Device Errors" value="2" sub="Requires Action" icon={AlertTriangle} color="bg-[#FEE2E2] text-[#EF4444]" />
+          <MetricCard
+            label="Online Status"
+            value={fleetSummary ? `${fleetSummary.onlineDevices}/${fleetSummary.totalDevices}` : '0/0'}
+            icon={Wifi}
+            accent="success"
+            loading={loading}
+            footer={<p className="text-[10px] text-slate-400">Devices Active</p>}
+          />
+          <MetricCard
+            label="Battery Health"
+            value={fleetSummary ? `${fleetSummary.lowBatteryCount} Low` : '0 Low'}
+            icon={Battery}
+            accent="warning"
+            loading={loading}
+            footer={<p className="text-[10px] text-slate-400">&lt; 20% Charge</p>}
+          />
+          <MetricCard
+            label="Sync Latency"
+            value={fleetSummary ? `${fleetSummary.avgSyncLatency}ms` : '—'}
+            icon={RefreshCw}
+            loading={loading}
+            footer={<p className="text-[10px] text-slate-400">Avg. Response</p>}
+          />
+          <MetricCard
+            label="Device Errors"
+            value={fleetSummary ? fleetSummary.errorDevices : 0}
+            icon={AlertTriangle}
+            accent="danger"
+            loading={loading}
+            footer={<p className="text-[10px] text-slate-400">Requires Action</p>}
+          />
        </div>
 
-       <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-          <h3 className="font-bold text-[#212121]">
+       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-bold text-slate-900">
             Device Inventory
             {selectedDevices.size > 0 && (
-              <span className="ml-2 text-xs font-normal text-[#757575]">
+              <span className="ml-2 text-xs font-normal text-slate-500">
                 ({selectedDevices.size} selected)
               </span>
             )}
@@ -411,14 +481,14 @@ function FleetOverview() {
              <button 
                onClick={handleResetSelected}
                disabled={selectedDevices.size === 0}
-               className="px-3 py-1.5 border border-[#E0E0E0] rounded text-xs font-bold bg-white hover:bg-[#F5F5F5] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+               className="px-3 py-1.5 border border-slate-200 rounded text-xs font-bold bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
              >
                 <RotateCcw size={14} /> Reset Selected
              </button>
              <button 
                onClick={() => setShowAssignModal(true)}
                disabled={selectedDevices.size === 0}
-               className="px-3 py-1.5 bg-[#1677FF] text-white rounded text-xs font-bold hover:bg-[#409EFF] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+               className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
              >
                 <UserPlus size={14} /> Assign Device
              </button>
@@ -427,18 +497,35 @@ function FleetOverview() {
         
         {loading && devices.length === 0 ? (
           <div className="flex items-center justify-center h-64">
-            <RefreshCw size={24} className="animate-spin text-[#1677FF]" />
+            <RefreshCw size={24} className="animate-spin text-blue-600" />
+          </div>
+        ) : loadError && devices.length === 0 ? (
+          <div className="p-12 text-center">
+            <p className="text-sm text-red-500 mb-3">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadFleetData()}
+              className="text-xs font-bold text-blue-600 underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : devices.length === 0 ? (
+          <div className="p-12 text-center text-slate-400">
+            <Tablet size={32} className="mx-auto mb-2 opacity-40" />
+            <p className="text-sm font-medium text-slate-600">No HSD devices registered</p>
+            <p className="text-xs mt-1">Register a device to start tracking fleet status for {storeId}.</p>
           </div>
         ) : (
         <table className="w-full text-left text-sm">
-          <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+          <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
             <tr>
               <th className="px-6 py-3 font-medium">
                 <input
                   type="checkbox"
                   checked={selectedDevices.size === devices.length && devices.length > 0}
                   onChange={handleSelectAll}
-                  className="w-4 h-4 text-[#1677FF] border-[#E0E0E0] rounded focus:ring-[#1677FF]"
+                  className="w-4 h-4 text-blue-600 border-slate-200 rounded focus:ring-blue-600"
                 />
               </th>
               <th className="px-6 py-3 font-medium">Device ID</th>
@@ -450,66 +537,58 @@ function FleetOverview() {
               <th className="px-6 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F0F0F0]">
+          <tbody className="divide-y divide-slate-100">
             {devices.map((device) => (
               <tr key={device.id} className={cn(
-                "hover:bg-[#F9FAFB] transition-colors",
-                selectedDevices.has(device.id) && "bg-[#F0F7FF]"
+                "hover:bg-slate-50 transition-colors",
+                selectedDevices.has(device.id) && "bg-blue-50"
               )}>
                 <td className="px-6 py-4">
                   <input
                     type="checkbox"
                     checked={selectedDevices.has(device.id)}
                     onChange={() => handleToggleSelection(device.id)}
-                    className="w-4 h-4 text-[#1677FF] border-[#E0E0E0] rounded focus:ring-[#1677FF]"
+                    className="w-4 h-4 text-blue-600 border-slate-200 rounded focus:ring-blue-600"
                   />
                 </td>
-                <td className="px-6 py-4 font-mono font-medium text-[#212121]">{device.id}</td>
+                <td className="px-6 py-4 font-mono font-medium text-slate-900">{device.id}</td>
                 <td className="px-6 py-4">
                   {device.user !== '-' ? (
                     <div className="flex items-center gap-2">
-                       <span className="w-6 h-6 rounded-full bg-[#E0E7FF] text-[#4F46E5] flex items-center justify-center text-xs font-bold">
+                       <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
                          {device.user.charAt(0)}
                        </span>
                        <div>
-                          <div className="text-[#212121] font-medium text-xs">{device.user}</div>
-                          <div className="text-[10px] text-[#9E9E9E]">{device.type}</div>
+                          <div className="text-slate-900 font-medium text-xs">{device.user}</div>
+                          <div className="text-[10px] text-slate-400">{device.type}</div>
                        </div>
                     </div>
                   ) : (
-                    <span className="text-[#9E9E9E] italic text-xs">Unassigned</span>
+                    <span className="text-slate-400 italic text-xs">Unassigned</span>
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <span className={cn(
-                    "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                    device.status === 'Online' ? "bg-[#DCFCE7] text-[#16A34A]" :
-                    device.status === 'Charging' ? "bg-[#E0F2FE] text-[#0284C7]" :
-                    device.status === 'Error' ? "bg-[#FEE2E2] text-[#EF4444]" :
-                    "bg-[#F3F4F6] text-[#4B5563]"
-                  )}>
-                    {device.status}
-                  </span>
+                  <StatusBadge variant="workflow" status={device.status} />
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <Battery size={16} className={cn(device.battery < 20 ? "text-[#EF4444]" : "text-[#16A34A]")} />
-                    <span className="text-xs font-bold text-[#616161]">{device.battery}%</span>
+                    <Battery size={16} className={cn(device.battery < 20 ? "text-red-500" : "text-emerald-600")} />
+                    <span className="text-xs font-bold text-slate-600">{device.battery}%</span>
                   </div>
                 </td>
                 <td className="px-6 py-4">
                    <Wifi size={16} className={cn(
-                      device.signal === 'Strong' ? "text-[#1677FF]" : 
-                      device.signal === 'No Signal' ? "text-[#E0E0E0]" : "text-[#F59E0B]"
+                      device.signal === 'Strong' ? "text-blue-600" : 
+                      device.signal === 'No Signal' ? "text-slate-200" : "text-amber-500"
                    )} />
                 </td>
-                <td className="px-6 py-4 text-[#616161] text-xs">{device.lastSync}</td>
+                <td className="px-6 py-4 text-slate-600 text-xs">{device.lastSync}</td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
                   <button 
                     onClick={() => handleToggleHistory(device.id)}
                     className={cn(
-                      "p-1.5 rounded border border-[#E0E0E0] transition-colors",
-                      expandedHistory.has(device.id) ? "bg-[#1677FF] text-white" : "text-[#616161] hover:bg-[#F5F5F5]"
+                      "p-1.5 rounded border border-slate-200 transition-colors",
+                      expandedHistory.has(device.id) ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"
                     )}
                     title="View History"
                   >
@@ -518,7 +597,7 @@ function FleetOverview() {
                   <button 
                     onClick={() => handleDeviceControl(device.id, 'lock')}
                     disabled={controlLoading === `${device.id}-lock`}
-                    className="p-1.5 text-[#616161] hover:bg-[#F5F5F5] rounded border border-[#E0E0E0] disabled:opacity-50" 
+                    className="p-1.5 text-slate-600 hover:bg-slate-100 rounded border border-slate-200 disabled:opacity-50" 
                     title="Lock Device"
                   >
                     {controlLoading === `${device.id}-lock` ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
@@ -526,7 +605,7 @@ function FleetOverview() {
                   <button 
                     onClick={() => handleDeviceControl(device.id, 'reboot')}
                     disabled={controlLoading === `${device.id}-reboot`}
-                    className="p-1.5 text-[#616161] hover:bg-[#F5F5F5] rounded border border-[#E0E0E0] disabled:opacity-50" 
+                    className="p-1.5 text-slate-600 hover:bg-slate-100 rounded border border-slate-200 disabled:opacity-50" 
                     title="Reboot"
                   >
                     {controlLoading === `${device.id}-reboot` ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -535,21 +614,21 @@ function FleetOverview() {
               </tr>
             ))}
             {devices.map((device) => expandedHistory.has(device.id) && (
-              <tr key={`${device.id}-history`} className="bg-[#FAFAFA]">
+              <tr key={`${device.id}-history`} className="bg-slate-50">
                 <td colSpan={8} className="px-10 py-4">
-                  <div className="border-l-2 border-[#1677FF] pl-4 py-2">
-                    <h4 className="text-xs font-bold text-[#212121] mb-2 uppercase tracking-wider">Device History: {device.id}</h4>
+                  <div className="border-l-2 border-blue-600 pl-4 py-2">
+                    <h4 className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wider">Device History: {device.id}</h4>
                     {loadingHistory.has(device.id) ? (
-                      <div className="flex items-center gap-2 text-xs text-[#757575]">
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
                         <Loader2 size={12} className="animate-spin" /> Loading history...
                       </div>
                     ) : !deviceHistory.get(device.id) || deviceHistory.get(device.id)?.length === 0 ? (
-                      <div className="text-xs text-[#9E9E9E]">No history recorded for this device</div>
+                      <div className="text-xs text-slate-400">No history recorded for this device</div>
                     ) : (
                       <div className="space-y-3">
                         {deviceHistory.get(device.id)?.map((item: any, idx: number) => (
                           <div key={idx} className="flex gap-4 items-start">
-                            <div className="min-w-[120px] text-[10px] font-mono text-[#9E9E9E]">
+                            <div className="min-w-[120px] text-[10px] font-mono text-slate-400">
                               {new Date(item.performed_at).toLocaleString()}
                             </div>
                             <div className="flex-1">
@@ -557,13 +636,13 @@ function FleetOverview() {
                                 <span className={cn(
                                   "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase",
                                   item.action === 'ASSIGN' ? "bg-blue-100 text-blue-700" :
-                                  item.action === 'UNASSIGN' ? "bg-gray-100 text-gray-700" :
+                                  item.action === 'UNASSIGN' ? "bg-slate-100 text-slate-700" :
                                   item.action === 'RESET' ? "bg-orange-100 text-orange-700" :
                                   "bg-purple-100 text-purple-700"
                                 )}>
                                   {item.action}
                                 </span>
-                                <span className="text-xs text-[#212121] font-medium">
+                                <span className="text-xs text-slate-900 font-medium">
                                  {item.action === 'ASSIGN' ? `Assigned to ${item.metadata?.userName}` :
                                   item.action === 'UNASSIGN' ? `Unassigned (Reason: ${item.metadata?.reason})` :
                                   item.action === 'RESET' ? `Device reset (Reason: ${item.metadata?.reason})` :
@@ -573,7 +652,7 @@ function FleetOverview() {
                                   item.action === 'CLEAR_CACHE' ? 'Device cache cleared' : item.action}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-[#757575] mt-0.5">
+                              <div className="text-[10px] text-slate-500 mt-0.5">
                                 Performed by: {item.performed_by}
                               </div>
                             </div>
@@ -631,11 +710,11 @@ function AssignDeviceModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4" {...stopModalPointerPropagation}>
-        <div className="p-6 border-b border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
-          <h3 className="text-lg font-bold text-[#212121]">Assign Device{selectedCount > 1 ? 's' : ''}</h3>
+        <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-900">Assign Device{selectedCount > 1 ? 's' : ''}</h3>
           <button
             onClick={onClose}
-            className="p-1 text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5] rounded-lg transition-colors"
+            className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X size={20} />
           </button>
@@ -643,7 +722,7 @@ function AssignDeviceModal({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">
+            <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">
               User ID
             </label>
             <input
@@ -651,13 +730,13 @@ function AssignDeviceModal({
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
               placeholder="e.g. USR-001"
-              className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:border-[#1677FF] focus:outline-none"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-blue-600 focus:outline-none"
               required
             />
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">
+            <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">
               User Name
             </label>
             <input
@@ -665,19 +744,19 @@ function AssignDeviceModal({
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               placeholder="e.g. John Doe"
-              className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:border-[#1677FF] focus:outline-none"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-blue-600 focus:outline-none"
               required
             />
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">
+            <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">
               User Type
             </label>
             <select
               value={userType}
               onChange={(e) => setUserType(e.target.value as 'Picker' | 'Packer' | 'Rider')}
-              className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:border-[#1677FF] focus:outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-blue-600 focus:outline-none bg-white"
             >
               <option value="Picker">Picker</option>
               <option value="Packer">Packer</option>
@@ -685,7 +764,7 @@ function AssignDeviceModal({
             </select>
           </div>
 
-          <div className="bg-[#F0F7FF] p-3 rounded-lg text-xs text-[#1677FF]">
+          <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-600">
             Assigning {selectedCount} device{selectedCount > 1 ? 's' : ''} to {userName || 'user'}
           </div>
 
@@ -693,7 +772,7 @@ function AssignDeviceModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5]"
+              className="flex-1 px-4 py-2 border border-slate-200 text-slate-900 font-medium rounded-lg hover:bg-slate-100"
             >
               Cancel
             </button>
@@ -701,7 +780,7 @@ function AssignDeviceModal({
               type="submit"
               disabled={assigning || !userId || !userName}
               className={cn(
-                "flex-1 px-4 py-2 bg-[#1677FF] text-white font-medium rounded-lg hover:bg-[#409EFF] flex items-center justify-center gap-2",
+                "flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-500 flex items-center justify-center gap-2",
                 (assigning || !userId || !userName) && "opacity-50 cursor-not-allowed"
               )}
             >
@@ -724,21 +803,6 @@ function AssignDeviceModal({
   );
 }
 
-function FleetStatCard({ title, value, sub, icon: Icon, color }: any) {
-   return (
-      <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm flex items-center justify-between">
-         <div>
-            <p className="text-[#757575] text-xs font-bold uppercase tracking-wider">{title}</p>
-            <p className="text-2xl font-bold text-[#212121] mt-1">{value}</p>
-            <p className="text-[10px] text-[#9E9E9E] mt-0.5">{sub}</p>
-         </div>
-         <div className={cn("p-3 rounded-lg", color)}>
-            <Icon size={20} />
-         </div>
-      </div>
-   )
-}
-
 // --- Live Sessions Tab (Scan & Pick Simulator) ---
 
 function LiveSessions() {
@@ -747,7 +811,7 @@ function LiveSessions() {
    const [loading, setLoading] = useState(true);
    const [actionLoading, setActionLoading] = useState<string | null>(null);
    const { activeStoreId } = useAuth();
-   const storeId = activeStoreId || '';
+   const storeId = resolveHsdStoreId(activeStoreId);
    const isMounted = useRef(true);
 
    useEffect(() => {
@@ -796,18 +860,18 @@ function LiveSessions() {
    return (
       <div className="grid grid-cols-12 gap-6 h-[600px]">
          {/* Sidebar: Active Sessions */}
-         <div className="col-span-12 md:col-span-4 bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]">
-               <h3 className="font-bold text-[#212121]">Active Scan Sessions</h3>
+         <div className="col-span-12 md:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-slate-50">
+               <h3 className="font-bold text-slate-900">Active Scan Sessions</h3>
             </div>
             <div className="flex-1 overflow-y-auto">
                {loading && sessions.length === 0 ? (
-                  <div className="p-10 flex flex-col items-center justify-center text-[#9E9E9E]">
+                  <div className="p-10 flex flex-col items-center justify-center text-slate-400">
                      <Loader2 className="animate-spin mb-2" size={24} />
                      <p className="text-xs">Loading sessions...</p>
                   </div>
                ) : sessions.length === 0 ? (
-                  <div className="p-10 text-center text-[#9E9E9E]">
+                  <div className="p-10 text-center text-slate-400">
                      <p className="text-xs">No active sessions</p>
                   </div>
                ) : (
@@ -816,16 +880,16 @@ function LiveSessions() {
                         key={i} 
                         onClick={() => setSelectedDeviceId(session.deviceId)}
                         className={cn(
-                           "p-4 border-b border-[#F0F0F0] cursor-pointer hover:bg-[#F5F5F5] transition-colors",
-                           selectedDeviceId === session.deviceId ? "bg-[#F0F7FF] border-l-4 border-l-[#1677FF]" : ""
+                           "p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors",
+                           selectedDeviceId === session.deviceId ? "bg-blue-50 border-l-4 border-l-blue-600" : ""
                         )}
                      >
                         <div className="flex justify-between items-start mb-1">
-                           <span className="font-bold text-[#212121] text-sm">{session.deviceId}</span>
-                           <span className="text-[10px] bg-[#E6F7FF] text-[#1677FF] px-1.5 py-0.5 rounded font-bold uppercase">{session.currentStatus}</span>
+                           <span className="font-bold text-slate-900 text-sm">{session.deviceId}</span>
+                           <StatusBadge variant="workflow" status={session.currentStatus} />
                         </div>
-                        <div className="text-xs text-[#616161] font-medium mb-1">{session.userName}</div>
-                        <div className="flex items-center gap-1 text-[10px] text-[#9E9E9E]">
+                        <div className="text-xs text-slate-600 font-medium mb-1">{session.userName}</div>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
                            <Activity size={12} /> {session.taskType.toUpperCase()} #{session.taskId}
                         </div>
                      </div>
@@ -836,28 +900,26 @@ function LiveSessions() {
 
          {/* Main: Device Simulator / Details */}
          <div className="col-span-12 md:col-span-8 space-y-6">
-            <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                {selectedSession ? (
                   <>
                      <div className="flex justify-between items-center mb-6">
                         <div>
-                           <h3 className="font-bold text-[#212121] text-lg">Live View: {selectedSession.deviceId}</h3>
-                           <p className="text-xs text-[#757575]">Mirroring screen for user: {selectedSession.userName}</p>
+                           <h3 className="font-bold text-slate-900 text-lg">Live View: {selectedSession.deviceId}</h3>
+                           <p className="text-xs text-slate-500">Mirroring screen for user: {selectedSession.userName}</p>
                         </div>
                         <div className="flex gap-2">
-                           <span className="flex items-center gap-1 text-xs font-bold text-[#16A34A] bg-[#DCFCE7] px-2 py-1 rounded">
-                              <Wifi size={12} /> Online
-                           </span>
-                           <span className="flex items-center gap-1 text-xs font-bold text-[#212121] bg-[#F5F5F5] px-2 py-1 rounded">
+                           <StatusBadge variant="workflow" status="online" />
+                           <span className="flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">
                               <Battery size={12} /> 85%
                            </span>
                         </div>
                      </div>
 
                      {/* Simulated Screen Interface */}
-                     <div className="bg-[#111827] rounded-xl p-4 max-w-sm mx-auto shadow-xl border-4 border-[#374151]">
+                     <div className="bg-slate-900 rounded-xl p-4 max-w-sm mx-auto shadow-xl border-4 border-slate-700">
                         {/* Status Bar */}
-                        <div className="flex justify-between items-center text-[#9CA3AF] text-[10px] mb-4 px-2">
+                        <div className="flex justify-between items-center text-slate-400 text-[10px] mb-4 px-2">
                            <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                            <div className="flex gap-1">
                               <Wifi size={10} />
@@ -866,19 +928,19 @@ function LiveSessions() {
                         </div>
 
                         {/* App Content */}
-                        <div className="bg-[#1F2937] rounded-lg p-4 min-h-[400px] flex flex-col text-white">
+                        <div className="bg-slate-800 rounded-lg p-4 min-h-[400px] flex flex-col text-white">
                            <div className="flex items-center justify-between mb-4">
-                              <span className="text-xs text-gray-400">Task #{selectedSession.taskId}</span>
-                              <span className="text-xs font-bold text-[#34D399]">{selectedSession.itemsCompleted}/{selectedSession.itemsTotal} Items</span>
+                              <span className="text-xs text-slate-400">Task #{selectedSession.taskId}</span>
+                              <span className="text-xs font-bold text-emerald-400">{selectedSession.itemsCompleted}/{selectedSession.itemsTotal} Items</span>
                            </div>
                            
                            <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
                               <div className="w-24 h-24 bg-white/10 rounded-lg flex items-center justify-center mb-2">
-                                 <ScanLine size={48} className="text-[#60A5FA] animate-pulse" />
+                                 <ScanLine size={48} className="text-blue-400 animate-pulse" />
                               </div>
                               <div>
                                  <h4 className="font-bold text-lg">{selectedSession.currentStatus}</h4>
-                                 <p className="text-sm text-gray-400">Current Zone: {selectedSession.zone || 'N/A'}</p>
+                                 <p className="text-sm text-slate-400">Current Zone: {selectedSession.zone || 'N/A'}</p>
                               </div>
                            </div>
 
@@ -886,14 +948,14 @@ function LiveSessions() {
                               <button 
                                  onClick={() => handleSessionAction('confirm_quantity')}
                                  disabled={actionLoading !== null}
-                                 className="w-full py-3 bg-[#2563EB] rounded font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1D4ED8] transition-colors"
+                                 className="w-full py-3 bg-blue-600 rounded font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
                               >
                                  {actionLoading === 'confirm_quantity' ? <Loader2 size={16} className="animate-spin" /> : 'Confirm Quantity (1)'}
                               </button>
                               <button 
                                  onClick={() => handleSessionAction('report_issue')}
                                  disabled={actionLoading !== null}
-                                 className="w-full py-3 bg-[#374151] rounded font-bold text-sm text-gray-300 flex items-center justify-center gap-2 hover:bg-[#4B5563] transition-colors"
+                                 className="w-full py-3 bg-slate-700 rounded font-bold text-sm text-slate-300 flex items-center justify-center gap-2 hover:bg-slate-600 transition-colors"
                               >
                                  {actionLoading === 'report_issue' ? <Loader2 size={16} className="animate-spin" /> : 'Report Issue'}
                               </button>
@@ -902,7 +964,7 @@ function LiveSessions() {
                      </div>
                   </>
                ) : (
-                  <div className="h-full flex items-center justify-center text-[#9E9E9E] py-20">
+                  <div className="h-full flex items-center justify-center text-slate-400 py-20">
                      <p>Select a session to view live simulator</p>
                   </div>
                )}
@@ -937,23 +999,23 @@ function DeviceActionsLog({ deviceId }: { deviceId: string }) {
    };
 
    return (
-      <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm">
-         <h4 className="font-bold text-[#212121] text-sm mb-3">Recent Device Actions</h4>
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+         <h4 className="font-bold text-slate-900 text-sm mb-3">Recent Device Actions</h4>
          <div className="space-y-2">
             {loading && actions.length === 0 ? (
-               <p className="text-xs text-[#9E9E9E]">Loading...</p>
+               <p className="text-xs text-slate-400">Loading...</p>
             ) : actions.length === 0 ? (
-               <p className="text-xs text-[#9E9E9E]">No recent actions</p>
+               <p className="text-xs text-slate-400">No recent actions</p>
             ) : (
                actions.map((log, i) => (
-                  <div key={i} className="flex items-center gap-3 text-xs p-2 border-b border-[#F0F0F0] last:border-0">
-                     <span className="font-mono text-[#9E9E9E]">{new Date(log.timestamp).toLocaleTimeString([], { hour12: false })}</span>
+                  <div key={i} className="flex items-center gap-3 text-xs p-2 border-b border-slate-100 last:border-0">
+                     <span className="font-mono text-slate-400">{new Date(log.timestamp).toLocaleTimeString([], { hour12: false })}</span>
                      <span className={cn(
                         "w-2 h-2 rounded-full",
-                        log.result === 'success' ? "bg-[#16A34A]" : 
-                        log.result === 'error' ? "bg-[#EF4444]" : "bg-[#1677FF]"
+                        log.result === 'success' ? "bg-emerald-600" : 
+                        log.result === 'error' ? "bg-red-500" : "bg-blue-600"
                      )} />
-                     <span className="text-[#212121]">{log.details}</span>
+                     <span className="text-slate-900">{log.details}</span>
                   </div>
                ))
             )}
@@ -972,7 +1034,7 @@ function IssueTracker() {
    const [showReportModal, setShowReportModal] = useState(false);
    const [controlLoading, setControlLoading] = useState<string | null>(null);
    const { activeStoreId } = useAuth();
-   const storeId = activeStoreId || '';
+   const storeId = resolveHsdStoreId(activeStoreId);
    const isMounted = useRef(true);
 
    useEffect(() => {
@@ -1003,8 +1065,12 @@ function IssueTracker() {
       try {
          setControlLoading(action);
          // Apply to all devices or a specific one? For now, let's assume global or prompt
-         // Production usually applies to a selected device, but let's use a mock deviceId if none selected
-         const deviceId = issues[0]?.deviceId || 'SYSTEM';
+         // Require a device from the issue list before troubleshooting
+         const deviceId = issues[0]?.deviceId;
+         if (!deviceId) {
+           toast.error('Select a device before troubleshooting');
+           return;
+         }
          await hsdApi.deviceControl(deviceId, { action, reason: 'Quick troubleshooting' });
          toast.success(`✅ ${action === 'restart_app' ? 'App Service Restarted' : 'Cache Cleared'} successfully`);
       } catch (error: any) {
@@ -1038,29 +1104,29 @@ function IssueTracker() {
 
    return (
       <div className="grid grid-cols-12 gap-6 h-[600px]">
-         <div className="col-span-12 md:col-span-8 bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-               <h3 className="font-bold text-[#212121]">Active Issues</h3>
+         <div className="col-span-12 md:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+               <h3 className="font-bold text-slate-900">Active Issues</h3>
                <button 
                   onClick={() => setShowReportModal(true)}
-                  className="px-3 py-1.5 bg-[#EF4444] text-white rounded text-xs font-bold hover:bg-[#DC2626] flex items-center gap-2"
+                  className="px-3 py-1.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600 flex items-center gap-2"
                >
                   <AlertTriangle size={14} /> Report Fault
                </button>
             </div>
             <div className="flex-1 overflow-auto">
                {loading && issues.length === 0 ? (
-                  <div className="p-20 flex flex-col items-center justify-center text-[#9E9E9E]">
+                  <div className="p-20 flex flex-col items-center justify-center text-slate-400">
                      <Loader2 className="animate-spin mb-2" size={24} />
                      <p className="text-xs">Loading issues...</p>
                   </div>
                ) : issues.length === 0 ? (
-                  <div className="p-20 text-center text-[#9E9E9E]">
+                  <div className="p-20 text-center text-slate-400">
                      <p className="text-xs">No active issues found</p>
                   </div>
                ) : (
                   <table className="w-full text-left text-sm">
-                     <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+                     <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                         <tr>
                            <th className="px-4 py-3 font-medium">Ticket ID</th>
                            <th className="px-4 py-3 font-medium">Device</th>
@@ -1070,26 +1136,20 @@ function IssueTracker() {
                            <th className="px-4 py-3 font-medium">Actions</th>
                         </tr>
                      </thead>
-                     <tbody className="divide-y divide-[#F0F0F0]">
+                     <tbody className="divide-y divide-slate-100">
                         {issues.map((ticket, i) => (
-                           <tr key={i} className="hover:bg-[#F9FAFB]">
-                              <td className="px-4 py-3 text-[#616161] font-mono text-xs">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 font-bold text-[#212121]">{ticket.deviceId}</td>
-                              <td className="px-4 py-3 text-[#212121] capitalize">{ticket.issueType}</td>
-                              <td className="px-4 py-3 text-[#616161] max-w-[200px] truncate">{ticket.description}</td>
+                           <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-4 py-3 text-slate-600 font-mono text-xs">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 font-bold text-slate-900">{ticket.deviceId}</td>
+                              <td className="px-4 py-3 text-slate-900 capitalize">{ticket.issueType}</td>
+                              <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{ticket.description}</td>
                               <td className="px-4 py-3">
-                                 <span className={cn(
-                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                    ticket.status === 'open' ? "bg-[#FEE2E2] text-[#EF4444]" : 
-                                    ticket.status === 'resolved' ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#FEF3C7] text-[#D97706]"
-                                 )}>
-                                    {ticket.status}
-                                 </span>
+                                 <StatusBadge variant="workflow" status={ticket.status} />
                               </td>
                               <td className="px-4 py-3">
                                  <button
                                     onClick={() => { setSelectedIssue(ticket); setShowManageModal(true); }}
-                                    className="text-[#1677FF] text-xs font-bold cursor-pointer hover:underline"
+                                    className="text-blue-600 text-xs font-bold cursor-pointer hover:underline"
                                   >
                                     Manage
                                  </button>
@@ -1106,65 +1166,65 @@ function IssueTracker() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4 p-6" {...stopModalPointerPropagation}>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-[#212121]">Manage Issue</h3>
-                  <button onClick={() => { setShowManageModal(false); setSelectedIssue(null); }} className="p-1 text-[#616161] hover:text-[#212121] rounded-lg"><X size={20} /></button>
+                  <h3 className="text-lg font-bold text-slate-900">Manage Issue</h3>
+                  <button onClick={() => { setShowManageModal(false); setSelectedIssue(null); }} className="p-1 text-slate-600 hover:text-slate-900 rounded-lg"><X size={20} /></button>
                 </div>
                 <div className="space-y-2 text-sm mb-6">
-                  <p><span className="font-bold text-[#757575]">Ticket:</span> {selectedIssue.ticketId}</p>
-                  <p><span className="font-bold text-[#757575]">Device:</span> {selectedIssue.deviceId}</p>
-                  <p><span className="font-bold text-[#757575]">Type:</span> {selectedIssue.issueType}</p>
-                  <p><span className="font-bold text-[#757575]">Description:</span> {selectedIssue.description}</p>
-                  <p><span className="font-bold text-[#757575]">Status:</span> {selectedIssue.status}</p>
+                  <p><span className="font-bold text-slate-500">Ticket:</span> {selectedIssue.ticketId}</p>
+                  <p><span className="font-bold text-slate-500">Device:</span> {selectedIssue.deviceId}</p>
+                  <p><span className="font-bold text-slate-500">Type:</span> {selectedIssue.issueType}</p>
+                  <p><span className="font-bold text-slate-500">Description:</span> {selectedIssue.description}</p>
+                  <p><span className="font-bold text-slate-500">Status:</span> {selectedIssue.status}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { toast.success('Action sent to device'); setShowManageModal(false); setSelectedIssue(null); }} className="flex-1 px-3 py-2 bg-[#1677FF] text-white rounded-lg text-xs font-bold">Restart App</button>
-                  <button onClick={() => { toast.success('Cache clear requested'); setShowManageModal(false); setSelectedIssue(null); }} className="flex-1 px-3 py-2 border border-[#E0E0E0] rounded-lg text-xs font-bold">Clear Cache</button>
-                  <button onClick={() => { setShowManageModal(false); setSelectedIssue(null); }} className="px-3 py-2 border border-[#E0E0E0] rounded-lg text-xs font-bold">Close</button>
+                  <button onClick={() => { toast.success('Action sent to device'); setShowManageModal(false); setSelectedIssue(null); }} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold">Restart App</button>
+                  <button onClick={() => { toast.success('Cache clear requested'); setShowManageModal(false); setSelectedIssue(null); }} className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">Clear Cache</button>
+                  <button onClick={() => { setShowManageModal(false); setSelectedIssue(null); }} className="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">Close</button>
                 </div>
               </div>
             </div>
          )}
 
          <div className="col-span-12 md:col-span-4 space-y-6">
-            <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
-               <h3 className="font-bold text-[#212121] mb-4">Quick Troubleshooting</h3>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+               <h3 className="font-bold text-slate-900 mb-4">Quick Troubleshooting</h3>
                <div className="space-y-2">
                   <button 
                      onClick={() => handleTroubleshooting('restart_app')}
                      disabled={controlLoading !== null}
-                     className="w-full flex items-center justify-between p-3 border border-[#E0E0E0] rounded-lg hover:bg-[#F5F5F5] transition-colors text-left disabled:opacity-50"
+                     className="w-full flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors text-left disabled:opacity-50"
                   >
                      <div>
-                        <div className="text-sm font-bold text-[#212121]">Restart App Service</div>
-                        <div className="text-xs text-[#757575]">Fixes most crash loops</div>
+                        <div className="text-sm font-bold text-slate-900">Restart App Service</div>
+                        <div className="text-xs text-slate-500">Fixes most crash loops</div>
                      </div>
-                     {controlLoading === 'restart_app' ? <Loader2 size={16} className="animate-spin text-[#1677FF]" /> : <RotateCcw size={16} className="text-[#616161]" />}
+                     {controlLoading === 'restart_app' ? <Loader2 size={16} className="animate-spin text-blue-600" /> : <RotateCcw size={16} className="text-slate-600" />}
                   </button>
                   <button 
                      onClick={() => handleTroubleshooting('clear_cache')}
                      disabled={controlLoading !== null}
-                     className="w-full flex items-center justify-between p-3 border border-[#E0E0E0] rounded-lg hover:bg-[#F5F5F5] transition-colors text-left disabled:opacity-50"
+                     className="w-full flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors text-left disabled:opacity-50"
                   >
                      <div>
-                        <div className="text-sm font-bold text-[#212121]">Clear Cache</div>
-                        <div className="text-xs text-[#757575]">Free up storage space</div>
+                        <div className="text-sm font-bold text-slate-900">Clear Cache</div>
+                        <div className="text-xs text-slate-500">Free up storage space</div>
                      </div>
-                     {controlLoading === 'clear_cache' ? <Loader2 size={16} className="animate-spin text-[#1677FF]" /> : <RefreshCw size={16} className="text-[#616161]" />}
+                     {controlLoading === 'clear_cache' ? <Loader2 size={16} className="animate-spin text-blue-600" /> : <RefreshCw size={16} className="text-slate-600" />}
                   </button>
                </div>
             </div>
             
-            <div className="bg-[#FFF7ED] p-4 rounded-xl border border-[#FED7AA] shadow-sm">
-               <h3 className="font-bold text-[#C2410C] text-sm flex items-center gap-2 mb-2">
+            <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 shadow-sm">
+               <h3 className="font-bold text-orange-700 text-sm flex items-center gap-2 mb-2">
                   <AlertTriangle size={16} /> Replacement Request
                </h3>
-               <p className="text-xs text-[#9A3412] mb-3">
+               <p className="text-xs text-orange-800 mb-3">
                   {issues.filter(i => i.issueType === 'hardware' && i.status !== 'resolved').length} devices marked as "Hardware" issues need replacement units from HQ.
                </p>
                <button 
                   onClick={handleRequisition}
                   disabled={controlLoading === 'requisition'}
-                  className="text-xs font-bold text-[#C2410C] underline hover:text-[#7C2D12] disabled:opacity-50 flex items-center gap-2"
+                  className="text-xs font-bold text-orange-700 underline hover:text-orange-900 disabled:opacity-50 flex items-center gap-2"
                >
                   {controlLoading === 'requisition' ? <Loader2 size={12} className="animate-spin" /> : null}
                   Create Requisition Order
@@ -1211,28 +1271,28 @@ function ReportFaultModal({ onClose, onSuccess }: { onClose: () => void; onSucce
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
          <div className="bg-white rounded-xl shadow-xl w-full max-w-md m-4" {...stopModalPointerPropagation}>
-            <div className="p-6 border-b border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
-               <h3 className="text-lg font-bold text-[#212121]">Report Device Fault</h3>
-               <button onClick={onClose} className="p-1 text-[#616161] hover:text-[#212121] rounded-lg">
+            <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+               <h3 className="text-lg font-bold text-slate-900">Report Device Fault</h3>
+               <button onClick={onClose} className="p-1 text-slate-600 hover:text-slate-900 rounded-lg">
                   <X size={20} />
                </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
                <div>
-                  <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Device ID</label>
+                  <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Device ID</label>
                   <input
                      type="text"
                      required
-                     className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm"
+                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                      placeholder="e.g. HSD-001"
                      value={formData.deviceId}
                      onChange={e => setFormData({ ...formData, deviceId: e.target.value })}
                   />
                </div>
                <div>
-                  <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Issue Type</label>
+                  <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Issue Type</label>
                   <select
-                     className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
                      value={formData.issueType}
                      onChange={e => setFormData({ ...formData, issueType: e.target.value })}
                   >
@@ -1242,9 +1302,9 @@ function ReportFaultModal({ onClose, onSuccess }: { onClose: () => void; onSucce
                   </select>
                </div>
                <div>
-                  <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Priority</label>
+                  <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Priority</label>
                   <select
-                     className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
                      value={formData.priority}
                      onChange={e => setFormData({ ...formData, priority: e.target.value })}
                   >
@@ -1255,21 +1315,21 @@ function ReportFaultModal({ onClose, onSuccess }: { onClose: () => void; onSucce
                   </select>
                </div>
                <div>
-                  <label className="text-xs font-bold text-[#616161] uppercase mb-1 block">Description</label>
+                  <label className="text-xs font-bold text-slate-600 uppercase mb-1 block">Description</label>
                   <textarea
                      required
-                     className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm min-h-[100px]"
+                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm min-h-[100px]"
                      placeholder="Describe the issue..."
                      value={formData.description}
                      onChange={e => setFormData({ ...formData, description: e.target.value })}
                   />
                </div>
                <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-[#E0E0E0] rounded-lg font-medium">Cancel</button>
+                  <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-slate-200 rounded-lg font-medium">Cancel</button>
                   <button 
                      type="submit" 
                      disabled={loading}
-                     className="flex-1 px-4 py-2 bg-[#EF4444] text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                     className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-medium flex items-center justify-center gap-2"
                   >
                      {loading ? <Loader2 size={16} className="animate-spin" /> : 'Report Fault'}
                   </button>
@@ -1294,6 +1354,11 @@ function resolveDeviceInformation(row: hsdApi.HSDUserLoginRow): 'Assigned' | 'No
 }
 
 function HSDUserList() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlUserId = searchParams.get('userId');
+  const urlSessionId = searchParams.get('sessionId');
+  const drawerOpen = Boolean(urlUserId);
+
   const [users, setUsers] = useState<hsdApi.HSDUserLoginRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1305,12 +1370,37 @@ function HSDUserList() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<hsdApi.HSDUserLoginRow | null>(null);
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || '';
+  const storeId = resolveHsdStoreId(activeStoreId);
   const isMounted = useRef(true);
   const requestSeq = useRef(0);
+  const restoredDrawerFromUrlRef = useRef<string | null>(null);
   const paramsRef = useRef({ storeId, page, searchQuery, statusFilter });
   paramsRef.current = { storeId, page, searchQuery, statusFilter };
+
+  const openUserDrawer = useCallback((row: hsdApi.HSDUserLoginRow) => {
+    setSelectedUser(row);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'users');
+      next.set('userId', row.userId);
+      if (row.sessionId) next.set('sessionId', row.sessionId);
+      else next.delete('sessionId');
+      return next;
+    }, { replace: false });
+  }, [setSearchParams]);
+
+  const closeUserDrawer = useCallback(() => {
+    setSelectedUser(null);
+    restoredDrawerFromUrlRef.current = null;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('userId');
+      next.delete('sessionId');
+      return next;
+    }, { replace: false });
+  }, [setSearchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1337,8 +1427,11 @@ function HSDUserList() {
       });
       if (!isMounted.current || seq !== requestSeq.current) return;
       setUsers(data.users || []);
-      setTotalPages(Math.max(1, data.pagination.total_pages));
-      setTotalItems(data.pagination.total_items);
+      const pagination = data.pagination || {};
+      setTotalPages(
+        Math.max(1, pagination.total_pages ?? pagination.totalPages ?? 1)
+      );
+      setTotalItems(pagination.total_items ?? pagination.total ?? 0);
       setLastUpdatedAt(new Date());
     } catch (err: unknown) {
       if (!isMounted.current || seq !== requestSeq.current) return;
@@ -1347,8 +1440,8 @@ function HSDUserList() {
       if (!isSilent) toast.error(message);
     } finally {
       if (!isMounted.current || seq !== requestSeq.current) return;
-      if (!isSilent) setLoading(false);
       setRefreshing(false);
+      if (!isSilent) setLoading(false);
     }
   }, []);
 
@@ -1378,6 +1471,52 @@ function HSDUserList() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loadUsers]);
 
+  useEffect(() => {
+    if (!urlUserId) {
+      restoredDrawerFromUrlRef.current = null;
+      setSelectedUser(null);
+      return;
+    }
+
+    const urlKey = `${urlUserId}:${urlSessionId ?? ''}`;
+    const match = findHsdUserMatch(users, urlUserId, urlSessionId);
+    if (match) {
+      restoredDrawerFromUrlRef.current = urlKey;
+      setSelectedUser(match);
+      return;
+    }
+
+    if (loading) return;
+    if (restoredDrawerFromUrlRef.current === urlKey) return;
+
+    restoredDrawerFromUrlRef.current = urlKey;
+    void (async () => {
+      try {
+        const data = await hsdApi.getHSDUserList({
+          storeId,
+          search: urlUserId,
+          limit: HSD_USER_PAGE_SIZE,
+          noCache: true,
+        });
+        if (!isMounted.current) return;
+        const fallbackMatch = findHsdUserMatch(data.users || [], urlUserId, urlSessionId);
+        if (fallbackMatch) {
+          setSelectedUser(fallbackMatch);
+          return;
+        }
+        restoredDrawerFromUrlRef.current = null;
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('userId');
+          next.delete('sessionId');
+          return next;
+        }, { replace: true });
+      } catch {
+        restoredDrawerFromUrlRef.current = null;
+      }
+    })();
+  }, [urlUserId, urlSessionId, users, loading, storeId, setSearchParams]);
+
   const formatLastUpdated = () => {
     if (!lastUpdatedAt) return null;
     return lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1398,14 +1537,15 @@ function HSDUserList() {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden min-h-[600px]">
-      <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex flex-wrap items-center gap-3">
+    <>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden min-h-[600px]">
+      <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center gap-3">
         <div>
-          <h3 className="font-bold text-[#212121]">HSD User List</h3>
-          <p className="text-xs text-[#757575] mt-0.5">
+          <h3 className="font-bold text-slate-900">HSD User List</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
             Users who logged in on HSD devices · auto-refreshes every 15s
             {lastUpdatedAt && (
-              <span className="text-[#9E9E9E]">
+              <span className="text-slate-400">
                 {' '}
                 · updated {formatLastUpdated()}
                 {refreshing ? ' · refreshing…' : ''}
@@ -1415,11 +1555,11 @@ function HSDUserList() {
         </div>
         <div className="flex gap-2 ml-auto flex-wrap items-center">
           <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9E9E9E]" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search phone, name, assignment..."
-              className="pl-8 pr-3 py-1.5 text-xs border border-[#E0E0E0] rounded-lg w-52 focus:outline-none focus:border-[#1677FF]"
+              className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg w-52 focus:outline-none focus:border-blue-600"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
@@ -1430,7 +1570,7 @@ function HSDUserList() {
               setStatusFilter(e.target.value as typeof statusFilter);
               setPage(1);
             }}
-            className="px-3 py-1.5 text-xs border border-[#E0E0E0] rounded-lg bg-white"
+            className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
           >
             <option value="all">All statuses</option>
             <option value="active">Active</option>
@@ -1439,7 +1579,7 @@ function HSDUserList() {
           <button
             type="button"
             onClick={() => loadUsers()}
-            className="p-1.5 border border-[#E0E0E0] rounded-lg hover:bg-[#F5F5F5] text-[#616161]"
+            className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600"
             title="Refresh now"
           >
             <RefreshCw size={16} className={loading || refreshing ? 'animate-spin' : ''} />
@@ -1449,30 +1589,30 @@ function HSDUserList() {
 
       <div className="flex-1 overflow-auto">
         {loading && users.length === 0 ? (
-          <div className="p-20 flex flex-col items-center justify-center text-[#9E9E9E]">
+          <div className="p-20 flex flex-col items-center justify-center text-slate-400">
             <Loader2 className="animate-spin mb-2" size={24} />
             <p className="text-xs">Loading user list...</p>
           </div>
         ) : error && users.length === 0 ? (
           <div className="p-20 text-center">
-            <p className="text-sm text-[#EF4444] mb-2">{error}</p>
+            <p className="text-sm text-red-500 mb-2">{error}</p>
             <button
               type="button"
               onClick={() => loadUsers()}
-              className="text-xs font-bold text-[#1677FF] underline"
+              className="text-xs font-bold text-blue-600 underline"
             >
               Retry
             </button>
           </div>
         ) : users.length === 0 ? (
-          <div className="p-20 text-center text-[#9E9E9E]">
+          <div className="p-20 text-center text-slate-400">
             <Users size={32} className="mx-auto mb-2 opacity-40" />
-            <p className="text-sm font-medium text-[#616161]">No HSD logins found</p>
+            <p className="text-sm font-medium text-slate-600">No HSD logins found</p>
             <p className="text-xs mt-1">Logins appear when users sign in on handheld devices via phone OTP.</p>
           </div>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0] sticky top-0 z-10">
+            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 font-medium">Phone Number</th>
                 <th className="px-4 py-3 font-medium">User Name</th>
@@ -1483,46 +1623,32 @@ function HSDUserList() {
                 <th className="px-4 py-3 font-medium">Dark Store</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F0F0F0]">
+            <tbody className="divide-y divide-slate-100">
               {users.map((row) => {
                 const deviceInfo = resolveDeviceInformation(row);
                 return (
-                <tr key={row.sessionId} className="hover:bg-[#F9FAFB]">
-                  <td className="px-4 py-3 font-mono text-xs text-[#212121]">{row.phoneNumber}</td>
-                  <td className="px-4 py-3 text-[#212121]">
-                    {row.userName || <span className="text-[#9E9E9E] italic">—</span>}
+                <tr
+                  key={row.sessionId || `${row.userId}-${row.loginDateTime}`}
+                  className="hover:bg-slate-50 cursor-pointer transition-colors"
+                  onClick={() => openUserDrawer(row)}
+                >
+                  <td className="px-4 py-3 font-mono text-xs text-slate-900">{row.phoneNumber}</td>
+                  <td className="px-4 py-3 text-slate-900">
+                    {row.userName || <span className="text-slate-400 italic">—</span>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-[#616161] max-w-[120px] truncate" title={row.userId}>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600 max-w-[120px] truncate" title={row.userId}>
                     {row.userId}
                   </td>
                   <td className="px-4 py-3 text-xs max-w-[200px]">
-                    <span
-                      className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full font-bold',
-                        deviceInfo === 'Assigned'
-                          ? 'bg-[#E0F2FE] text-[#0369A1]'
-                          : 'bg-[#F5F5F5] text-[#616161]'
-                      )}
-                    >
-                      {deviceInfo}
-                    </span>
+                    <StatusBadge variant="workflow" status={deviceInfo} />
                   </td>
-                  <td className="px-4 py-3 text-[#616161] text-xs whitespace-nowrap">
+                  <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
                     {formatLoginDateTime(row.loginDateTime)}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-xs font-bold',
-                        row.loginStatus === 'Active'
-                          ? 'bg-[#DCFCE7] text-[#16A34A]'
-                          : 'bg-[#F5F5F5] text-[#616161]'
-                      )}
-                    >
-                      {row.loginStatus}
-                    </span>
+                    <StatusBadge variant="workflow" status={row.loginStatus} />
                   </td>
-                  <td className="px-4 py-3 text-[#616161] text-xs">
+                  <td className="px-4 py-3 text-slate-600 text-xs">
                     <span className="flex items-center gap-1">
                       <MapPin size={12} className="shrink-0" />
                       {row.darkStoreLocation}
@@ -1537,7 +1663,7 @@ function HSDUserList() {
       </div>
 
       {totalItems > 0 && (
-        <div className="p-3 border-t border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between text-xs text-[#616161]">
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-600">
           <span>
             {totalItems} login record{totalItems !== 1 ? 's' : ''} · page {page} of {totalPages}
           </span>
@@ -1546,7 +1672,7 @@ function HSDUserList() {
               type="button"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="flex items-center gap-1 px-3 py-1.5 border border-[#E0E0E0] rounded-lg bg-white disabled:opacity-40 hover:bg-[#F5F5F5]"
+              className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-40 hover:bg-slate-100"
             >
               <ChevronLeft size={14} /> Previous
             </button>
@@ -1554,7 +1680,7 @@ function HSDUserList() {
               type="button"
               disabled={page >= totalPages || loading}
               onClick={() => setPage((p) => p + 1)}
-              className="flex items-center gap-1 px-3 py-1.5 border border-[#E0E0E0] rounded-lg bg-white disabled:opacity-40 hover:bg-[#F5F5F5]"
+              className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-40 hover:bg-slate-100"
             >
               Next <ChevronRight size={14} />
             </button>
@@ -1562,6 +1688,13 @@ function HSDUserList() {
         </div>
       )}
     </div>
+
+    <HSDUserDetailsDrawer
+      user={selectedUser}
+      open={drawerOpen}
+      onClose={closeUserDrawer}
+    />
+    </>
   );
 }
 
@@ -1573,7 +1706,7 @@ function HSDLogs() {
    const [searchQuery, setSearchQuery] = useState('');
    const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
    const { activeStoreId } = useAuth();
-   const storeId = activeStoreId || '';
+   const storeId = resolveHsdStoreId(activeStoreId);
    const isMounted = useRef(true);
 
    useEffect(() => {
@@ -1604,21 +1737,21 @@ function HSDLogs() {
    });
 
    return (
-      <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden h-[600px]">
-         <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex flex-wrap items-center gap-2">
-            <h3 className="font-bold text-[#212121]">System & Activity Logs</h3>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[600px]">
+         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center gap-2">
+            <h3 className="font-bold text-slate-900">System & Activity Logs</h3>
             <div className="flex gap-2 ml-auto flex-wrap">
                <input
                   type="text"
                   placeholder="Search logs..."
-                  className="pl-3 pr-3 py-1.5 text-xs border border-[#E0E0E0] rounded focus:outline-none w-40"
+                  className="pl-3 pr-3 py-1.5 text-xs border border-slate-200 rounded focus:outline-none w-40"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                />
                <select
                   value={eventTypeFilter}
                   onChange={e => setEventTypeFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs border border-[#E0E0E0] rounded bg-white"
+                  className="px-3 py-1.5 text-xs border border-slate-200 rounded bg-white"
                >
                   <option value="all">All events</option>
                   <option value="scan_sku">Scan SKU</option>
@@ -1626,24 +1759,24 @@ function HSDLogs() {
                   <option value="system">System</option>
                   <option value="error">Error</option>
                </select>
-               <button onClick={loadLogs} className="p-1.5 border border-[#E0E0E0] rounded hover:bg-[#F5F5F5] text-[#616161]">
+               <button onClick={loadLogs} className="p-1.5 border border-slate-200 rounded hover:bg-slate-100 text-slate-600">
                   <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                </button>
             </div>
          </div>
          <div className="flex-1 overflow-auto">
             {loading && logs.length === 0 ? (
-               <div className="p-20 flex flex-col items-center justify-center text-[#9E9E9E]">
+               <div className="p-20 flex flex-col items-center justify-center text-slate-400">
                   <Loader2 className="animate-spin mb-2" size={24} />
                   <p className="text-xs">Loading logs...</p>
                </div>
             ) : filteredLogs.length === 0 ? (
-               <div className="p-20 text-center text-[#9E9E9E]">
+               <div className="p-20 text-center text-slate-400">
                   <p className="text-xs">No logs found</p>
                </div>
             ) : (
                <table className="w-full text-left text-sm">
-                  <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+                  <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                      <tr>
                         <th className="px-6 py-3 font-medium">Timestamp</th>
                         <th className="px-6 py-3 font-medium">Device / User</th>
@@ -1652,22 +1785,22 @@ function HSDLogs() {
                         <th className="px-6 py-3 font-medium">Result</th>
                      </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F0F0F0]">
+                  <tbody className="divide-y divide-slate-100">
                      {filteredLogs.map((log, i) => (
-                        <tr key={i} className="hover:bg-[#F9FAFB]">
-                           <td className="px-6 py-3 text-[#616161] font-mono text-xs">
+                        <tr key={i} className="hover:bg-slate-50">
+                           <td className="px-6 py-3 text-slate-600 font-mono text-xs">
                               {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                            </td>
-                           <td className="px-6 py-3 text-[#212121] font-medium">
+                           <td className="px-6 py-3 text-slate-900 font-medium">
                               {log.deviceId} {log.userName ? `(${log.userName})` : ''}
                            </td>
-                           <td className="px-6 py-3 text-[#616161] capitalize">{log.eventType.replace('_', ' ')}</td>
-                           <td className="px-6 py-3 text-[#212121]">{log.details}</td>
+                           <td className="px-6 py-3 text-slate-600 capitalize">{log.eventType.replace('_', ' ')}</td>
+                           <td className="px-6 py-3 text-slate-900">{log.details}</td>
                            <td className="px-6 py-3">
                               <span className={cn(
                                  "text-xs font-bold capitalize",
-                                 log.result === 'success' ? "text-[#16A34A]" : 
-                                 log.result === 'warning' || log.result === 'alert' ? "text-[#F59E0B]" : "text-[#EF4444]"
+                                 log.result === 'success' ? "text-emerald-600" : 
+                                 log.result === 'warning' || log.result === 'alert' ? "text-amber-500" : "text-red-500"
                               )}>
                                  {log.result}
                               </span>

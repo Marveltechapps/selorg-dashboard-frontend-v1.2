@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { websocketService } from '@/utils/websocket';
 import { useAuth } from '@/contexts/AuthContext';
 import { getSlaMonitor, type SlaMonitorRow } from '@/api/darkstore/operations.api';
-import { RefreshCw, Clock, AlertTriangle, AlertCircle, CheckCircle } from 'lucide-react';
+import { Clock, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -11,44 +11,52 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { EmptyState, LoadingState } from '@/components/ui/ux-components';
+import { DarkstoreScreenShell } from '@/components/darkstore/DarkstoreScreenShell';
+import { DarkstoreDataTable, type DarkstoreColumn } from '@/components/darkstore/DarkstoreDataTable';
+import { StatusBadge } from '@/components/darkstore/StatusBadge';
+import { SlaCountdown } from '@/components/darkstore/SlaCountdown';
 import { toast } from 'sonner';
+import { OrderDetailsDrawer } from '@/components/darkstore/OrderDetailsDrawer';
 
-function RiskBadge({ status }: { status: string }) {
-  if (status === 'critical') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-        <AlertCircle size={12} /> CRITICAL
-      </span>
-    );
-  }
-  if (status === 'warning') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
-        <AlertTriangle size={12} /> WARNING
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
-      <CheckCircle size={12} /> SAFE
-    </span>
-  );
-}
+const formatDeadline = (d: string) => {
+  if (!d) return '—';
+  return new Date(d).toLocaleString();
+};
 
-export function SLAMonitor() {
+const columns: DarkstoreColumn<SlaMonitorRow>[] = [
+  {
+    key: 'orderId',
+    header: 'Order ID',
+    sticky: true,
+    render: (row) => <span className="font-mono font-medium">{row.orderId}</span>,
+  },
+  { key: 'store', header: 'Store', render: (row) => row.storeId || '—' },
+  { key: 'picker', header: 'Picker', render: (row) => row.pickerName },
+  { key: 'status', header: 'Status', render: (row) => row.status },
+  {
+    key: 'deadline',
+    header: 'SLA Deadline',
+    render: (row) => <span className="font-mono text-sm">{formatDeadline(row.slaDeadline)}</span>,
+  },
+  {
+    key: 'remaining',
+    header: 'Remaining',
+    render: (row) => <SlaCountdown deadline={row.slaDeadline} status={row.slaStatus} />,
+  },
+  {
+    key: 'risk',
+    header: 'Risk',
+    render: (row) => <StatusBadge variant="sla" status={row.slaStatus} />,
+  },
+  { key: 'items', header: 'Items', render: (row) => row.itemCount },
+];
+
+export function SLAMonitor({ setActiveTab }: { setActiveTab?: (tab: string) => void } = {}) {
+  const [riskFilter, setRiskFilter] = useState('');
   const { activeStoreId } = useAuth();
   const [data, setData] = useState<SlaMonitorRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [riskFilter, setRiskFilter] = useState<string>('');
+  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,23 +88,17 @@ export function SLAMonitor() {
     };
   }, [load]);
 
-  const formatDeadline = (d: string) => {
-    if (!d) return '—';
-    return new Date(d).toLocaleString();
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-[#212121]">SLA Monitor</h1>
-          <p className="text-[#757575] text-sm">
-            Order SLA deadlines, remaining time, and risk levels (SAFE / WARNING / CRITICAL)
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <DarkstoreScreenShell
+      title="SLA Monitor"
+      subtitle="Order SLA deadlines, remaining time, and risk levels (SAFE / WARNING / CRITICAL)"
+      toolbar={{
+        onRefresh: load,
+        refreshing: loading,
+        showConnection: true,
+        filters: (
           <Select value={riskFilter || 'all'} onValueChange={(v) => setRiskFilter(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40 h-8">
               <SelectValue placeholder="Risk filter" />
             </SelectTrigger>
             <SelectContent>
@@ -106,67 +108,41 @@ export function SLAMonitor() {
               <SelectItem value="critical">Critical</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-[#e4e4e7] bg-white overflow-hidden">
-        {loading ? (
-          <LoadingState message="Loading SLA data..." />
-        ) : data.length === 0 ? (
-          <EmptyState
-            icon={Clock}
-            title="No orders in SLA scope"
-            description="No orders in new, processing, ASSIGNED, or PICKING status. SLA monitor tracks active orders only."
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Store</TableHead>
-                <TableHead>Picker</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>SLA Deadline</TableHead>
-                <TableHead>Remaining</TableHead>
-                <TableHead>Risk</TableHead>
-                <TableHead>Items</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((row) => (
-                <TableRow key={row.orderId}>
-                  <TableCell className="font-mono font-medium">{row.orderId}</TableCell>
-                  <TableCell>{row.storeId || '—'}</TableCell>
-                  <TableCell>{row.pickerName}</TableCell>
-                  <TableCell>{row.status}</TableCell>
-                  <TableCell className="font-mono text-sm">{formatDeadline(row.slaDeadline)}</TableCell>
-                  <TableCell
-                    className={
-                      row.remainingMs < 0
-                        ? 'text-red-600 font-semibold'
-                        : row.slaStatus === 'critical'
-                        ? 'text-red-600'
-                        : row.slaStatus === 'warning'
-                        ? 'text-amber-600'
-                        : ''
-                    }
-                  >
-                    {row.remainingFormatted}
-                  </TableCell>
-                  <TableCell>
-                    <RiskBadge status={row.slaStatus} />
-                  </TableCell>
-                  <TableCell>{row.itemCount}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
+        ),
+      }}
+    >
+      <DarkstoreDataTable
+        columns={columns}
+        data={data}
+        loading={loading}
+        rowKey={(row) => row.orderId}
+        emptyIcon={Clock}
+        emptyTitle="No orders in SLA scope"
+        emptyDescription="No orders in new, processing, ASSIGNED, or PICKING status. SLA monitor tracks active orders only."
+        emptyAction={
+          setActiveTab ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab('liveorders')}>
+              <List size={14} className="mr-1.5" />
+              View live queue
+            </Button>
+          ) : (
+            <p className="text-xs text-slate-500">No SLA risks — queue is clear</p>
+          )
+        }
+        onRowClick={(row) => setDrawerOrderId(row.orderId)}
+        rowClassName={(row) =>
+          row.slaStatus === 'critical'
+            ? 'border-l-2 border-l-red-500'
+            : row.slaStatus === 'warning'
+              ? 'border-l-2 border-l-amber-400'
+              : ''
+        }
+      />
+      <OrderDetailsDrawer
+        orderId={drawerOrderId}
+        open={!!drawerOrderId}
+        onOpenChange={(open) => !open && setDrawerOrderId(null)}
+      />
+    </DarkstoreScreenShell>
   );
 }

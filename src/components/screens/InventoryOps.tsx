@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useScreenTab } from '../../hooks/useScreenUrlState';
 import { 
   Search, Filter, AlertTriangle, ArrowUp, ArrowDown, Package, 
   LayoutGrid, List, Plus, Minus, History, BarChart3, 
@@ -17,7 +18,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { PageHeader } from '../ui/page-header';
+import { DarkstoreScreenShell } from '../darkstore/DarkstoreScreenShell';
+import { DarkstoreTabBar } from '../darkstore/DarkstoreTabBar';
+import { MetricCard } from '../darkstore/MetricCard';
+import { AlertCard } from '../darkstore/AlertCard';
+import { StatusBadge } from '../darkstore/StatusBadge';
 import { EmptyState, LoadingState, InlineNotification } from '../ui/ux-components';
 import { DeleteConfirmation } from '../ui/confirmation-dialog';
 import { ActionHistoryViewer } from '../ui/action-history-viewer';
@@ -48,8 +53,10 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 
+const INVENTORY_TABS = ['live', 'stock', 'adjust', 'count'] as const;
+
 export function InventoryOps() {
-  const [activeTab, setActiveTab] = useState<'live' | 'stock' | 'adjust' | 'count'>('live');
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(INVENTORY_TABS, 'live');
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: '', name: '' });
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
@@ -76,36 +83,34 @@ export function InventoryOps() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header with Breadcrumbs */}
-      <PageHeader
-        title="Inventory Management"
-        subtitle="Real-time stock tracking, shelf mapping, and cycle counts."
-        actions={
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setShowAuditModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E0E0E0] rounded-lg text-sm font-bold text-[#616161] hover:bg-[#F5F5F5]"
-            >
-              <History size={16} /> Audit Log
-            </button>
-            <button 
-              onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#212121] text-white rounded-lg text-sm font-bold hover:bg-[#333] shadow-md"
-            >
-              <Upload size={16} /> Upload Sheet
-            </button>
+    <DarkstoreScreenShell
+      title="Inventory Management"
+      subtitle="Real-time stock tracking, shelf mapping, and cycle counts."
+      toolbar={{
+        showConnection: true,
+        toolbarActions: (
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setShowAuditModal(true)}>
+              <History size={14} className="mr-1.5" /> Audit Log
+            </Button>
+            <Button type="button" size="sm" className="h-8" onClick={() => setShowUploadModal(true)}>
+              <Upload size={14} className="mr-1.5" /> Upload Sheet
+            </Button>
           </div>
-        }
-      />
+        ),
+      }}
+    >
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center gap-1 border-b border-[#E0E0E0] overflow-x-auto">
-        <TabButton id="live" label="Live Shelf View" icon={LayoutGrid} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="stock" label="Stock Levels" icon={Package} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="adjust" label="Adjustments" icon={RefreshCw} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="count" label="Cycle Count" icon={BarChart3} active={activeTab} onClick={setActiveTab} />
-      </div>
+      <DarkstoreTabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: 'live', label: 'Live Shelf View', icon: LayoutGrid },
+          { id: 'stock', label: 'Stock Levels', icon: Package },
+          { id: 'adjust', label: 'Adjustments', icon: RefreshCw },
+          { id: 'count', label: 'Cycle Count', icon: BarChart3 },
+        ]}
+      />
 
       {/* Tab Content */}
       <div className="min-h-[600px]">
@@ -146,7 +151,7 @@ export function InventoryOps() {
         sku={selectedItemHistory} 
         onClose={() => setSelectedItemHistory(null)} 
       />
-    </div>
+    </DarkstoreScreenShell>
   );
 }
 
@@ -250,7 +255,7 @@ function InventorySheetUploadModal({
           <button
             type="button"
             onClick={handleDownloadTemplate}
-            className="flex items-center gap-2 text-sm font-bold text-[#1677FF] hover:underline"
+            className="flex items-center gap-2 text-sm font-bold text-blue-600 hover:underline"
           >
             <Download size={16} /> Download template (.csv)
           </button>
@@ -258,7 +263,7 @@ function InventorySheetUploadModal({
           <div
             className={cn(
               'border-2 border-dashed rounded-xl p-6 text-center transition-colors',
-              file ? 'border-[#1677FF] bg-[#F0F7FF]' : 'border-[#E0E0E0] bg-[#FAFAFA]'
+              file ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-slate-50'
             )}
           >
             <input
@@ -272,39 +277,39 @@ function InventorySheetUploadModal({
               }}
             />
             <label htmlFor="inventory-sheet-input" className="cursor-pointer block">
-              <FileText className="w-10 h-10 mx-auto text-[#9E9E9E] mb-2" />
+              <FileText className="w-10 h-10 mx-auto text-slate-400 mb-2" />
               {file ? (
-                <p className="text-sm font-bold text-[#212121]">{file.name}</p>
+                <p className="text-sm font-bold text-slate-900">{file.name}</p>
               ) : (
                 <>
-                  <p className="text-sm font-bold text-[#212121]">Click to choose file</p>
-                  <p className="text-xs text-[#9E9E9E] mt-1">CSV or Excel up to 10MB</p>
+                  <p className="text-sm font-bold text-slate-900">Click to choose file</p>
+                  <p className="text-xs text-slate-400 mt-1">CSV or Excel up to 10MB</p>
                 </>
               )}
             </label>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-[#616161]">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
               checked={validateOnly}
               onChange={(e) => setValidateOnly(e.target.checked)}
-              className="rounded border-[#E0E0E0]"
+              className="rounded border-slate-200"
             />
             Validate only (do not save)
           </label>
 
           {lastResult?.errors?.length > 0 && (
-            <div className="max-h-32 overflow-y-auto rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-3 text-xs text-[#B91C1C]">
-              {lastResult.errors.slice(0, 8).map((err: any, i: number) => (
-                <div key={i}>
-                  Row {err.row}: {err.error}
-                </div>
-              ))}
-              {lastResult.errors.length > 8 && (
-                <div className="mt-1 font-bold">+{lastResult.errors.length - 8} more errors</div>
-              )}
-            </div>
+            <AlertCard title="Import validation errors" severity="danger" icon={AlertTriangle}>
+              <div className="max-h-32 overflow-y-auto text-xs mt-1 space-y-0.5">
+                {lastResult.errors.slice(0, 8).map((err: any, i: number) => (
+                  <div key={i}>Row {err.row}: {err.error}</div>
+                ))}
+                {lastResult.errors.length > 8 && (
+                  <div className="mt-1 font-bold">+{lastResult.errors.length - 8} more errors</div>
+                )}
+              </div>
+            </AlertCard>
           )}
         </div>
 
@@ -314,7 +319,7 @@ function InventorySheetUploadModal({
           </Button>
           <Button
             type="button"
-            className="bg-[#212121] hover:bg-[#333]"
+            className="bg-slate-900 hover:bg-slate-800"
             disabled={loading || !file}
             onClick={handleImport}
           >
@@ -366,9 +371,9 @@ function AuditLogModal({ open, onOpenChange }: any) {
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex-1 overflow-auto border border-[#E0E0E0] rounded-lg my-4">
+        <div className="flex-1 overflow-auto border border-slate-200 rounded-lg my-4">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0] sticky top-0">
+            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 sticky top-0">
               <tr>
                 <th className="px-4 py-3 font-medium">Timestamp</th>
                 <th className="px-4 py-3 font-medium">User</th>
@@ -377,40 +382,32 @@ function AuditLogModal({ open, onOpenChange }: any) {
                 <th className="px-4 py-3 font-medium">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F0F0F0]">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#1677FF]" />
-                    <p className="mt-2 text-[#9E9E9E]">Loading audit trails...</p>
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-600" />
+                    <p className="mt-2 text-slate-400">Loading audit trails...</p>
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-[#9E9E9E]">
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                     No audit records found
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-[#F9FAFB]">
-                    <td className="px-4 py-3 text-[#616161] whitespace-nowrap">
+                  <tr key={log.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
                     <td className="px-4 py-3 font-medium">{log.user}</td>
                     <td className="px-4 py-3">
-                      <span className={cn(
-                        "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                        log.action_type === 'adjustment' ? "bg-blue-100 text-blue-700" :
-                        log.action_type === 'scan' ? "bg-purple-100 text-purple-700" :
-                        log.action_type === 'delete' ? "bg-red-100 text-red-700" :
-                        "bg-gray-100 text-gray-700"
-                      )}>
-                        {log.action_type}
-                      </span>
+                      <StatusBadge variant="workflow" status={log.action_type} />
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">{log.sku || 'N/A'}</td>
-                    <td className="px-4 py-3 text-xs text-[#616161]">
+                    <td className="px-4 py-3 text-xs text-slate-600">
                       {typeof log.details === 'object' ? JSON.stringify(log.details) : (log.details || 'N/A')}
                     </td>
                   </tr>
@@ -463,45 +460,45 @@ function ItemHistoryModal({ sku, onClose }: any) {
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex-1 overflow-auto border border-[#E0E0E0] rounded-lg my-4">
-          <div className="divide-y divide-[#F0F0F0]">
+        <div className="flex-1 overflow-auto border border-slate-200 rounded-lg my-4">
+          <div className="divide-y divide-slate-100">
             {loading ? (
               <div className="p-8 text-center">
-                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#1677FF]" />
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-600" />
               </div>
             ) : logs.length === 0 ? (
-              <div className="p-8 text-center text-[#9E9E9E]">
+              <div className="p-8 text-center text-slate-400">
                 No history records found for this SKU
               </div>
             ) : (
               logs.map((log) => (
-                <div key={log.id} className="p-4 hover:bg-[#F9FAFB] transition-colors">
+                <div key={log.id} className="p-4 hover:bg-slate-50 transition-colors">
                   <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-[#212121] text-sm capitalize">
+                    <span className="font-bold text-slate-900 text-sm capitalize">
                       {log.action_type.replace('_', ' ')}
                     </span>
-                    <span className="text-[10px] text-[#9E9E9E]">
+                    <span className="text-[10px] text-slate-400">
                       {new Date(log.timestamp).toLocaleString()}
                     </span>
                   </div>
-                  <div className="text-xs text-[#616161] mb-2 flex items-center gap-2">
-                    <UserPlus size={12} className="text-[#9E9E9E]" />
-                    Performed by: <span className="font-medium text-[#212121]">{log.user}</span>
+                  <div className="text-xs text-slate-600 mb-2 flex items-center gap-2">
+                    <UserPlus size={12} className="text-slate-400" />
+                    Performed by: <span className="font-medium text-slate-900">{log.user}</span>
                   </div>
                   {log.changes && (
-                    <div className="bg-[#F5F5F5] p-2 rounded text-[10px] grid grid-cols-2 gap-2 mt-1">
+                    <div className="bg-slate-100 p-2 rounded text-[10px] grid grid-cols-2 gap-2 mt-1">
                       <div>
-                        <span className="text-[#757575] uppercase block">Before</span>
+                        <span className="text-slate-500 uppercase block">Before</span>
                         <span className="font-bold text-red-600">{log.changes.stock_before} Units</span>
                       </div>
                       <div>
-                        <span className="text-[#757575] uppercase block">After</span>
+                        <span className="text-slate-500 uppercase block">After</span>
                         <span className="font-bold text-green-600">{log.changes.stock_after} Units</span>
                       </div>
                     </div>
                   )}
                   {log.details && typeof log.details === 'object' && (
-                    <div className="mt-2 text-[10px] text-[#757575]">
+                    <div className="mt-2 text-[10px] text-slate-500">
                       <span className="font-bold">Reason:</span> {log.details.reason || log.details.mode || 'N/A'}
                     </div>
                   )}
@@ -516,24 +513,6 @@ function ItemHistoryModal({ sku, onClose }: any) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function TabButton({ id, label, icon: Icon, active, onClick }: any) {
-  return (
-    <button
-      type="button"
-      onClick={() => onClick(id)}
-      className={cn(
-        "flex items-center gap-2 px-5 py-3 text-sm font-bold transition-all border-b-2 whitespace-nowrap",
-        active === id 
-          ? "border-[#1677FF] text-[#1677FF] bg-[#F0F7FF]" 
-          : "border-transparent text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5]"
-      )}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
   );
 }
 
@@ -649,71 +628,69 @@ function LiveShelfView({
     <div className="space-y-6">
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
-          <p className="text-xs font-bold text-[#757575] uppercase">SKUs in store</p>
-          <p className="text-2xl font-bold text-[#212121] mt-1">{loading ? '—' : catalogStats.total}</p>
-        </div>
-        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
-          <p className="text-xs font-bold text-[#757575] uppercase">In stock</p>
-          <p className="text-2xl font-bold text-[#16A34A] mt-1">{loading ? '—' : catalogStats.inStock}</p>
-        </div>
-        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
-          <p className="text-xs font-bold text-[#757575] uppercase">Low stock</p>
-          <p className="text-2xl font-bold text-[#D97706] mt-1">{loading ? '—' : catalogStats.lowStock}</p>
-        </div>
-        <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
-          <p className="text-xs font-bold text-[#757575] uppercase">Out of stock</p>
-          <p className="text-2xl font-bold text-[#EF4444] mt-1">{loading ? '—' : catalogStats.outOfStock}</p>
-        </div>
+        <MetricCard label="SKUs in store" value={catalogStats.total} icon={Package} loading={loading} />
+        <MetricCard label="In stock" value={catalogStats.inStock} icon={CheckCircle2} accent="success" loading={loading} />
+        <MetricCard label="Low stock" value={catalogStats.lowStock} icon={AlertTriangle} accent="warning" loading={loading} />
+        <MetricCard label="Out of stock" value={catalogStats.outOfStock} icon={AlertCircle} accent="danger" loading={loading} />
       </div>
 
-      {/* Alerts Bar */}
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        <div className="flex items-center gap-2 px-4 py-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg text-[#B91C1C] text-sm font-bold">
-           <AlertTriangle size={16} /> {loading ? '...' : (shelfData?.alerts?.empty_shelves || shelfData?.empty_shelves || 0)} Empty Shelves
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-[#FFF7ED] border border-[#FFEDD5] rounded-lg text-[#C2410C] text-sm font-bold">
-           <MapPin size={16} /> {loading ? '...' : (shelfData?.alerts?.misplaced_items || shelfData?.misplaced_shelves || 0)} Misplaced Items
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-[#FEFCE8] border border-[#FEF08A] rounded-lg text-[#A16207] text-sm font-bold">
-           <AlertCircle size={16} /> {loading ? '...' : (shelfData?.alerts?.critical_shelves ?? shelfData?.alerts?.damaged_goods_reports ?? 0)} Critical / Alerts
-        </div>
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        <AlertCard
+          title={`${loading ? '...' : (shelfData?.alerts?.empty_shelves || shelfData?.empty_shelves || 0)} Empty Shelves`}
+          severity="danger"
+          icon={AlertTriangle}
+          className="shrink-0"
+        />
+        <AlertCard
+          title={`${loading ? '...' : (shelfData?.alerts?.misplaced_items || shelfData?.misplaced_shelves || 0)} Misplaced Items`}
+          severity="warning"
+          icon={MapPin}
+          className="shrink-0"
+        />
+        <AlertCard
+          title={`${loading ? '...' : (shelfData?.alerts?.critical_shelves ?? shelfData?.alerts?.damaged_goods_reports ?? 0)} Critical / Alerts`}
+          severity="warning"
+          icon={AlertCircle}
+          className="shrink-0"
+        />
         {shelfData?.source === 'inventory' && (
-          <span className="flex items-center px-3 py-2 text-xs font-bold text-[#1677FF] bg-[#F0F7FF] border border-[#BAE7FF] rounded-lg">
-            Map built from uploaded inventory
-          </span>
+          <AlertCard
+            title="Map built from uploaded inventory"
+            severity="info"
+            className="shrink-0"
+          />
         )}
       </div>
 
       <div className="grid grid-cols-12 gap-6 min-h-[600px]">
         {/* Map Visualization */}
-        <div className="col-span-12 lg:col-span-7 bg-white border border-[#E0E0E0] rounded-xl shadow-sm flex flex-col min-h-[560px]">
-          <div className="p-4 border-b border-[#E0E0E0] flex justify-between items-center bg-[#FAFAFA]">
-             <h3 className="font-bold text-[#212121]">Store Map: Zone 1 (Ambient)</h3>
+        <div className="col-span-12 lg:col-span-7 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col min-h-[560px]">
+          <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+             <h3 className="font-bold text-slate-900">Store Map: Zone 1 (Ambient)</h3>
              <div className="flex items-center gap-2 text-xs">
-                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-[#E6F7FF] border border-[#91CAFF] rounded-sm"/> Normal</span>
-                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-[#FEE2E2] border border-[#FCA5A5] rounded-sm"/> Empty/Critical</span>
-                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-[#FEF3C7] border border-[#FCD34D] rounded-sm"/> Misplaced</span>
+                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-50 border border-blue-300 rounded-sm"/> Normal</span>
+                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-50 border border-red-300 rounded-sm"/> Empty/Critical</span>
+                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-50 border border-amber-300 rounded-sm"/> Misplaced</span>
              </div>
           </div>
-          <div className="flex-1 p-6 bg-[#F5F5F5] overflow-y-auto">
+          <div className="flex-1 p-6 bg-slate-100 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center h-full">
-                <div className="text-[#9E9E9E]">Loading shelf view...</div>
+                <div className="text-slate-400">Loading shelf view...</div>
               </div>
             ) : !shelfData || !hasShelfMap ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-sm px-4">
-                  <Package className="w-12 h-12 mx-auto text-[#BDBDBD] mb-3" />
-                  <div className="text-[#616161] font-bold mb-1">No inventory on the floor yet</div>
-                  <div className="text-xs text-[#9E9E9E] mb-4">
+                  <Package className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                  <div className="text-slate-600 font-bold mb-1">No inventory on the floor yet</div>
+                  <div className="text-xs text-slate-400 mb-4">
                     Upload a sheet with SKU, stock, and shelf location (e.g. A-01-01) to populate this map.
                   </div>
                   {onRequestUpload && (
                     <button
                       type="button"
                       onClick={onRequestUpload}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#1677FF] text-white rounded-lg text-sm font-bold hover:bg-[#0958D9]"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700"
                     >
                       <Upload size={16} /> Upload inventory sheet
                     </button>
@@ -729,7 +706,7 @@ function LiveShelfView({
                   
                   return (
                     <div key={aisleData.aisle ?? aisle} className="flex flex-col gap-2">
-                      <div className="text-center font-bold text-[#757575] mb-1">Aisle {aisleData.aisle ?? aisle}</div>
+                      <div className="text-center font-bold text-slate-500 mb-1">Aisle {aisleData.aisle ?? aisle}</div>
                       {aisleData.shelves.map((shelf: any) => {
                         const locationCode = shelf.location_code;
                         const isSelected = selectedShelf === locationCode;
@@ -740,31 +717,31 @@ function LiveShelfView({
                             onClick={() => setSelectedShelf(locationCode)}
                             className={cn(
                               "h-16 rounded-lg border-2 flex items-center justify-center relative cursor-pointer hover:shadow-md transition-all group",
-                              isSelected ? "ring-2 ring-[#1677FF] border-[#1677FF]" :
-                              shelf.is_critical ? "bg-[#FEF2F2] border-[#FCA5A5]" : 
-                              shelf.is_misplaced ? "bg-[#FFFBEB] border-[#FCD34D]" : "bg-white border-[#E0E0E0]"
+                              isSelected ? "ring-2 ring-blue-600 border-blue-600" :
+                              shelf.is_critical ? "bg-red-50 border-red-300" : 
+                              shelf.is_misplaced ? "bg-amber-50 border-amber-300" : "bg-white border-slate-200"
                             )}
                           >
-                            <span className="text-xs font-mono font-bold text-[#9E9E9E] absolute top-1 left-1">{locationCode}</span>
+                            <span className="text-xs font-mono font-bold text-slate-400 absolute top-1 left-1">{locationCode}</span>
                             
                             {/* Hover Tooltip */}
-                            <div className="opacity-0 group-hover:opacity-100 absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-[#212121] text-white p-3 rounded-lg shadow-xl pointer-events-none transition-opacity">
+                            <div className="opacity-0 group-hover:opacity-100 absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-900 text-white p-3 rounded-lg shadow-xl pointer-events-none transition-opacity">
                               <div className="text-xs font-bold mb-1">{locationCode} Contents:</div>
                               {shelf.assigned_skus && Array.isArray(shelf.assigned_skus) && shelf.assigned_skus.length > 0 ? (
                                 shelf.assigned_skus.map((sku: any, i: number) => (
                                   <div key={i} className="text-xs mb-1">
-                                    {sku.product_name || sku.sku}: <span className="text-[#4ADE80]">{sku.stock_count || 0}</span>
+                                    {sku.product_name || sku.sku}: <span className="text-emerald-400">{sku.stock_count || 0}</span>
                                   </div>
                                 ))
                               ) : (
                                 <div className="text-xs mb-1">No items assigned</div>
                               )}
-                              {shelf.is_critical && <div className="text-xs text-[#EF4444] font-bold"><AlertTriangle size={10} className="inline"/> Critical Low Stock</div>}
-                              {shelf.is_misplaced && <div className="text-xs text-[#FACC15] font-bold"><MapPin size={10} className="inline"/> Misplaced Item</div>}
+                              {shelf.is_critical && <div className="text-xs text-red-500 font-bold"><AlertTriangle size={10} className="inline"/> Critical Low Stock</div>}
+                              {shelf.is_misplaced && <div className="text-xs text-yellow-400 font-bold"><MapPin size={10} className="inline"/> Misplaced Item</div>}
                             </div>
 
-                            {shelf.is_critical && <AlertTriangle size={20} className="text-[#EF4444]" />}
-                            {shelf.is_misplaced && <MapPin size={20} className="text-[#D97706]" />}
+                            {shelf.is_critical && <AlertTriangle size={20} className="text-red-500" />}
+                            {shelf.is_misplaced && <MapPin size={20} className="text-amber-600" />}
                           </div>
                         );
                       })}
@@ -778,26 +755,26 @@ function LiveShelfView({
 
         {/* Product catalog */}
         <div className="col-span-12 lg:col-span-5 flex flex-col gap-4 min-h-[560px]">
-          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col flex-1 min-h-0">
-            <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]">
-              <h3 className="font-bold text-[#212121] mb-1">Product catalog</h3>
-              <p className="text-[10px] text-[#9E9E9E] mb-3">From your latest uploaded sheet only</p>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 min-h-0">
+            <div className="p-4 border-b border-slate-200 bg-slate-50">
+              <h3 className="font-bold text-slate-900 mb-1">Product catalog</h3>
+              <p className="text-[10px] text-slate-400 mb-3">From your latest uploaded sheet only</p>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type="text"
                   placeholder="Search SKU, name, shelf..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-[#F0F0F0]">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
               {loading ? (
-                <div className="p-8 text-center text-[#9E9E9E]">Loading products...</div>
+                <div className="p-8 text-center text-slate-400">Loading products...</div>
               ) : filteredCatalog.length === 0 ? (
-                <div className="p-8 text-center text-[#9E9E9E] text-sm">
+                <div className="p-8 text-center text-slate-400 text-sm">
                   {catalogItems.length === 0
                     ? 'No sheet products yet. Upload a CSV/Excel sheet to populate this list.'
                     : 'No matches for your search'}
@@ -812,28 +789,28 @@ function LiveShelfView({
                       type="button"
                       onClick={() => handleCatalogItemClick(item)}
                       className={cn(
-                        'w-full text-left px-4 py-3 hover:bg-[#F8F8F8] transition-colors',
-                        isSelected && 'bg-[#F0F7FF] border-l-4 border-l-[#1677FF]'
+                        'w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors',
+                        isSelected && 'bg-blue-50 border-l-4 border-l-blue-600'
                       )}
                     >
                       <div className="flex justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="font-bold text-sm text-[#212121] truncate">
+                          <div className="font-bold text-sm text-slate-900 truncate">
                             {item.name || item.product_name || item.sku}
                           </div>
-                          <div className="text-xs text-[#9E9E9E] font-mono">{item.sku}</div>
+                          <div className="text-xs text-slate-400 font-mono">{item.sku}</div>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <div
                             className={cn(
                               'text-sm font-bold',
-                              stock === 0 ? 'text-[#EF4444]' : 'text-[#212121]'
+                              stock === 0 ? 'text-red-500' : 'text-slate-900'
                             )}
                           >
                             {stock} units
                           </div>
                           {item.location && (
-                            <div className="text-[10px] text-[#1677FF] font-bold flex items-center justify-end gap-0.5 mt-0.5">
+                            <div className="text-[10px] text-blue-600 font-bold flex items-center justify-end gap-0.5 mt-0.5">
                               <MapPin size={10} /> {item.location}
                             </div>
                           )}
@@ -851,33 +828,33 @@ function LiveShelfView({
       {/* Shelf detail strip */}
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 lg:col-span-12">
-           <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm">
+           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               {loading ? (
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-[#9E9E9E]">Loading shelf details...</div>
+                  <div className="text-slate-400">Loading shelf details...</div>
                 </div>
               ) : selectedShelfDetails ? (
                 <>
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-lg font-bold text-[#212121]">Shelf {selectedShelfDetails.location_code}</h3>
-                      <p className="text-sm text-[#757575]">{selectedShelfDetails.section || 'General'}</p>
+                      <h3 className="text-lg font-bold text-slate-900">Shelf {selectedShelfDetails.location_code}</h3>
+                      <p className="text-sm text-slate-500">{selectedShelfDetails.section || 'General'}</p>
                     </div>
                     {(selectedShelfDetails.status === 'critical' || selectedShelfDetails.is_critical) && (
-                      <span className="px-2 py-1 bg-[#FEE2E2] text-[#EF4444] rounded text-xs font-bold uppercase">Critical</span>
+                      <StatusBadge variant="workflow" status="critical" />
                     )}
                   </div>
                   
                   <div className="space-y-4">
-                    <div className="p-3 border border-[#E0E0E0] rounded-lg bg-[#FAFAFA]">
+                    <div className="p-3 border border-slate-200 rounded-lg bg-slate-50">
                       <div className="flex justify-between items-center mb-2">
-                        <div className="text-xs text-[#757575] uppercase font-bold">Assigned SKUs</div>
+                        <div className="text-xs text-slate-500 uppercase font-bold">Assigned SKUs</div>
                         {selectedShelfDetails.assigned_skus?.[0] && (
                           <button 
                             onClick={() => setShowHistory(!showHistory)}
                             className={cn(
                               "text-[10px] font-bold flex items-center gap-1 px-2 py-0.5 rounded transition-colors",
-                              showHistory ? "bg-[#1677FF] text-white" : "text-[#1677FF] hover:bg-[#E6F7FF]"
+                              showHistory ? "bg-blue-600 text-white" : "text-blue-600 hover:bg-blue-50"
                             )}
                           >
                             <History size={10} /> {showHistory ? 'View Details' : 'History'}
@@ -899,25 +876,25 @@ function LiveShelfView({
                               <span className="text-sm font-medium">{sku.product_name || sku.sku || 'Unknown'}</span>
                               <span className={cn(
                                 "text-sm font-bold",
-                                (sku.stock_count || 0) === 0 ? "text-[#EF4444]" : "text-[#212121]"
+                                (sku.stock_count || 0) === 0 ? "text-red-500" : "text-slate-900"
                               )}>
                                 {sku.stock_count || 0} Stock
                               </span>
                             </div>
                           ))
                         ) : (
-                          <div className="text-sm text-[#9E9E9E]">No SKUs assigned</div>
+                          <div className="text-sm text-slate-400">No SKUs assigned</div>
                         )
                       )}
                     </div>
 
                     {!showHistory && selectedShelfDetails.issues && Array.isArray(selectedShelfDetails.issues) && selectedShelfDetails.issues.length > 0 && (
-                      <div className="p-3 border border-[#FCD34D] bg-[#FFFBEB] rounded-lg">
-                        <div className="flex items-center gap-2 mb-1 text-[#B45309] font-bold text-sm">
+                      <div className="p-3 border border-amber-300 bg-amber-50 rounded-lg">
+                        <div className="flex items-center gap-2 mb-1 text-amber-700 font-bold text-sm">
                           <AlertTriangle size={16} /> Issue Detected
                         </div>
                         {selectedShelfDetails.issues.map((issue: any, i: number) => (
-                          <p key={i} className="text-xs text-[#92400E] mb-1">
+                          <p key={i} className="text-xs text-amber-800 mb-1">
                             {issue.message || issue.description || 'Issue detected'}
                           </p>
                         ))}
@@ -941,7 +918,7 @@ function LiveShelfView({
                               toast.error(error.message || 'Failed to create restock task');
                             }
                           }}
-                          className="mt-2 w-full py-1.5 bg-white border border-[#FCD34D] text-[#B45309] text-xs font-bold rounded hover:bg-[#FFF7ED]"
+                          className="mt-2 w-full py-1.5 bg-white border border-amber-300 text-amber-700 text-xs font-bold rounded hover:bg-orange-50"
                         >
                           Create Restock Task
                         </button>
@@ -950,13 +927,13 @@ function LiveShelfView({
 
                     {((selectedShelfDetails.recent_activity && Array.isArray(selectedShelfDetails.recent_activity) && selectedShelfDetails.recent_activity.length > 0) ||
                       (selectedShelfDetails.recent_activities && Array.isArray(selectedShelfDetails.recent_activities) && selectedShelfDetails.recent_activities.length > 0)) && (
-                      <div className="p-3 border border-[#E0E0E0] rounded-lg bg-white">
-                        <div className="text-xs text-[#757575] uppercase font-bold mb-2">Recent Activity</div>
+                      <div className="p-3 border border-slate-200 rounded-lg bg-white">
+                        <div className="text-xs text-slate-500 uppercase font-bold mb-2">Recent Activity</div>
                         <div className="space-y-2">
                           {(selectedShelfDetails.recent_activity || selectedShelfDetails.recent_activities || []).map((activity: any, i: number) => (
                             <div key={i} className="flex justify-between text-xs">
-                              <span className="text-[#616161]">{activity.action || 'Activity'}</span>
-                              <span className="text-[#9E9E9E]">
+                              <span className="text-slate-600">{activity.action || 'Activity'}</span>
+                              <span className="text-slate-400">
                                 {activity.timestamp 
                                   ? (typeof activity.timestamp === 'string' && activity.timestamp.includes('T')
                                       ? new Date(activity.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -971,7 +948,7 @@ function LiveShelfView({
                   </div>
                 </>
               ) : (
-                <div className="flex items-center justify-center py-8 text-[#9E9E9E]">
+                <div className="flex items-center justify-center py-8 text-slate-400">
                   {selectedShelf
                     ? `No details for shelf ${selectedShelf}`
                     : 'Select a shelf on the map or a product to view shelf details'}
@@ -1097,38 +1074,35 @@ function StockLevels({ onDelete, refreshTrigger, deletedSku, onClearDeletedSku }
     return matchSearch && matchCategory && matchStatus;
   });
 
-  const getStatusTag = (item: any) => {
+  const getStockStatus = (item: any) => {
     const overridden = item.status && ['In Stock', 'Out of Stock', 'Low Stock', 'Overstocked'].includes(item.status);
-    if (overridden) {
-      const colors: Record<string, string> = { 'Out of Stock': 'bg-[#FEE2E2] text-[#EF4444]', 'Low Stock': 'bg-[#FEF3C7] text-[#D97706]', 'Overstocked': 'bg-[#E0E7FF] text-[#4338CA]', 'In Stock': 'bg-[#DCFCE7] text-[#16A34A]' };
-      return { label: item.status, color: colors[item.status] || 'bg-[#DCFCE7] text-[#16A34A]' };
-    }
+    if (overridden) return item.status;
     const stock = item.stock || 0;
-    if (stock === 0) return { label: 'Out of Stock', color: 'bg-[#FEE2E2] text-[#EF4444]' };
-    if (item.min_threshold && stock < item.min_threshold) return { label: 'Low Stock', color: 'bg-[#FEF3C7] text-[#D97706]' };
-    if (item.max_threshold && stock > item.max_threshold) return { label: 'Overstocked', color: 'bg-[#E0E7FF] text-[#4338CA]' };
-    return { label: 'In Stock', color: 'bg-[#DCFCE7] text-[#16A34A]' };
+    if (stock === 0) return 'Out of Stock';
+    if (item.min_threshold && stock < item.min_threshold) return 'Low Stock';
+    if (item.max_threshold && stock > item.max_threshold) return 'Overstocked';
+    return 'In Stock';
   };
 
   return (
     <div className="space-y-6">
        {/* Filters */}
-       <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm">
+       <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="relative flex-1 min-w-[200px]">
-             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
              <input 
                type="text" 
                placeholder="Search SKU..." 
                value={searchTerm}
                onChange={(e) => setSearchTerm(e.target.value)}
-               className="w-full pl-9 pr-4 py-2 text-sm border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1677FF]" 
+               className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" 
              />
           </div>
           <div className="flex gap-2">
              <select 
                value={categoryFilter}
                onChange={(e) => setCategoryFilter(e.target.value)}
-               className="px-3 py-2 text-sm border border-[#E0E0E0] rounded-lg bg-[#F9FAFB] font-medium text-[#616161]"
+               className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 font-medium text-slate-600"
              >
                 <option value="all">All Categories</option>
                 <option value="Produce">Produce</option>
@@ -1142,7 +1116,7 @@ function StockLevels({ onDelete, refreshTrigger, deletedSku, onClearDeletedSku }
              <select 
                value={statusFilter}
                onChange={(e) => setStatusFilter(e.target.value)}
-               className="px-3 py-2 text-sm border border-[#E0E0E0] rounded-lg bg-[#F9FAFB] font-medium text-[#616161]"
+               className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 font-medium text-slate-600"
              >
                 <option value="all">Status: All</option>
                 <option value="In Stock">In Stock</option>
@@ -1153,14 +1127,14 @@ function StockLevels({ onDelete, refreshTrigger, deletedSku, onClearDeletedSku }
           </div>
        </div>
 
-       <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm overflow-hidden">
+       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center p-8">
-              <div className="text-[#9E9E9E]">Loading stock levels...</div>
+              <div className="text-slate-400">Loading stock levels...</div>
             </div>
           ) : (
             <table className="w-full text-left text-sm">
-              <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+              <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-4 font-medium">Product</th>
                   <th className="px-6 py-4 font-medium">Category</th>
@@ -1170,38 +1144,36 @@ function StockLevels({ onDelete, refreshTrigger, deletedSku, onClearDeletedSku }
                   <th className="px-6 py-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F0F0F0]">
+              <tbody className="divide-y divide-slate-100">
                 {filteredData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-[#9E9E9E]">
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
                       {searchTerm ? 'No items match your search' : 'No inventory items found'}
                     </td>
                   </tr>
                 ) : (
                   filteredData.map(item => {
-                    const statusTag = getStatusTag(item);
+                    const stockStatus = getStockStatus(item);
                     const isHistoryExpanded = expandedHistory.has(item.sku);
                     return (
                       <React.Fragment key={item.sku}>
-                        <tr className={cn("hover:bg-[#F8F8F8] transition-colors", isHistoryExpanded && "bg-[#F0F7FF]")}>
+                        <tr className={cn("hover:bg-slate-50 transition-colors", isHistoryExpanded && "bg-blue-50")}>
                           <td className="px-6 py-4">
-                            <div className="font-bold text-[#212121]">{item.name || item.product_name || 'N/A'}</div>
-                            <div className="text-xs text-[#9E9E9E]">{item.sku}</div>
+                            <div className="font-bold text-slate-900">{item.name || item.product_name || 'N/A'}</div>
+                            <div className="text-xs text-slate-400">{item.sku}</div>
                           </td>
-                          <td className="px-6 py-4 text-[#616161]">{item.category || 'N/A'}</td>
+                          <td className="px-6 py-4 text-slate-600">{item.category || 'N/A'}</td>
                           <td className="px-6 py-4">
-                            <div className="font-bold text-[#212121]">{item.stock || 0}</div>
+                            <div className="font-bold text-slate-900">{item.stock || 0}</div>
                           </td>
-                          <td className="px-6 py-4 text-[#616161]">{item.location || 'N/A'}</td>
+                          <td className="px-6 py-4 text-slate-600">{item.location || 'N/A'}</td>
                           <td className="px-6 py-4">
-                            <span className={cn("px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide", statusTag.color)}>
-                              {statusTag.label}
-                            </span>
+                            <StatusBadge variant="stock" status={stockStatus} />
                           </td>
                           <td className="px-6 py-4 text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <button className="text-[#1677FF] font-bold text-xs hover:underline flex items-center justify-end gap-1 ml-auto">
+                                <button className="text-blue-600 font-bold text-xs hover:underline flex items-center justify-end gap-1 ml-auto">
                                   Manage
                                   <MoreVertical size={14} />
                                 </button>
@@ -1233,15 +1205,15 @@ function StockLevels({ onDelete, refreshTrigger, deletedSku, onClearDeletedSku }
                           </td>
                         </tr>
                         {isHistoryExpanded && (
-                          <tr className="bg-[#F0F7FF] border-b border-[#E0E0E0]">
+                          <tr className="bg-blue-50 border-b border-slate-200">
                             <td colSpan={6} className="px-6 py-4">
-                              <div className="bg-white border border-[#BAE7FF] rounded-lg p-4 shadow-sm">
+                              <div className="bg-white border border-blue-200 rounded-lg p-4 shadow-sm">
                                 <div className="flex items-center justify-between mb-4">
-                                  <h4 className="text-sm font-bold text-[#212121] flex items-center gap-2">
-                                    <History size={16} className="text-[#1677FF]" />
+                                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                    <History size={16} className="text-blue-600" />
                                     Action History for {item.name || item.sku}
                                   </h4>
-                                  <button onClick={() => toggleHistory(item.sku)} className="text-[#9E9E9E] hover:text-[#212121]">
+                                  <button onClick={() => toggleHistory(item.sku)} className="text-slate-400 hover:text-slate-900">
                                     <X size={16} />
                                   </button>
                                 </div>
@@ -1303,33 +1275,33 @@ function EditDetailsModal({ item, onClose, onSuccess }: any) {
       <DialogContent className="sm:max-w-[425px]" aria-describedby="edit-item-description">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Pencil className="w-5 h-5 text-[#1677FF]" />
+            <Pencil className="w-5 h-5 text-blue-600" />
             Edit Item Details
           </DialogTitle>
           <DialogDescription id="edit-item-description">
-            Update product information for SKU: <span className="font-mono font-bold text-[#212121]">{item.sku}</span>
+            Update product information for SKU: <span className="font-mono font-bold text-slate-900">{item.sku}</span>
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-[#616161] uppercase tracking-wider">Product Name</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Product Name</label>
             <input 
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1677FF] outline-none"
+              className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none"
               placeholder="e.g. Fresh Tomatoes"
               required
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold text-[#616161] uppercase tracking-wider">Category</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Category</label>
             <select 
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white focus:ring-2 focus:ring-[#1677FF] outline-none"
+              className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-600 outline-none"
             >
               <option value="Produce">Produce</option>
               <option value="Dairy">Dairy</option>
@@ -1342,19 +1314,19 @@ function EditDetailsModal({ item, onClose, onSuccess }: any) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold text-[#616161] uppercase tracking-wider">Location / Shelf</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Location / Shelf</label>
             <input 
               type="text"
               value={formData.location}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm focus:ring-2 focus:ring-[#1677FF] outline-none"
+              className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none"
               placeholder="e.g. A-04"
             />
           </div>
 
           <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-            <Button type="submit" className="bg-[#1677FF] hover:bg-[#0958D9]" disabled={loading}>
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={loading}>
               {loading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
               Save Changes
             </Button>
@@ -1484,25 +1456,25 @@ function InventoryAdjustments() {
   return (
     <div className="grid grid-cols-12 gap-6">
        <div className="col-span-12 md:col-span-5 space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <h3 className="text-lg font-bold text-[#212121] mb-6">Quick Adjustment</h3>
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+             <h3 className="text-lg font-bold text-slate-900 mb-6">Quick Adjustment</h3>
              
              <div className="flex gap-2 mb-6">
                 <button 
                    onClick={() => setMode('add')}
-                   className={cn("flex-1 py-2 rounded-lg text-sm font-bold border transition-colors", mode === 'add' ? "bg-[#DCFCE7] border-[#86EFAC] text-[#15803D]" : "bg-white border-[#E0E0E0] text-[#616161]")}
+                   className={cn("flex-1 py-2 rounded-lg text-sm font-bold border transition-colors", mode === 'add' ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-white border-slate-200 text-slate-600")}
                 >
                    + Add Stock
                 </button>
                 <button 
                    onClick={() => setMode('remove')}
-                   className={cn("flex-1 py-2 rounded-lg text-sm font-bold border transition-colors", mode === 'remove' ? "bg-[#FEE2E2] border-[#FCA5A5] text-[#B91C1C]" : "bg-white border-[#E0E0E0] text-[#616161]")}
+                   className={cn("flex-1 py-2 rounded-lg text-sm font-bold border transition-colors", mode === 'remove' ? "bg-red-50 border-red-300 text-red-700" : "bg-white border-slate-200 text-slate-600")}
                 >
                    - Remove
                 </button>
                 <button 
                    onClick={() => setMode('damage')}
-                   className={cn("flex-1 py-2 rounded-lg text-sm font-bold border transition-colors", mode === 'damage' ? "bg-[#FFF7ED] border-[#FDBA74] text-[#C2410C]" : "bg-white border-[#E0E0E0] text-[#616161]")}
+                   className={cn("flex-1 py-2 rounded-lg text-sm font-bold border transition-colors", mode === 'damage' ? "bg-orange-50 border-orange-300 text-orange-700" : "bg-white border-slate-200 text-slate-600")}
                 >
                    Damaged
                 </button>
@@ -1510,9 +1482,9 @@ function InventoryAdjustments() {
 
              <form className="space-y-4" onSubmit={handleCreateAdjustment}>
                 <div>
-                   <label className="block text-xs font-bold text-[#616161] mb-1">SKU / Product Name</label>
+                   <label className="block text-xs font-bold text-slate-600 mb-1">SKU / Product Name</label>
                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="text"
                         placeholder="Search SKU or product name..."
@@ -1524,24 +1496,24 @@ function InventoryAdjustments() {
                         }}
                         onFocus={() => setShowSuggestions(true)}
                         onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                        className="w-full pl-9 pr-3 py-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                         disabled={submitting}
                         autoComplete="off"
                       />
                       {showSuggestions && skuSuggestions.length > 0 && (
-                        <ul className="absolute z-20 mt-1 w-full bg-white border border-[#E0E0E0] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        <ul className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                           {skuSuggestions.map((item) => (
                             <li key={item.sku}>
                               <button
                                 type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-[#F0F7FF] border-b border-[#F0F0F0] last:border-0"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-0"
                                 onMouseDown={(ev) => {
                                   ev.preventDefault();
                                   pickItem(item);
                                 }}
                               >
-                                <span className="font-bold text-[#212121]">{item.name || item.product_name}</span>
-                                <span className="block text-xs text-[#9E9E9E] font-mono">{item.sku} · {item.stock ?? 0} in stock</span>
+                                <span className="font-bold text-slate-900">{item.name || item.product_name}</span>
+                                <span className="block text-xs text-slate-400 font-mono">{item.sku} · {item.stock ?? 0} in stock</span>
                               </button>
                             </li>
                           ))}
@@ -1551,9 +1523,9 @@ function InventoryAdjustments() {
                 </div>
 
                 {selectedItem && (
-                  <div className="p-3 rounded-lg bg-[#F0F7FF] border border-[#BAE7FF] text-sm">
-                    <div className="font-bold text-[#212121]">{selectedItem.name || selectedItem.product_name}</div>
-                    <div className="text-xs text-[#616161] mt-1">
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm">
+                    <div className="font-bold text-slate-900">{selectedItem.name || selectedItem.product_name}</div>
+                    <div className="text-xs text-slate-600 mt-1">
                       Current stock: <span className="font-bold">{selectedItem.stock ?? 0}</span>
                       {selectedItem.location ? ` · Shelf ${selectedItem.location}` : ''}
                     </div>
@@ -1561,24 +1533,24 @@ function InventoryAdjustments() {
                 )}
 
                 <div>
-                   <label className="block text-xs font-bold text-[#616161] mb-1">Quantity</label>
+                   <label className="block text-xs font-bold text-slate-600 mb-1">Quantity</label>
                    <input
                      type="number"
                      min={1}
                      placeholder="0"
                      value={quantityInput}
                      onChange={(e) => setQuantityInput(e.target.value)}
-                     className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                     className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                      disabled={submitting}
                      required
                    />
                 </div>
                 <div>
-                   <label className="block text-xs font-bold text-[#616161] mb-1">Reason Code</label>
+                   <label className="block text-xs font-bold text-slate-600 mb-1">Reason Code</label>
                    <select
                      value={reasonInput}
                      onChange={(e) => setReasonInput(e.target.value)}
-                     className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1677FF]"
+                     className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                      disabled={submitting}
                    >
                       <option>Restock</option>
@@ -1594,8 +1566,8 @@ function InventoryAdjustments() {
                   disabled={submitting || !skuInput.trim() || !quantityInput}
                   className={cn(
                     "w-full py-3 rounded-lg text-white font-bold mt-4 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2",
-                    mode === 'add' ? "bg-[#22C55E] hover:bg-[#16A34A]" :
-                    mode === 'remove' ? "bg-[#EF4444] hover:bg-[#DC2626]" : "bg-[#F97316] hover:bg-[#EA580C]"
+                    mode === 'add' ? "bg-emerald-500 hover:bg-emerald-600" :
+                    mode === 'remove' ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
                   )}
                 >
                   {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
@@ -1606,14 +1578,14 @@ function InventoryAdjustments() {
        </div>
 
        <div className="col-span-12 md:col-span-7">
-          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden flex flex-col h-full">
-             <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-                <h3 className="font-bold text-[#212121]">Adjustment History (Audit Trail)</h3>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+             <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                <h3 className="font-bold text-slate-900">Adjustment History (Audit Trail)</h3>
                 <button
                   type="button"
                   onClick={loadAdjustments}
                   disabled={loading}
-                  className="text-xs font-bold text-[#1677FF] hover:underline flex items-center gap-1"
+                  className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
                 >
                   <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
                 </button>
@@ -1621,11 +1593,11 @@ function InventoryAdjustments() {
              <div className="flex-1 overflow-y-auto">
                 {loading ? (
                   <div className="flex items-center justify-center p-8">
-                    <div className="text-[#9E9E9E]">Loading adjustments...</div>
+                    <div className="text-slate-400">Loading adjustments...</div>
                   </div>
                 ) : (
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0] sticky top-0">
+                    <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 sticky top-0">
                       <tr>
                         <th className="px-4 py-3 font-medium">Time</th>
                         <th className="px-4 py-3 font-medium">SKU</th>
@@ -1634,10 +1606,10 @@ function InventoryAdjustments() {
                         <th className="px-4 py-3 font-medium">User</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F0F0F0]">
+                    <tbody className="divide-y divide-slate-100">
                         {adjustments.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-[#9E9E9E]">
+                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                             No adjustments found
                           </td>
                         </tr>
@@ -1656,22 +1628,20 @@ function InventoryAdjustments() {
                           }
                           
                           return (
-                            <tr key={log.adjustment_id || log.id} className="hover:bg-[#F9FAFB]">
-                              <td className="px-4 py-3 text-[#616161]">{timeStr || 'N/A'}</td>
+                            <tr key={log.adjustment_id || log.id} className="hover:bg-slate-50">
+                              <td className="px-4 py-3 text-slate-600">{timeStr || 'N/A'}</td>
                               <td className="px-4 py-3 font-medium">{log.sku}</td>
-                              <td className="px-4 py-3 text-[#616161]">{log.product_name || 'N/A'}</td>
+                              <td className="px-4 py-3 text-slate-600">{log.product_name || 'N/A'}</td>
                               <td className="px-4 py-3">
-                                <span className={cn(
-                                  "text-xs font-bold px-2 py-0.5 rounded uppercase",
-                                  log.action === 'add' ? "bg-[#F0FDF4] text-[#16A34A]" :
-                                  log.action === 'remove' ? "bg-[#FEE2E2] text-[#EF4444]" :
-                                  log.action === 'damage' ? "bg-[#FFF7ED] text-[#C2410C]" : "bg-[#F3F4F6] text-[#4B5563]"
-                                )}>
-                                  {log.action === 'add' ? '+' : '−'}
-                                  {Math.abs(Number(log.quantity) || 0)} ({log.reason || log.reason_code || 'N/A'})
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <StatusBadge variant="workflow" status={log.action} />
+                                  <span className="text-xs text-slate-600 tabular-nums">
+                                    {log.action === 'add' ? '+' : '−'}
+                                    {Math.abs(Number(log.quantity) || 0)} ({log.reason || log.reason_code || 'N/A'})
+                                  </span>
+                                </div>
                               </td>
-                              <td className="px-4 py-3 text-[#616161]">{log.user || 'System'}</td>
+                              <td className="px-4 py-3 text-slate-600">{log.user || 'System'}</td>
                             </tr>
                           );
                         })
@@ -1767,80 +1737,63 @@ function CycleCount() {
   return (
     <div className="space-y-6" data-tab="cycle-count">
        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <div className="flex justify-between items-start mb-4">
-                <div>
-                   <h4 className="text-[#757575] font-bold uppercase text-xs tracking-wider">Daily Count Progress</h4>
-                   <h2 className="text-3xl font-bold text-[#212121] mt-1">
-                     {loading ? '...' : (data?.metrics?.daily_count_progress?.percentage ?? data?.metrics?.daily_progress ?? 0)}%
-                   </h2>
+          <MetricCard
+            label="Daily Count Progress"
+            value={`${data?.metrics?.daily_count_progress?.percentage ?? data?.metrics?.daily_progress ?? 0}%`}
+            icon={CheckCircle2}
+            accent="success"
+            loading={loading}
+            footer={
+              <>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-2">
+                  <div
+                    className="bg-emerald-600 h-full rounded-full"
+                    style={{ width: `${data?.metrics?.daily_count_progress?.percentage ?? data?.metrics?.daily_progress ?? 0}%` }}
+                  />
                 </div>
-                <div className="p-2 bg-[#F0FDF4] text-[#16A34A] rounded-lg">
-                   <CheckCircle2 size={24} />
+                <p className="text-xs text-slate-600">
+                  {loading ? '...' : `${data?.metrics?.daily_count_progress?.items_counted ?? data?.metrics?.items_counted ?? 0}/${data?.metrics?.daily_count_progress?.items_total ?? data?.metrics?.total_items ?? 0} items counted today`}
+                </p>
+              </>
+            }
+          />
+          <MetricCard
+            label="Accuracy Rate"
+            value={`${data?.metrics?.accuracy_rate?.percentage ?? data?.metrics?.accuracy_rate ?? 0}%`}
+            icon={Target}
+            loading={loading}
+            footer={
+              <>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-2">
+                  <div
+                    className="bg-blue-600 h-full rounded-full"
+                    style={{ width: `${data?.metrics?.accuracy_rate?.percentage ?? data?.metrics?.accuracy_rate ?? 0}%` }}
+                  />
                 </div>
-             </div>
-             <div className="w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden mb-2">
-                <div 
-                  className="bg-[#16A34A] h-full rounded-full" 
-                  style={{ width: `${data?.metrics?.daily_count_progress?.percentage ?? data?.metrics?.daily_progress ?? 0}%` }}
-                />
-             </div>
-             <p className="text-xs text-[#616161]">
-               {loading ? '...' : `${data?.metrics?.daily_count_progress?.items_counted ?? data?.metrics?.items_counted ?? 0}/${data?.metrics?.daily_count_progress?.items_total ?? data?.metrics?.total_items ?? 0} items counted today`}
-             </p>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <div className="flex justify-between items-start mb-4">
-                <div>
-                   <h4 className="text-[#757575] font-bold uppercase text-xs tracking-wider">Accuracy Rate</h4>
-                   <h2 className="text-3xl font-bold text-[#212121] mt-1">
-                     {loading ? '...' : (data?.metrics?.accuracy_rate?.percentage ?? data?.metrics?.accuracy_rate ?? 0)}%
-                   </h2>
-                </div>
-                <div className="p-2 bg-[#F0F9FF] text-[#1677FF] rounded-lg">
-                   <Target size={24} />
-                </div>
-             </div>
-             <div className="w-full bg-[#F5F5F5] h-2 rounded-full overflow-hidden mb-2">
-                <div 
-                  className="bg-[#1677FF] h-full rounded-full" 
-                  style={{ width: `${data?.metrics?.accuracy_rate?.percentage ?? data?.metrics?.accuracy_rate ?? 0}%` }}
-                />
-             </div>
-             <p className="text-xs text-[#616161]">Target: 99.0%</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-[#E0E0E0] shadow-sm">
-             <div className="flex justify-between items-start mb-4">
-                <div>
-                   <h4 className="text-[#757575] font-bold uppercase text-xs tracking-wider">Variance Value</h4>
-                   <h2 className={cn(
-                     "text-3xl font-bold mt-1",
-                     (data?.metrics?.variance_value?.amount ?? data?.metrics?.variance_value ?? 0) < 0 ? "text-[#EF4444]" : "text-[#22C55E]"
-                   )}>
-                     {loading ? '...' : (data?.metrics?.variance_value?.amount ?? data?.metrics?.variance_value ?? 0)}
-                   </h2>
-                </div>
-                <div className={cn(
-                  "p-2 rounded-lg",
-                  (data?.metrics?.variance_value?.amount ?? data?.metrics?.variance_value ?? 0) < 0 ? "bg-[#FEF2F2] text-[#EF4444]" : "bg-[#F0FDF4] text-[#16A34A]"
-                )}>
-                   <AlertTriangle size={24} />
-                </div>
-             </div>
-             <p className="text-xs text-[#616161] mt-4">
-               {loading ? '...' : (data?.metrics?.variance_value?.items_missing ?? data?.variance_report?.filter((v: any) => v.difference < 0).length ?? 0)} items missing, {data?.metrics?.variance_value?.items_extra ?? data?.variance_report?.filter((v: any) => v.difference > 0).length ?? 0} extra found
-             </p>
-          </div>
+                <p className="text-xs text-slate-600">Target: 99.0%</p>
+              </>
+            }
+          />
+          <MetricCard
+            label="Variance Value"
+            value={data?.metrics?.variance_value?.amount ?? data?.metrics?.variance_value ?? 0}
+            icon={AlertTriangle}
+            accent={(data?.metrics?.variance_value?.amount ?? data?.metrics?.variance_value ?? 0) < 0 ? 'danger' : 'success'}
+            loading={loading}
+            footer={
+              <p className="text-xs text-slate-600">
+                {loading ? '...' : `${data?.metrics?.variance_value?.items_missing ?? data?.variance_report?.filter((v: any) => v.difference < 0).length ?? 0} items missing, ${data?.metrics?.variance_value?.items_extra ?? data?.variance_report?.filter((v: any) => v.difference > 0).length ?? 0} extra found`}
+              </p>
+            }
+          />
        </div>
 
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm p-6">
-             <h3 className="font-bold text-[#212121] mb-4">Inaccuracy Heatmap</h3>
-             <div className="aspect-video bg-[#FAFAFA] rounded-lg border border-[#E0E0E0] relative flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+             <h3 className="font-bold text-slate-900 mb-4">Inaccuracy Heatmap</h3>
+             <div className="aspect-video bg-slate-50 rounded-lg border border-slate-200 relative flex items-center justify-center p-4">
                 {loading ? (
-                  <div className="text-[#9E9E9E]">Loading heatmap...</div>
+                  <div className="text-slate-400">Loading heatmap...</div>
                 ) : data?.heatmap?.zones && Array.isArray(data.heatmap.zones) && data.heatmap.zones.length > 0 ? (
                   <div className="grid grid-cols-3 grid-rows-2 gap-2 w-full max-w-md mx-auto">
                     {data.heatmap.zones.map((zone: any, i: number) => {
@@ -1849,7 +1802,7 @@ function CycleCount() {
                       const isHigh = varianceLevel === 'high' || accuracy < 85;
                       const isMedium = varianceLevel === 'medium' || (accuracy >= 85 && accuracy < 95);
                       const isLow = varianceLevel === 'low' || accuracy >= 95;
-                      const bg = isHigh ? 'bg-[#EF4444]' : isMedium ? 'bg-[#F59E0B]' : 'bg-[#22C55E]';
+                      const bg = isHigh ? 'bg-red-500' : isMedium ? 'bg-amber-500' : 'bg-emerald-500';
                       const label = isHigh ? 'High' : isMedium ? 'Med' : 'OK';
                       const zoneName = (zone.zone_id || zone.name || `Zone ${i + 1}`).toString();
                       return (
@@ -1868,19 +1821,19 @@ function CycleCount() {
                     })}
                   </div>
                 ) : (
-                  <div className="text-[#9E9E9E]">No heatmap data available</div>
+                  <div className="text-slate-400">No heatmap data available</div>
                 )}
              </div>
              <div className="flex items-center gap-4 mt-4 text-xs">
-                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#EF4444] rounded"/> High Variance</div>
-                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#F59E0B] rounded"/> Medium Variance</div>
-                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#22C55E] rounded"/> Accurate</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded"/> High Variance</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-500 rounded"/> Medium Variance</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-500 rounded"/> Accurate</div>
              </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col">
-             <div className="p-4 border-b border-[#E0E0E0] flex justify-between items-center">
-                <h3 className="font-bold text-[#212121]">Variance Report</h3>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col">
+             <div className="p-4 border-b border-slate-200 flex justify-between items-center">
+                <h3 className="font-bold text-slate-900">Variance Report</h3>
                 <button
                   type="button"
                   disabled={downloading || loading}
@@ -1912,7 +1865,7 @@ function CycleCount() {
                       setDownloading(false);
                     }
                   }}
-                  className="text-[#1677FF] text-xs font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  className="text-blue-600 text-xs font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                 >
                   {downloading ? <RefreshCw size={12} className="animate-spin" /> : null}
                   {downloading ? 'Generating...' : 'Download PDF'}
@@ -1921,11 +1874,11 @@ function CycleCount() {
              <div className="flex-1 overflow-y-auto">
                 {loading ? (
                   <div className="flex items-center justify-center p-8">
-                    <div className="text-[#9E9E9E]">Loading variance report...</div>
+                    <div className="text-slate-400">Loading variance report...</div>
                   </div>
                 ) : (
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+                    <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-2 font-medium">SKU</th>
                         <th className="px-4 py-2 font-medium">Product</th>
@@ -1934,10 +1887,10 @@ function CycleCount() {
                         <th className="px-4 py-2 font-medium">Diff</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F0F0F0]">
+                    <tbody className="divide-y divide-slate-100">
                       {!data?.variance_report || !Array.isArray(data.variance_report) || data.variance_report.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-[#9E9E9E]">
+                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                             No variance data available
                           </td>
                         </tr>
@@ -1947,14 +1900,14 @@ function CycleCount() {
                           const counted = Number(row.counted ?? row.actual ?? row.received_quantity) ?? 0;
                           const diff = Number(row.difference ?? row.variance ?? (counted - expected));
                           return (
-                            <tr key={i} className="hover:bg-[#F9FAFB]">
-                              <td className="px-4 py-2 font-medium text-[#212121]">{row.sku ?? '—'}</td>
-                              <td className="px-4 py-2 text-[#616161]">{row.product_name ?? row.product ?? 'N/A'}</td>
-                              <td className="px-4 py-2 text-[#616161]">{expected}</td>
-                              <td className="px-4 py-2 text-[#616161]">{counted}</td>
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-4 py-2 font-medium text-slate-900">{row.sku ?? '—'}</td>
+                              <td className="px-4 py-2 text-slate-600">{row.product_name ?? row.product ?? 'N/A'}</td>
+                              <td className="px-4 py-2 text-slate-600">{expected}</td>
+                              <td className="px-4 py-2 text-slate-600">{counted}</td>
                               <td className={cn(
                                 'px-4 py-2 font-bold',
-                                diff < 0 ? 'text-[#EF4444]' : diff > 0 ? 'text-[#D97706]' : 'text-[#22C55E]'
+                                diff < 0 ? 'text-red-500' : diff > 0 ? 'text-amber-600' : 'text-emerald-500'
                               )}>
                                 {diff > 0 ? '+' : ''}{diff}
                               </td>

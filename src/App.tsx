@@ -113,7 +113,7 @@ function App() {
               <ProtectedRoute>
                 <DashboardRoute 
                   component={(props) => <DarkstoreManagement {...props} />} 
-                  allowedRoles={['darkstore']}
+                  allowedRoles={['darkstore', 'admin', 'super_admin']}
                   dashboardId="darkstore"
                 />
               </ProtectedRoute>

@@ -16,5 +16,4 @@ export * from './adjustments.api';
 export * from './restockTask.api';
 export * from './auditLog.api';
 export * from './inventoryBulkImport.api';
-export * from './mockData';
 

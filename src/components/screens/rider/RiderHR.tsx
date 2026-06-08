@@ -29,6 +29,9 @@ export function RiderHR() {
   
   // Filter State
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [docPage, setDocPage] = useState(1);
+  const [docTotal, setDocTotal] = useState(0);
+  const DOC_PAGE_SIZE = 20;
   
   // Modal/Drawer State
   const [reviewDoc, setReviewDoc] = useState<RiderDocument | null>(null);
@@ -42,8 +45,12 @@ export function RiderHR() {
 
   // Reload documents when filter changes
   useEffect(() => {
-    loadDocuments();
+    setDocPage(1);
   }, [filterStatus]);
+
+  useEffect(() => {
+    loadDocuments();
+  }, [filterStatus, docPage]);
 
   // Real-time polling for document queue and summary (every 30 seconds)
   // Pause polling when tab is hidden to save resources
@@ -105,8 +112,13 @@ export function RiderHR() {
 
   const loadDocuments = async () => {
     try {
-      const { data } = await fetchDocuments({ status: filterStatus });
+      const { data, total } = await fetchDocuments({
+        status: filterStatus,
+        page: docPage,
+        limit: DOC_PAGE_SIZE,
+      });
       setDocuments(data);
+      setDocTotal(total);
     } catch (error) {
       console.error("Failed to load documents", error);
       toast.error("Failed to load documents", {
@@ -182,6 +194,10 @@ export function RiderHR() {
                 setReviewDoc(doc);
                 setIsReviewOpen(true);
               }}
+              page={docPage}
+              total={docTotal}
+              pageSize={DOC_PAGE_SIZE}
+              onPageChange={setDocPage}
             />
           </TabsContent>
           

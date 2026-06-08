@@ -9,12 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  FileText,
-  MoreHorizontal,
-  ArrowUpDown,
-  Filter,
-} from "lucide-react";
+import { FileText, Filter } from "lucide-react";
 import { DocumentStatus, RiderDocument } from "./types";
 import { format } from "date-fns";
 import {
@@ -31,6 +26,10 @@ interface DocumentApprovalTableProps {
   onFilterChange: (status: string) => void;
   onReview: (doc: RiderDocument) => void;
   onViewReason: (doc: RiderDocument) => void;
+  page?: number;
+  total?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
 }
 
 export function DocumentApprovalTable({
@@ -40,6 +39,10 @@ export function DocumentApprovalTable({
   onFilterChange,
   onReview,
   onViewReason,
+  page = 1,
+  total = 0,
+  pageSize = 20,
+  onPageChange,
 }: DocumentApprovalTableProps) {
   const getStatusColor = (status: DocumentStatus) => {
     switch (status) {
@@ -62,6 +65,10 @@ export function DocumentApprovalTable({
     if (!status) return "Unknown";
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
+
+  const totalPages = Math.max(1, Math.ceil((total || documents.length) / pageSize));
+  const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min(page * pageSize, total || documents.length);
 
   return (
     <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
@@ -170,12 +177,32 @@ export function DocumentApprovalTable({
         </Table>
       </div>
       
-      {/* Simple pagination mock */}
       <div className="p-4 border-t border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center text-xs text-gray-500">
-        <span>Showing {documents.length} results</span>
+        <span>
+          Showing {showingFrom}–{showingTo} of {total || documents.length} results
+        </span>
         <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-7 text-xs" disabled>Previous</Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs">Next</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={page <= 1 || loading}
+              onClick={() => onPageChange?.(page - 1)}
+            >
+              Previous
+            </Button>
+            <span className="flex items-center px-2 text-xs">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={page >= totalPages || loading}
+              onClick={() => onPageChange?.(page + 1)}
+            >
+              Next
+            </Button>
         </div>
       </div>
     </div>

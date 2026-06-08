@@ -30,10 +30,11 @@ import { cn } from "@/lib/utils";
 interface AlertCardProps {
   alert: Alert;
   onAction: (id: string, payload: AlertActionPayload) => void;
+  onViewOrder?: (alert: Alert) => void;
   isLoading?: boolean;
 }
 
-export function AlertCard({ alert, onAction, isLoading = false }: AlertCardProps) {
+export function AlertCard({ alert, onAction, onViewOrder, isLoading = false }: AlertCardProps) {
   const [showHistory, setShowHistory] = useState(false);
   
   // Define styles based on priority
@@ -163,6 +164,11 @@ export function AlertCard({ alert, onAction, isLoading = false }: AlertCardProps
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {alert.source.orderId && onViewOrder && (
+                <DropdownMenuItem onClick={() => onViewOrder(alert)} disabled={isLoading}>
+                  Open Order Command
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem 
                 onClick={() => onAction(alert.id, { actionType: "acknowledge" })}
                 disabled={isLoading}
@@ -226,14 +232,19 @@ export function AlertCard({ alert, onAction, isLoading = false }: AlertCardProps
                 <ChevronUp size={14} className="text-gray-400" />
               </div>
               
-              <div className="relative ml-1 pl-5 space-y-4 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-gray-200">
-                {[...alert.timeline].reverse().map((entry, idx) => (
-                  <div key={idx} className="relative min-w-0">
-                    <div
-                      className="absolute -left-[13px] top-1.5 z-10 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500 ring-2 ring-white"
-                      aria-hidden
-                    />
-                    <div className="flex min-w-0 flex-col gap-1">
+              <div className="space-y-4">
+                {[...alert.timeline].reverse().map((entry, idx, arr) => (
+                  <div key={idx} className="flex gap-3 min-w-0">
+                    <div className="flex w-4 shrink-0 flex-col items-center">
+                      <div
+                        className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500 ring-2 ring-white"
+                        aria-hidden
+                      />
+                      {idx < arr.length - 1 ? (
+                        <div className="mt-1 w-px flex-1 min-h-[12px] bg-gray-200" />
+                      ) : null}
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1 pb-0.5">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-900">
                           {entry.status.replace(/_/g, " ")}
@@ -248,7 +259,7 @@ export function AlertCard({ alert, onAction, isLoading = false }: AlertCardProps
                         </p>
                       ) : null}
                       {entry.actor ? (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                           <User size={10} className="shrink-0 text-gray-400" />
                           <span className="text-[10px] font-medium text-gray-500 break-words">
                             {entry.actor}

@@ -1,5 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { History, Sliders, UserPlus, AlertTriangle, Video, UserRoundSearch, UserCheck, UserX, Ban } from 'lucide-react';
+import {
+  History,
+  Sliders,
+  UserPlus,
+  AlertTriangle,
+  Video,
+  UserRoundSearch,
+  UserCheck,
+  UserX,
+  Ban,
+  MoreHorizontal,
+  Eye,
+  Link2,
+  RefreshCw,
+} from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PickerApprovals } from './PickerApprovals';
 import { PickerActivityLogs } from './PickerActivityLogs';
@@ -10,6 +24,26 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { fetchPickers, updatePickerAssignment, updatePickerOpsStatus, type PickerOpsListItem, type PickerOpsStatus } from '@/api/admin/pickerOpsApi';
 import { PickerDetailsDrawer } from './PickerDetailsDrawer';
@@ -27,6 +61,34 @@ const TABS = [
 
 type PickerManagementTab = (typeof TABS)[number]['value'];
 
+const OPS_STATUS_BADGE: Record<PickerOpsStatus, string> = {
+  approved: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  pending: 'bg-amber-50 text-amber-800 border-amber-200',
+  rejected: 'bg-red-50 text-red-800 border-red-200',
+  deactivated: 'bg-zinc-100 text-zinc-600 border-zinc-200',
+};
+
+const OPS_STATUS_LABEL: Record<PickerOpsStatus, string> = {
+  approved: 'Approved',
+  pending: 'Pending',
+  rejected: 'Rejected',
+  deactivated: 'Deactivated',
+};
+
+type ConfirmAction = 'approve' | 'reject' | 'activate' | 'deactivate';
+
+function shortPickerId(id: string): string {
+  if (!id) return '—';
+  return id.length > 10 ? `…${id.slice(-8)}` : id;
+}
+
+function AssignmentCell({ value, unassignedLabel = 'Unassigned' }: { value?: string | null; unassignedLabel?: string }) {
+  if (value?.trim()) {
+    return <span className="text-[#3f3f46]">{value}</span>;
+  }
+  return <span className="text-[#a1a1aa] text-xs italic">{unassignedLabel}</span>;
+}
+
 export function PickerManagement() {
   const [activeTab, setActiveTab] = useState<PickerManagementTab>('pickers');
 
@@ -35,11 +97,17 @@ export function PickerManagement() {
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<PickerOpsStatus | 'all'>('all');
+  const [actionPickerId, setActionPickerId] = useState<string | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<PickerApprovalDetails | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<PickerOpsListItem | null>(null);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [confirmPicker, setConfirmPicker] = useState<PickerOpsListItem | null>(null);
+  const [confirmReason, setConfirmReason] = useState('');
 
   const loadPickers = async () => {
     setLoading(true);
@@ -65,15 +133,91 @@ export function PickerManagement() {
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query) return pickers;
-    return pickers.filter((p) => (p.name || '').toLowerCase().includes(query) || (p.phone || '').includes(query));
+    return pickers.filter(
+      (p) =>
+        (p.name || '').toLowerCase().includes(query) ||
+        (p.phone || '').includes(query) ||
+        (p.pickerId || '').toLowerCase().includes(query)
+    );
   }, [pickers, q]);
 
-  const statusBadge = (s: PickerOpsStatus) => {
-    if (s === 'approved') return <Badge className="bg-emerald-500">Approved</Badge>;
-    if (s === 'pending') return <Badge className="bg-amber-500">Pending</Badge>;
-    if (s === 'rejected') return <Badge variant="destructive">Rejected</Badge>;
-    return <Badge variant="secondary">Deactivated</Badge>;
+  const openConfirm = (picker: PickerOpsListItem, action: ConfirmAction) => {
+    setConfirmPicker(picker);
+    setConfirmAction(action);
+    setConfirmReason(action === 'reject' ? '' : action === 'deactivate' ? '' : 'Approved by admin');
+    setConfirmOpen(true);
   };
+
+  const runConfirmAction = async () => {
+    if (!confirmPicker || !confirmAction) return;
+    const needsReason = confirmAction === 'reject' || confirmAction === 'deactivate';
+    if (needsReason && !confirmReason.trim()) {
+      toast.error('Please provide a reason');
+      return;
+    }
+
+    setActionPickerId(confirmPicker.pickerId);
+    try {
+      if (confirmAction === 'approve' || confirmAction === 'activate') {
+        await updatePickerOpsStatus(confirmPicker.pickerId, 'approved');
+        toast.success(confirmAction === 'activate' ? 'Picker reactivated' : 'Picker approved');
+      } else if (confirmAction === 'reject') {
+        await updatePickerOpsStatus(confirmPicker.pickerId, 'rejected', confirmReason.trim());
+        toast.success('Picker rejected');
+      } else {
+        await updatePickerOpsStatus(confirmPicker.pickerId, 'deactivated');
+        toast.success('Picker deactivated');
+      }
+      setConfirmOpen(false);
+      setConfirmPicker(null);
+      setConfirmAction(null);
+      await loadPickers();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setActionPickerId(null);
+    }
+  };
+
+  const openPickerDetails = async (pickerId: string) => {
+    setDrawerOpen(true);
+    setSelectedDetails(null);
+    try {
+      const details = await fetchPickerDetails(pickerId);
+      setSelectedDetails(details);
+    } catch {
+      toast.error('Failed to load picker details');
+      setDrawerOpen(false);
+    }
+  };
+
+  const statusBadge = (s: PickerOpsStatus) => (
+    <Badge variant="outline" className={`font-medium text-xs capitalize border ${OPS_STATUS_BADGE[s]}`}>
+      {OPS_STATUS_LABEL[s]}
+    </Badge>
+  );
+
+  const confirmTitle =
+    confirmAction === 'approve'
+      ? 'Approve picker'
+      : confirmAction === 'reject'
+        ? 'Reject picker'
+        : confirmAction === 'activate'
+          ? 'Reactivate picker'
+          : confirmAction === 'deactivate'
+            ? 'Deactivate picker'
+            : '';
+
+  const confirmDescription =
+    confirmAction === 'approve'
+      ? `Approve "${confirmPicker?.name}"? They can be assigned to stores and shifts.`
+      : confirmAction === 'reject'
+        ? `Reject "${confirmPicker?.name}"? They will not be able to work until re-approved.`
+        : confirmAction === 'activate'
+          ? `Reactivate "${confirmPicker?.name}"? They will be able to work again.`
+          : confirmAction === 'deactivate'
+            ? `Deactivate "${confirmPicker?.name}"? They will lose access until reactivated.`
+            : '';
 
   return (
     <div className="space-y-6">
@@ -99,176 +243,217 @@ export function PickerManagement() {
 
         <TabsContent value="pickers">
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-3 items-center justify-between">
-              <div className="flex flex-wrap gap-3 items-center">
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search pickers (name/phone)..." className="w-[280px]" />
-                <div className="flex gap-2">
-                  {(['all', 'pending', 'approved', 'rejected', 'deactivated'] as const).map((s) => (
-                    <Button
-                      key={s}
-                      size="sm"
-                      variant={status === s ? 'default' : 'outline'}
-                      onClick={() => setStatus(s as any)}
-                    >
-                      {s === 'all' ? 'All' : s[0].toUpperCase() + s.slice(1)}
-                    </Button>
-                  ))}
+            <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-[#e4e4e7] bg-[#fafafa] flex flex-wrap gap-3 items-center justify-between">
+                <h3 className="font-semibold text-[#18181b]">Active pickers</h3>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search name, phone, ID…"
+                    className="w-[220px] h-9 text-sm bg-white"
+                  />
+                  <Select value={status} onValueChange={(v) => setStatus(v as PickerOpsStatus | 'all')}>
+                    <SelectTrigger className="w-[150px] h-9 text-sm bg-white">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="deactivated">Deactivated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" variant="outline" className="h-9" onClick={loadPickers} disabled={loading}>
+                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                    <span className="ml-1.5">Refresh</span>
+                  </Button>
                 </div>
               </div>
-              <Button size="sm" variant="outline" onClick={loadPickers} disabled={loading}>
-                Refresh
-              </Button>
-            </div>
 
-            <div className="bg-white border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
-              <div className="overflow-auto max-h-[650px]">
+              <div className="overflow-x-auto max-h-[600px]">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-[#f9fafb] z-10">
-                    <TableRow>
-                      <TableHead>Picker</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Agency</TableHead>
-                      <TableHead>Assigned store</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                  <TableHeader className="sticky top-0 bg-[#f5f7fa] z-10">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-[#71717a] font-medium">Picker</TableHead>
+                      <TableHead className="text-[#71717a] font-medium">Phone</TableHead>
+                      <TableHead className="text-[#71717a] font-medium">Agency</TableHead>
+                      <TableHead className="text-[#71717a] font-medium">Store</TableHead>
+                      <TableHead className="text-[#71717a] font-medium">Shift</TableHead>
+                      <TableHead className="text-[#71717a] font-medium w-[110px]">Status</TableHead>
+                      <TableHead className="text-[#71717a] font-medium text-right w-[140px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-10 text-center text-[#71717a]">
+                        <TableCell colSpan={7} className="py-12 text-center text-[#71717a]">
                           Loading pickers…
                         </TableCell>
                       </TableRow>
                     ) : filtered.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-10 text-center text-[#71717a]">
-                          No pickers found
+                        <TableCell colSpan={7} className="py-12 text-center text-[#71717a]">
+                          No pickers match your filters.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filtered.map((p) => (
-                        <TableRow key={p.pickerId} className="hover:bg-[#fcfcfc]">
-                          <TableCell>
-                            <div className="font-medium text-[#18181b]">{p.name || '—'}</div>
-                            <div className="text-xs text-[#a1a1aa] font-mono">{p.pickerId}</div>
-                          </TableCell>
-                          <TableCell>{p.phone || '—'}</TableCell>
-                          <TableCell>{p.agencyName || '—'}</TableCell>
-                          <TableCell>{p.storeName || '—'}</TableCell>
-                          <TableCell>{p.shiftSlotLabel || '—'}</TableCell>
-                          <TableCell>{statusBadge(p.status)}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2 flex-wrap">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  setDrawerOpen(true);
-                                  setSelectedDetails(null);
-                                  try {
-                                    const details = await fetchPickerDetails(p.pickerId);
-                                    setSelectedDetails(details);
-                                  } catch (e) {
-                                    toast.error('Failed to load picker details');
-                                    setDrawerOpen(false);
-                                  }
-                                }}
+                      filtered.map((p) => {
+                        const busy = actionPickerId === p.pickerId;
+                        return (
+                          <TableRow key={p.pickerId} className="hover:bg-[#fafafa]">
+                            <TableCell>
+                              <button
+                                type="button"
+                                className="text-left group"
+                                onClick={() => openPickerDetails(p.pickerId)}
                               >
-                                View
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setAssignTarget(p);
-                                  setAssignOpen(true);
-                                }}
+                                <div className="font-medium text-[#18181b] group-hover:text-[#1677ff]">
+                                  {p.name || 'Unnamed picker'}
+                                </div>
+                                <div
+                                  className="text-xs text-[#a1a1aa] font-mono mt-0.5"
+                                  title={p.pickerId}
+                                >
+                                  {shortPickerId(p.pickerId)}
+                                </div>
+                              </button>
+                            </TableCell>
+                            <TableCell className="text-[#3f3f46] tabular-nums">{p.phone || '—'}</TableCell>
+                            <TableCell>
+                              <AssignmentCell value={p.agencyName} />
+                            </TableCell>
+                            <TableCell>
+                              <AssignmentCell value={p.storeName} />
+                            </TableCell>
+                            <TableCell>
+                              <AssignmentCell value={p.shiftSlotLabel} unassignedLabel="No shift" />
+                            </TableCell>
+                            <TableCell>{statusBadge(p.status)}</TableCell>
+                            <TableCell className="text-right">
+                              <div
+                                className="inline-flex items-center justify-end gap-1"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                Assign
-                              </Button>
-                              {p.status === 'pending' && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    className="bg-emerald-600 hover:bg-emerald-700"
-                                    onClick={async () => {
-                                      await updatePickerOpsStatus(p.pickerId, 'approved');
-                                      toast.success('Picker approved');
-                                      await loadPickers();
-                                    }}
-                                  >
-                                    <UserCheck size={14} className="mr-1.5" /> Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={async () => {
-                                      const reason = window.prompt('Rejection reason') || 'Rejected by admin';
-                                      await updatePickerOpsStatus(p.pickerId, 'rejected', reason);
-                                      toast.success('Picker rejected');
-                                      await loadPickers();
-                                    }}
-                                  >
-                                    <UserX size={14} className="mr-1.5" /> Reject
-                                  </Button>
-                                </>
-                              )}
-                              {p.status === 'deactivated' && (
-                                <Button
-                                  size="sm"
-                                  className="bg-emerald-600 hover:bg-emerald-700"
-                                  onClick={async () => {
-                                    if (!confirm(`Reactivate picker "${p.name}"? They will be able to work again.`)) return;
-                                    await updatePickerOpsStatus(p.pickerId, 'approved');
-                                    toast.success('Picker reactivated');
-                                    await loadPickers();
-                                  }}
-                                >
-                                  <UserCheck size={14} className="mr-1.5" /> Activate
-                                </Button>
-                              )}
-                              {p.status === 'rejected' && (
-                                <Button
-                                  size="sm"
-                                  className="bg-emerald-600 hover:bg-emerald-700"
-                                  onClick={async () => {
-                                    if (!confirm(`Approve picker "${p.name}"?`)) return;
-                                    await updatePickerOpsStatus(p.pickerId, 'approved');
-                                    toast.success('Picker approved');
-                                    await loadPickers();
-                                  }}
-                                >
-                                  <UserCheck size={14} className="mr-1.5" /> Approve
-                                </Button>
-                              )}
-                              {p.status !== 'deactivated' && p.status !== 'rejected' && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="border-rose-200 text-rose-700 hover:bg-rose-50"
-                                  onClick={async () => {
-                                    if (!confirm(`Deactivate picker "${p.name}"?`)) return;
-                                    await updatePickerOpsStatus(p.pickerId, 'deactivated');
-                                    toast.success('Picker deactivated');
-                                    await loadPickers();
-                                  }}
+                                  className="h-8 px-2.5"
+                                  disabled={busy}
+                                  onClick={() => openPickerDetails(p.pickerId)}
+                                  title="View details"
                                 >
-                                  <Ban size={14} className="mr-1.5" /> Deactivate
+                                  <Eye size={14} />
+                                  <span className="sr-only">View</span>
                                 </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-2.5"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setAssignTarget(p);
+                                    setAssignOpen(true);
+                                  }}
+                                  title="Assign agency, store, shift"
+                                >
+                                  <Link2 size={14} />
+                                  <span className="sr-only">Assign</span>
+                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 w-8 p-0"
+                                      disabled={busy}
+                                      aria-label="More actions"
+                                    >
+                                      <MoreHorizontal size={16} />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuLabel className="text-xs text-[#71717a] font-normal truncate">
+                                      {p.name || p.pickerId}
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => openPickerDetails(p.pickerId)}>
+                                      <Eye size={14} className="mr-2" />
+                                      View details
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setAssignTarget(p);
+                                        setAssignOpen(true);
+                                      }}
+                                    >
+                                      <Link2 size={14} className="mr-2" />
+                                      Assign store / shift
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    {p.status === 'pending' && (
+                                      <>
+                                        <DropdownMenuItem
+                                          className="text-emerald-700 focus:text-emerald-700"
+                                          onClick={() => openConfirm(p, 'approve')}
+                                        >
+                                          <UserCheck size={14} className="mr-2" />
+                                          Approve
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          className="text-red-700 focus:text-red-700"
+                                          onClick={() => openConfirm(p, 'reject')}
+                                        >
+                                          <UserX size={14} className="mr-2" />
+                                          Reject
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    {p.status === 'rejected' && (
+                                      <DropdownMenuItem
+                                        className="text-emerald-700 focus:text-emerald-700"
+                                        onClick={() => openConfirm(p, 'approve')}
+                                      >
+                                        <UserCheck size={14} className="mr-2" />
+                                        Approve
+                                      </DropdownMenuItem>
+                                    )}
+                                    {p.status === 'deactivated' && (
+                                      <DropdownMenuItem
+                                        className="text-emerald-700 focus:text-emerald-700"
+                                        onClick={() => openConfirm(p, 'activate')}
+                                      >
+                                        <UserCheck size={14} className="mr-2" />
+                                        Reactivate
+                                      </DropdownMenuItem>
+                                    )}
+                                    {p.status !== 'deactivated' && p.status !== 'rejected' && (
+                                      <DropdownMenuItem
+                                        className="text-red-700 focus:text-red-700"
+                                        onClick={() => openConfirm(p, 'deactivate')}
+                                      >
+                                        <Ban size={14} className="mr-2" />
+                                        Deactivate
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
               </div>
-              <div className="p-3 border-t border-[#e4e4e7] text-sm text-[#71717a] flex justify-between">
-                <span>Showing {filtered.length} of {pickers.length}</span>
-                <span>Total: {total}</span>
+
+              <div className="px-4 py-3 border-t border-[#e4e4e7] text-sm text-[#71717a] flex justify-between bg-[#fafafa]">
+                <span>
+                  Showing {filtered.length} of {pickers.length} loaded
+                </span>
+                <span>Total in system: {total}</span>
               </div>
             </div>
 
@@ -297,11 +482,57 @@ export function PickerManagement() {
               }}
               onSubmit={async (payload) => {
                 if (!assignTarget) return;
-                await updatePickerAssignment(assignTarget.pickerId, payload);
-                toast.success('Picker assignment updated');
-                await loadPickers();
+                setActionPickerId(assignTarget.pickerId);
+                try {
+                  await updatePickerAssignment(assignTarget.pickerId, payload);
+                  toast.success('Assignment updated');
+                  await loadPickers();
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Assignment failed');
+                } finally {
+                  setActionPickerId(null);
+                }
               }}
             />
+
+            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+                  <AlertDialogDescription>{confirmDescription}</AlertDialogDescription>
+                </AlertDialogHeader>
+                {(confirmAction === 'reject' || confirmAction === 'deactivate') && (
+                  <div className="space-y-2">
+                    <Label htmlFor="picker-action-reason">Reason</Label>
+                    <Input
+                      id="picker-action-reason"
+                      value={confirmReason}
+                      onChange={(e) => setConfirmReason(e.target.value)}
+                      placeholder={
+                        confirmAction === 'reject' ? 'Why is this picker rejected?' : 'Reason for deactivation'
+                      }
+                    />
+                  </div>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={!!actionPickerId}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={!!actionPickerId}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void runConfirmAction();
+                    }}
+                    className={
+                      confirmAction === 'reject' || confirmAction === 'deactivate'
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                    }
+                  >
+                    {actionPickerId ? 'Saving…' : 'Confirm'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </TabsContent>
 

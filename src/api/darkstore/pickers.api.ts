@@ -95,6 +95,8 @@ export interface PickOpsOrder {
   missingItemsCount: number;
   slaRisk: 'safe' | 'warning' | 'critical';
   zone: string;
+  packStation?: string;
+  status?: string;
 }
 
 /**

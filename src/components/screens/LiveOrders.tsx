@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useScreenTab } from '../../hooks/useScreenUrlState';
 import { Filter, MoreHorizontal, Clock, Package, Bike, User, AlertCircle, ArrowRight, Search, CheckCircle2, XCircle, ChevronDown, AlertTriangle, MapPin, Phone, Truck, ShoppingBag, Ban, CircleDot, AlertOctagon } from 'lucide-react';
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from "sonner";
-import { callCustomer, markRTO, updateOrder, cancelOrder, assignOrder, startPicking, completePicking, getOrderActionLogs, getOrderById } from '../../api/dashboard/orders.api';
+import { callCustomer, markRTO, updateOrder, assignOrder, startPicking, completePicking, getOrderActionLogs, getOrderById } from '../../api/dashboard/orders.api';
 import { generateLabel } from '../../api/utilities/utilitiesApi';
 import { getAvailablePickers } from '../../api/darkstore/pickers.api';
 import { websocketService } from '../../utils/websocket';
@@ -19,58 +20,43 @@ import {
 } from "../ui/dropdown-menu";
 import {
   Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "../ui/sheet";
-import { PageHeader } from '../ui/page-header';
-import { EmptyState, LoadingState, SelectionSummaryBar, FilterChip, ResultCount } from '../ui/ux-components';
-import { CancelOrderConfirmation, StatusChangeConfirmation } from '../ui/confirmation-dialog';
+import { EmptyState, LoadingState, SelectionSummaryBar, ResultCount } from '../ui/ux-components';
+import { LiveOrdersKanban } from '../darkstore/LiveOrdersKanban';
+import { slaRowClassName } from '../darkstore/slaRowStyles';
+import { mapBackendStatusToUi, toApiStatus, isUnassigned, isExpressOrder, isSlaCritical, isOrderException, shouldSuggestReassign } from '../../utils/orderWorkflow';
+import { OrderJourneyStepper } from '../darkstore/OrderJourneyStepper';
+import { OrderRowQuickActions } from '../darkstore/OrderRowQuickActions';
+import { getLiveOrders } from '../../api/dashboard';
+import { LayoutGrid, List } from 'lucide-react';
+import { DarkstoreScreenShell } from '../darkstore/DarkstoreScreenShell';
+import { StoreRequiredGuard } from '../darkstore/StoreRequiredGuard';
+import { DarkstoreTabBar } from '../darkstore/DarkstoreTabBar';
+import { AlertCard } from '../darkstore/AlertCard';
+import { StatusBadge } from '../darkstore/StatusBadge';
+import { OrderDetailsDrawer } from '../darkstore/OrderDetailsDrawer';
+import { DarkstoreSheetContent } from '../darkstore/DarkstoreSheetContent';
+import { useDarkstore } from '../darkstore/DarkstoreProvider';
 import { Button } from '../ui/button';
+import { ConfirmationDialog, StatusChangeConfirmation } from '../ui/confirmation-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ActionLogsTimeline } from '../ui/action-logs-timeline';
 import { exportToCSV } from '../../utils/csvExport';
 import { getPendingOrderSearch } from '../../utils/pendingOrderSearch';
 import { getPaymentDisplay } from '../../utils/orderPaymentDisplay';
 
-const UI_TO_API_STATUS: Record<string, string> = {
-  Queued: 'Queued',
-  Picking: 'Picking',
-  Packing: 'Packing',
-  Assigned: 'ASSIGNED',
-  'Ready for Dispatch': 'READY_FOR_DISPATCH',
-};
-
-function toApiStatus(status: string): string {
-  return UI_TO_API_STATUS[status] || status;
-}
-
 function resolveOrderId(order: { order_id?: string; id?: string }): string {
-  return String(order.order_id || order.id || '').replace(/^#/, '');
-}
-
-function mapBackendStatusToUi(status: string): string {
-  const statusMap: Record<string, string> = {
-    new: 'Queued',
-    queued: 'Queued',
-    processing: 'Assigned',
-    ASSIGNED: 'Assigned',
-    PICKING: 'Picking',
-    ready: 'Packing',
-    PICKED: 'Packing',
-    PACKED: 'Packing',
-    READY_FOR_DISPATCH: 'Ready for Dispatch',
-    cancelled: 'Cancelled',
-    rto: 'RTO',
-  };
-  return statusMap[status] || status;
+  return String(order.order_id || order.id || '').replace(/^#/, '').trim();
 }
 
 function transformBackendOrder(order: any) {
   return {
     id: `#${order.order_id}`,
     order_id: order.order_id,
+    store_id: order.store_id || '',
     customer: order.customer_name || 'Customer',
     customerPhone: order.customer_phone || '',
     deliveryAddress: order.delivery_address || 'Not available',
@@ -132,6 +118,14 @@ function applyAssignResponseToOrder(order: any, res: any) {
   };
 }
 
+function isNewOrderStatus(status: string): boolean {
+  return ['Queued', 'new', 'queued', 'pending'].includes(status);
+}
+
+function isPickingReadyStatus(status: string): boolean {
+  return ['Assigned', 'ASSIGNED', 'processing'].includes(status);
+}
+
 function AssignPickerContent({
   orderId,
   storeId,
@@ -145,7 +139,7 @@ function AssignPickerContent({
   onAutoAssign: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [pickers, setPickers] = useState<{ id: string; name: string }[]>([]);
+  const [pickers, setPickers] = useState<{ id: string; name: string; status?: string; derivedStatus?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoAssigning, setAutoAssigning] = useState(false);
   useEffect(() => {
@@ -162,7 +156,7 @@ function AssignPickerContent({
     })();
     return () => { cancelled = true; };
   }, [storeId]);
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading pickers...</div>;
+  if (loading) return <div className="p-6 text-sm text-slate-500">Loading pickers...</div>;
   return (
     <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
       <button
@@ -176,23 +170,31 @@ function AssignPickerContent({
           }
         }}
         disabled={autoAssigning}
-        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-[#1677FF] bg-[#E6F7FF] hover:bg-[#BAE7FF] text-[#1677FF] font-medium transition-colors disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-600 font-medium transition-colors disabled:opacity-50"
       >
         {autoAssigning ? 'Assigning...' : 'Auto Assign'}
       </button>
       {pickers.length === 0 ? (
-        <div className="text-sm text-gray-500 py-2">No pickers loaded. Use Auto Assign or refresh.</div>
+        <div className="text-sm text-slate-500 py-2 space-y-1">
+          <p>No pickers punched in for this store.</p>
+          <p className="text-xs">Pickers must punch in on the picker app before they appear here. Auto Assign also needs a recent app heartbeat unless all punched-in pickers are offline.</p>
+        </div>
       ) : (
         pickers.map((p) => (
           <button
             key={p.id}
             onClick={() => onAssign(p.id, p.name)}
-            className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-[#1677FF] transition-colors text-left"
+            className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 hover:border-blue-600 transition-colors text-left"
           >
-            <div className="w-8 h-8 rounded-full bg-[#E6F7FF] text-[#1677FF] flex items-center justify-center text-sm font-bold">
+            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">
               {p.name.charAt(0)}
             </div>
-            <span className="font-medium text-gray-900">{p.name}</span>
+            <div className="flex-1 min-w-0">
+              <span className="font-medium text-slate-900 block truncate">{p.name}</span>
+              {p.derivedStatus && p.derivedStatus !== 'AVAILABLE' && (
+                <span className="text-xs text-slate-500">{p.derivedStatus.replace('_', ' ')}</span>
+              )}
+            </div>
           </button>
         ))
       )}
@@ -200,27 +202,45 @@ function AssignPickerContent({
   );
 }
 
-export function LiveOrders() {
-  const [activeTab, setActiveTab] = useState('new');
+const LIVE_ORDER_TABS = ['new', 'processing', 'ready', 'cancelled'] as const;
+type QuickFilter = 'all' | 'express' | 'unassigned' | 'sla_critical' | 'exceptions';
+
+export function LiveOrders({ initialTab }: { initialTab?: (typeof LIVE_ORDER_TABS)[number] } = {}) {
+  const defaultTab = initialTab && LIVE_ORDER_TABS.includes(initialTab) ? initialTab : 'new';
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(LIVE_ORDER_TABS, defaultTab);
+  const { saveFilters, getFilters, preferences, setLiveOrdersViewMode } = useDarkstore();
+  const viewMode = preferences.liveOrdersViewMode;
+  const savedFilters = getFilters('liveorders');
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  
+  const [quickDrawerOrderId, setQuickDrawerOrderId] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<Date>();
+
   // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const [filterUrgency, setFilterUrgency] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState(savedFilters.search || '');
+  const [filterStatus, setFilterStatus] = useState<string | null>(savedFilters.status || null);
+  const [filterUrgency, setFilterUrgency] = useState<string | null>(savedFilters.urgency || null);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>((savedFilters.quick as QuickFilter) || 'all');
+  const [cancelledOrders, setCancelledOrders] = useState<any[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Confirmation Dialogs
-  const [cancelDialog, setCancelDialog] = useState({ open: false, orderId: '' });
-  const [isCancelling, setIsCancelling] = useState(false);
   const [statusDialog, setStatusDialog] = useState({ open: false, orderId: '', currentStatus: '', newStatus: '' });
-  const [assignDialog, setAssignDialog] = useState({ open: false, orderId: '', order: null as any });
+  const [assignDialog, setAssignDialog] = useState({
+    open: false,
+    orderId: '',
+    order: null as any,
+    storeId: '' as string,
+  });
   const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
-  const [detailActionBusy, setDetailActionBusy] = useState<'none' | 'accept' | 'reject'>('none');
-  const isConfirmationOpen = cancelDialog.open || statusDialog.open;
+  const [detailActionBusy, setDetailActionBusy] = useState<'none' | 'call' | 'rto'>('none');
+  const [detailsTab, setDetailsTab] = useState('details');
+  const [callingOrderId, setCallingOrderId] = useState<string | null>(null);
+  const [rtoDialog, setRtoDialog] = useState({ open: false, orderId: '' });
+  const [isMarkingRto, setIsMarkingRto] = useState(false);
+  const isConfirmationOpen = statusDialog.open || rtoDialog.open;
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -231,11 +251,12 @@ export function LiveOrders() {
   const [orderActionLogs, setOrderActionLogs] = useState<any[]>([]);
   const [orderActionLogsLoading, setOrderActionLogsLoading] = useState(false);
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || 'DS-Adyar-01';
+  const storeId = activeStoreId || '';
   const isWsConnected = useWebSocketConnection();
 
   const [orders, setOrders] = useState<any[]>([]);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const autoOpenedDetailsForQuery = useRef<string | null>(null);
 
   useEffect(() => {
     const q = searchParams.get('q') || getPendingOrderSearch() || '';
@@ -245,10 +266,38 @@ export function LiveOrders() {
   }, [searchParams]);
 
   useEffect(() => {
+    saveFilters('liveorders', {
+      search: searchQuery,
+      status: filterStatus || '',
+      urgency: filterUrgency || '',
+      quick: quickFilter,
+    });
+  }, [searchQuery, filterStatus, filterUrgency, quickFilter, saveFilters]);
+
+  useEffect(() => {
+    if (activeTab !== 'cancelled') return;
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      try {
+        const data = await getLiveOrders(storeId, 'cancelled', 100);
+        if (!cancelled && data?.orders) {
+          setCancelledOrders(data.orders.map((o: any) => transformBackendOrder(o)));
+        }
+      } catch {
+        if (!cancelled) setCancelledOrders([]);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, storeId]);
+
+  useEffect(() => {
     if (!isConfirmationOpen) return;
     // Keep confirmation dialogs viewport-centered and avoid competing drawers.
     setIsDetailsOpen(false);
-    setAssignDialog((prev) => (prev.open ? { open: false, orderId: '', order: null } : prev));
+    setAssignDialog((prev) => (prev.open ? { open: false, orderId: '', order: null, storeId: '' } : prev));
   }, [isConfirmationOpen]);
 
   // Load orders when connection is established or store changes
@@ -283,6 +332,7 @@ export function LiveOrders() {
         const transformedOrders = data.orders.map((order: any) => transformBackendOrder(order));
         setOrders(transformedOrders);
         setIsLoading(false);
+        setLastSync(new Date());
       } catch (err) {
         console.error('Failed to process live orders snapshot', err);
         setIsLoading(false);
@@ -297,6 +347,7 @@ export function LiveOrders() {
         const newOrder = {
           id: `#${data.order_id}`,
           order_id: data.order_id,
+          store_id: data.store_id || storeId,
           customer: data.customer_name || 'Customer',
           customerPhone: data.customer_phone || '',
           deliveryAddress: data.delivery_address || '',
@@ -487,28 +538,38 @@ export function LiveOrders() {
     }
   };
 
+  const sourceOrders = activeTab === 'cancelled' ? cancelledOrders : orders;
+
   // Filter Logic
-  const filteredOrders = orders.filter(order => {
+  const filteredOrders = sourceOrders.filter(order => {
     const matchesSearch = 
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.assignee.toLowerCase().includes(searchQuery.toLowerCase());
+      (order.assignee || '').toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = filterStatus ? order.status === filterStatus : (() => {
       if (activeTab === 'new') return order.status === 'Queued';
       if (activeTab === 'processing') return order.status === 'Assigned' || order.status === 'Picking';
       if (activeTab === 'ready') return order.status === 'Packing' || order.status === 'Ready for Dispatch';
+      if (activeTab === 'cancelled') return order.status === 'Cancelled' || order.status === 'cancelled';
       return true;
     })();
     const matchesUrgency = filterUrgency ? order.urgency === filterUrgency : true;
+    const matchesQuick =
+      quickFilter === 'all' ? true :
+      quickFilter === 'express' ? isExpressOrder(order) :
+      quickFilter === 'unassigned' ? isUnassigned(order) :
+      quickFilter === 'sla_critical' ? isSlaCritical(order) :
+      quickFilter === 'exceptions' ? isOrderException(order) : true;
 
-    return matchesSearch && matchesStatus && matchesUrgency;
+    return matchesSearch && matchesStatus && matchesUrgency && matchesQuick;
   });
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedOrders = filteredOrders.slice(startIndex, startIndex + itemsPerPage);
+  const reassignSuggestions = sourceOrders.filter(shouldSuggestReassign);
 
   // Bulk Selection Logic
   const handleSelectAll = (checked: boolean) => {
@@ -555,7 +616,12 @@ export function LiveOrders() {
     if (action === 'Assign') {
       if (selected.length === 1) {
         const order = selected[0];
-        setAssignDialog({ open: true, orderId: resolveOrderId(order), order });
+        setAssignDialog({
+          open: true,
+          orderId: resolveOrderId(order),
+          order,
+          storeId: (order?.store_id && String(order.store_id).trim()) || storeId,
+        });
       } else {
         toast.info('Select one order for bulk assign, or assign individually from the row menu');
       }
@@ -615,24 +681,157 @@ export function LiveOrders() {
     toast.info("All filters cleared");
   };
 
+  const syncOrderFromDetail = (rawId: string, freshOrder: any) => {
+    const fresh = transformBackendOrder(freshOrder);
+    setSelectedOrder((prev: any) => (prev && resolveOrderId(prev) === rawId ? { ...prev, ...fresh } : prev));
+    setOrders((prev) =>
+      prev.map((o) => (o.order_id === rawId ? { ...o, ...fresh, sla: o.sla, urgency: o.urgency } : o))
+    );
+    return fresh;
+  };
+
+  const refreshSelectedOrderDetails = async (order: any) => {
+    const oid = resolveOrderId(order);
+    if (!oid || !/^ORD-/i.test(oid)) return null;
+    const orderStoreId = (order.store_id && String(order.store_id).trim()) || storeId;
+    const res = await getOrderById(oid, orderStoreId);
+    if (res?.order) return syncOrderFromDetail(oid, res.order);
+    return null;
+  };
+
+  const loadOrderActionLogs = async (order: any) => {
+    const oid = resolveOrderId(order);
+    if (!oid) return;
+    setOrderActionLogsLoading(true);
+    try {
+      const data = await getOrderActionLogs(oid);
+      setOrderActionLogs(Array.isArray(data) ? data : []);
+    } catch {
+      setOrderActionLogs([]);
+    } finally {
+      setOrderActionLogsLoading(false);
+    }
+  };
+
+  const ensureOrderAssigned = async (rawId: string, order: any) => {
+    if (isPickingReadyStatus(order?.status || '')) return null;
+    const hasAssignee =
+      (order?.assignee && order.assignee !== '-') ||
+      Boolean(order?.assigneeId || order?.pickerAssignment?.pickerId);
+    if (hasAssignee) {
+      await updateOrder(rawId, { status: toApiStatus('Assigned') });
+      return null;
+    }
+    try {
+      const res = await assignOrder(rawId, { autoAssign: true });
+      if (res?.success) return res;
+    } catch {
+      /* fall through */
+    }
+    await updateOrder(rawId, { status: toApiStatus('Assigned') });
+    return null;
+  };
+
+  const handleCallCustomer = async (order: any) => {
+    const rawId = resolveOrderId(order);
+    if (!rawId) return;
+    try {
+      setDetailActionBusy('call');
+      setCallingOrderId(rawId);
+      const response = await callCustomer(rawId, { reason: 'Customer contact from live order board' });
+      if (response?.success) {
+        toast.success(response.message || 'Customer call initiated');
+        if (response.called_number) {
+          toast.info(`Dialing ${response.called_number}`, { duration: 4000 });
+        }
+        await refreshSelectedOrderDetails(order);
+        if (detailsTab === 'audit') await loadOrderActionLogs(order);
+      } else {
+        toast.error('Failed to initiate customer call');
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to call customer');
+    } finally {
+      setDetailActionBusy('none');
+      setCallingOrderId(null);
+    }
+  };
+
+  const handleMarkRTO = async (rawId: string) => {
+    try {
+      setIsMarkingRto(true);
+      const response = await markRTO(rawId, {
+        reason: 'Marked from live order board',
+        notes: 'Customer unreachable or delivery failed',
+        rto_status: 'marked_rto',
+      });
+      if (response?.success) {
+        setOrders((prev) => prev.filter((o) => o.order_id !== rawId && resolveOrderId(o) !== rawId));
+        if (selectedOrder && resolveOrderId(selectedOrder) === rawId) {
+          setIsDetailsOpen(false);
+          setSelectedOrder(null);
+        }
+        toast.success(response.message || `Order ${rawId} marked as RTO`);
+      } else {
+        toast.error('Failed to mark order as RTO');
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to mark order as RTO');
+    } finally {
+      setIsMarkingRto(false);
+      setRtoDialog({ open: false, orderId: '' });
+    }
+  };
+
   const handleViewDetails = async (order: any) => {
     setSelectedOrder(order);
+    setDetailsTab('details');
+    setOrderActionLogs([]);
     setIsDetailsOpen(true);
     const oid = resolveOrderId(order);
+    if (!oid || !/^ORD-/i.test(oid)) {
+      toast.error('Invalid order ID');
+      return;
+    }
+    const orderStoreId = (order.store_id && String(order.store_id).trim()) || storeId;
     setLoadingOrderDetails(true);
     try {
-      const res = await getOrderById(oid, storeId);
+      const res = await getOrderById(oid, orderStoreId);
       if (res?.order) {
         const fresh = transformBackendOrder(res.order);
         setSelectedOrder(fresh);
         setOrders((prev) => prev.map((o) => (o.order_id === oid ? { ...o, ...fresh, sla: o.sla, urgency: o.urgency } : o)));
       }
-    } catch {
-      /* keep list row data */
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load order details';
+      toast.error(message);
     } finally {
       setLoadingOrderDetails(false);
     }
   };
+
+  // Open details when navigating from dashboard / top bar with an order id
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      autoOpenedDetailsForQuery.current = null;
+      return;
+    }
+    if (!orders.length || autoOpenedDetailsForQuery.current === q) return;
+    if (!/^#?ORD-/i.test(q)) return;
+
+    const normalized = q.replace(/^#/, '').trim().toLowerCase();
+    const match = orders.find((o) => {
+      const oid = resolveOrderId(o).toLowerCase();
+      const displayId = o.id.replace(/^#/, '').trim().toLowerCase();
+      return oid === normalized || displayId === normalized;
+    });
+
+    if (match) {
+      autoOpenedDetailsForQuery.current = q;
+      void handleViewDetails(match);
+    }
+  }, [orders, searchQuery]);
 
   const handlePrintLabel = async (order: { order_id?: string; id?: string }) => {
     const oid = resolveOrderId(order);
@@ -652,30 +851,13 @@ export function LiveOrders() {
   };
 
   const openAssignPicker = (order: any) => {
-    setAssignDialog({ open: true, orderId: resolveOrderId(order), order });
-  };
-
-  const handleCancelOrder = (order: { order_id?: string; id?: string }) => {
-    const displayId = order.id || `#${resolveOrderId(order)}`;
-    setCancelDialog({ open: true, orderId: displayId });
-  };
-
-  const confirmCancelOrder = async () => {
-    const rawId = resolveOrderId({ id: cancelDialog.orderId, order_id: cancelDialog.orderId });
-    const orderIdToRemove = cancelDialog.orderId.startsWith('#') ? cancelDialog.orderId : `#${rawId}`;
-    try {
-      setIsCancelling(true);
-      await cancelOrder(rawId, 'Cancelled from live order board');
-      setOrders((prev) => prev.filter((o) => o.order_id !== rawId && o.id !== orderIdToRemove));
-      if (selectedOrder?.id === orderIdToRemove || selectedOrder?.order_id === rawId) setIsDetailsOpen(false);
-      toast.success(`Order ${orderIdToRemove} has been cancelled`);
-      setCancelDialog({ open: false, orderId: '' });
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to cancel order');
-      throw err;
-    } finally {
-      setIsCancelling(false);
-    }
+    const orderStoreId = (order?.store_id && String(order.store_id).trim()) || storeId;
+    setAssignDialog({
+      open: true,
+      orderId: resolveOrderId(order),
+      order,
+      storeId: orderStoreId,
+    });
   };
 
   const handleUpdateStatus = (orderId: string, newStatus: string, currentStatusHint?: string) => {
@@ -701,13 +883,43 @@ export function LiveOrders() {
   };
 
   const confirmStatusUpdate = async () => {
-    const rawId = statusDialog.orderId.replace(/^#/, '');
+    const rawId = resolveOrderId({ id: statusDialog.orderId, order_id: statusDialog.orderId });
+    const order =
+      orders.find((o) => o.id === statusDialog.orderId) ||
+      (selectedOrder?.id === statusDialog.orderId ? selectedOrder : null);
     try {
-      if (statusDialog.newStatus === 'Picking') {
+      if (statusDialog.newStatus === 'Assigned') {
+        try {
+          const res = await assignOrder(rawId, { autoAssign: true });
+          if (res?.success && order) {
+            const patched = applyAssignResponseToOrder(order, res);
+            setOrders((prev) => prev.map((o) => (o.id === statusDialog.orderId ? patched : o)));
+            if (selectedOrder?.id === statusDialog.orderId) setSelectedOrder(patched);
+          } else {
+            await updateOrder(rawId, { status: toApiStatus('Assigned') });
+            setOrders((prev) =>
+              prev.map((o) => (o.id === statusDialog.orderId ? { ...o, status: 'Assigned' } : o))
+            );
+            if (selectedOrder?.id === statusDialog.orderId) {
+              setSelectedOrder((prev: any) => ({ ...prev, status: 'Assigned' }));
+            }
+          }
+        } catch {
+          await updateOrder(rawId, { status: toApiStatus('Assigned') });
+          setOrders((prev) =>
+            prev.map((o) => (o.id === statusDialog.orderId ? { ...o, status: 'Assigned' } : o))
+          );
+          if (selectedOrder?.id === statusDialog.orderId) {
+            setSelectedOrder((prev: any) => ({ ...prev, status: 'Assigned' }));
+          }
+        }
+      } else if (statusDialog.newStatus === 'Picking') {
+        if (order && (isNewOrderStatus(order.status) || !isPickingReadyStatus(order.status))) {
+          await ensureOrderAssigned(rawId, order);
+        }
         try {
           await startPicking(rawId);
         } catch {
-          // Fallback for environments where start-picking route/guards are strict.
           await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
         }
       } else if (statusDialog.newStatus === 'Packing') {
@@ -720,13 +932,15 @@ export function LiveOrders() {
       } else {
         await updateOrder(rawId, { status: toApiStatus(statusDialog.newStatus) });
       }
-      setOrders(prev => prev.map(o => {
-        if (o.id === statusDialog.orderId) return { ...o, status: statusDialog.newStatus };
-        return o;
-      }));
-      if (selectedOrder && selectedOrder.id === statusDialog.orderId) {
-        setSelectedOrder((prev: any) => ({ ...prev, status: statusDialog.newStatus }));
+      if (statusDialog.newStatus !== 'Assigned') {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === statusDialog.orderId ? { ...o, status: statusDialog.newStatus } : o))
+        );
+        if (selectedOrder?.id === statusDialog.orderId) {
+          setSelectedOrder((prev: any) => ({ ...prev, status: statusDialog.newStatus }));
+        }
       }
+      await refreshSelectedOrderDetails(order || { order_id: rawId, id: statusDialog.orderId });
       toast.success(`Order ${statusDialog.orderId} status updated to ${statusDialog.newStatus}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to update order status');
@@ -762,180 +976,216 @@ export function LiveOrders() {
   const readyCount = orders.filter(o => 
     o.status === 'Packing' || o.status === 'Ready for Dispatch' || o.status === 'ready' || o.status === 'PICKED' || o.status === 'PACKED' || o.status === 'READY_FOR_DISPATCH'
   ).length;
+  const cancelledCount = cancelledOrders.length;
 
   const tabs = [
-    { id: 'new', label: 'New Orders', count: newOrdersCount, color: 'text-[#1677FF]', border: 'border-[#1677FF]', bg: 'bg-[#E6F7FF]' },
-    { id: 'processing', label: 'Processing', count: processingCount, color: 'text-[#1677FF]', border: 'border-[#1677FF]', bg: 'bg-[#E6F7FF]' },
-    { id: 'ready', label: 'Ready', count: readyCount, color: 'text-[#1677FF]', border: 'border-[#1677FF]', bg: 'bg-[#E6F7FF]' },
+    { id: 'new', label: 'New Orders', count: newOrdersCount, accent: 'default' as const },
+    { id: 'processing', label: 'Processing', count: processingCount, accent: 'default' as const },
+    { id: 'ready', label: 'Ready', count: readyCount, accent: 'success' as const },
+    { id: 'cancelled', label: 'Cancelled', count: cancelledCount, accent: 'default' as const },
   ];
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title={
-          <span className="flex items-center gap-2">
-            Live Order Board
-            {isWsConnected && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#DCFCE7] text-[#16A34A]" title="Real-time updates via WebSocket">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
-                Live
+  const filterControls = (
+    <>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setCurrentPage(1);
+          }}
+          placeholder="Search Order ID, Customer..."
+          className="h-8 pl-9 pr-8 rounded-md bg-white border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 w-56"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          >
+            <XCircle size={14} />
+          </button>
+        )}
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn('h-8', (filterStatus || filterUrgency) && 'border-blue-500 text-blue-600 bg-blue-50')}
+          >
+            <Filter size={14} className="mr-1.5" />
+            Filters
+            {(filterStatus || filterUrgency) && (
+              <span className="ml-1.5 flex items-center justify-center w-4 h-4 bg-blue-600 text-white text-[10px] rounded-full">
+                {(filterStatus ? 1 : 0) + (filterUrgency ? 1 : 0)}
               </span>
             )}
-          </span>
-        }
-        subtitle="Real-time tracking of all active orders across the fulfillment lifecycle."
-        actions={
-          <div className="flex gap-3">
-          <div className="relative">
-             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E]" size={16} />
-             <input 
-               type="text" 
-               value={searchQuery}
-               onChange={(e) => {
-                 setSearchQuery(e.target.value);
-                 setCurrentPage(1); // Reset to page 1 on search
-               }}
-               placeholder="Search Order ID, Customer..." 
-               className="h-10 pl-9 pr-4 rounded-lg bg-white border border-[#E0E0E0] text-sm focus:ring-2 focus:ring-[#1677FF] w-64 shadow-sm"
-             />
-             {searchQuery && (
-               <button 
-                 onClick={() => setSearchQuery('')}
-                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-               >
-                 <XCircle size={14} />
-               </button>
-             )}
-          </div>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={cn(
-                "flex items-center gap-2 px-4 py-2 bg-white border rounded-lg text-sm font-medium hover:bg-[#F5F5F5] shadow-sm transition-all",
-                (filterStatus || filterUrgency) ? "border-[#1677FF] text-[#1677FF] bg-[#E6F7FF]" : "border-[#E0E0E0] text-[#616161]"
-              )}>
-                <Filter size={16} />
-                Filters
-                {(filterStatus || filterUrgency) && (
-                  <span className="flex items-center justify-center w-5 h-5 bg-[#1677FF] text-white text-[10px] rounded-full">
-                    {(filterStatus ? 1 : 0) + (filterUrgency ? 1 : 0)}
-                  </span>
-                )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+          {['Queued', 'Picking', 'Packing'].map((status) => (
+            <DropdownMenuItem key={status} onClick={() => setFilterStatus(filterStatus === status ? null : status)}>
+              <div className="flex items-center justify-between w-full">
+                {status}
+                {filterStatus === status && <CheckCircle2 size={14} className="text-blue-600" />}
+              </div>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Filter by Urgency</DropdownMenuLabel>
+          {['normal', 'warning', 'critical'].map((urgency) => (
+            <DropdownMenuItem key={urgency} onClick={() => setFilterUrgency(filterUrgency === urgency ? null : urgency)}>
+              <div className="flex items-center justify-between w-full capitalize">
+                {urgency}
+                {filterUrgency === urgency && <CheckCircle2 size={14} className="text-blue-600" />}
+              </div>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleClearFilters} className="text-red-600 justify-center">
+            Clear All Filters
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+
+  if (!storeId) {
+    return (
+      <StoreRequiredGuard title="Select a store for Live Orders">
+        <span className="sr-only">live orders</span>
+      </StoreRequiredGuard>
+    );
+  }
+
+  return (
+    <DarkstoreScreenShell
+      title={
+        <span className="flex items-center gap-2">
+          Live Order Board
+          {isWsConnected && <StatusBadge variant="live" status="live" pulse />}
+        </span>
+      }
+      subtitle="Real-time tracking of all active orders across the fulfillment lifecycle."
+      toolbar={{
+        onRefresh: loadOrders,
+        refreshing: isLoading,
+        lastSync,
+        showConnection: true,
+        filters: filterControls,
+        toolbarActions: (
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-slate-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLiveOrdersViewMode('table')}
+                className={cn('px-2.5 py-1.5 text-xs font-medium', viewMode === 'table' ? 'bg-[var(--ds-primary)] text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}
+                title="Table view"
+              >
+                <List size={14} />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
-              {['Queued', 'Picking', 'Packing'].map(status => (
-                <DropdownMenuItem key={status} onClick={() => setFilterStatus(filterStatus === status ? null : status)}>
-                  <div className="flex items-center justify-between w-full">
-                    {status}
-                    {filterStatus === status && <CheckCircle2 size={14} className="text-[#1677FF]" />}
-                  </div>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Filter by Urgency</DropdownMenuLabel>
-              {['normal', 'warning', 'critical'].map(urgency => (
-                <DropdownMenuItem key={urgency} onClick={() => setFilterUrgency(filterUrgency === urgency ? null : urgency)}>
-                  <div className="flex items-center justify-between w-full capitalize">
-                    {urgency}
-                    {filterUrgency === urgency && <CheckCircle2 size={14} className="text-[#1677FF]" />}
-                  </div>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleClearFilters} className="text-red-600 justify-center">
-                Clear All Filters
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <button 
-            onClick={handleExport}
-            disabled={isExporting}
-            className="px-4 py-2 bg-[#1677FF] text-white rounded-lg text-sm font-medium hover:bg-[#409EFF] shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isExporting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Exporting...
-              </>
-            ) : (
-              'Export CSV'
-            )}
-          </button>
+              <button
+                type="button"
+                onClick={() => setLiveOrdersViewMode('kanban')}
+                className={cn('px-2.5 py-1.5 text-xs font-medium', viewMode === 'kanban' ? 'bg-[var(--ds-primary)] text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}
+                title="Kanban view"
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </div>
+            <Button type="button" size="sm" className="h-8" onClick={handleExport} disabled={isExporting}>
+              {isExporting ? 'Exporting…' : 'Export CSV'}
+            </Button>
           </div>
-        }
-      />
+        ),
+      }}
+    >
 
-      {/* Tabs */}
-      <div className="bg-white p-1 rounded-xl border border-[#E0E0E0] shadow-sm inline-flex w-full gap-1 overflow-x-auto">
-        {tabs.map((tab) => (
+      {reassignSuggestions.length > 0 && (
+        <AlertCard
+          title={`${reassignSuggestions.length} order${reassignSuggestions.length > 1 ? 's' : ''} unassigned > 3 min`}
+          subtitle={reassignSuggestions.slice(0, 2).map((o) => o.id).join(', ')}
+          severity="warning"
+          icon={AlertTriangle}
+          actions={[
+            {
+              label: 'Assign first',
+              onClick: () => openAssignPicker(reassignSuggestions[0]),
+            },
+          ]}
+        />
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {([
+          { id: 'all' as QuickFilter, label: 'All' },
+          { id: 'express' as QuickFilter, label: 'Express' },
+          { id: 'unassigned' as QuickFilter, label: 'Unassigned' },
+          { id: 'sla_critical' as QuickFilter, label: 'SLA Critical' },
+          { id: 'exceptions' as QuickFilter, label: 'Exceptions' },
+        ]).map((chip) => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            key={chip.id}
+            type="button"
+            onClick={() => setQuickFilter(chip.id)}
             className={cn(
-              "flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-b-2",
-              activeTab === tab.id 
-                ? `bg-[#FAFAFA] text-[#212121] ${tab.border}` 
-                : "bg-white text-[#757575] border-transparent hover:bg-[#F5F5F5]"
+              'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
+              quickFilter === chip.id
+                ? 'bg-[var(--ds-primary)] text-white border-[var(--ds-primary)]'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-[var(--ds-primary)]'
             )}
           >
-            {tab.label}
-            <span className={cn(
-              "px-2 py-0.5 rounded-full text-[10px] font-bold",
-              activeTab === tab.id ? `${tab.bg} ${tab.color}` : "bg-[#F5F5F5] text-[#9E9E9E]"
-            )}>
-              {tab.count}
-            </span>
+            {chip.label}
           </button>
         ))}
       </div>
 
-      {/* Bulk Actions Bar */}
+      <DarkstoreTabBar
+        variant="pill"
+        active={activeTab}
+        onChange={(id) => setActiveTab(id as (typeof LIVE_ORDER_TABS)[number])}
+        tabs={tabs}
+      />
+
       {selectedOrderIds.size > 0 && (
-        <div className="bg-[#E6F7FF] border border-[#91CAFF] rounded-lg p-3 flex items-center justify-between animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[#1677FF] text-sm">{selectedOrderIds.size} orders selected</span>
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => handleBulkAction('Assign')}
-              className="px-3 py-1.5 bg-white border border-[#91CAFF] text-[#1677FF] text-xs font-bold rounded hover:bg-[#F0F5FF]"
-            >
-              Bulk Assign
-            </button>
-            <button 
-              onClick={() => handleBulkAction('Print Labels')}
-              className="px-3 py-1.5 bg-white border border-[#91CAFF] text-[#1677FF] text-xs font-bold rounded hover:bg-[#F0F5FF]"
-            >
-              Print Labels
-            </button>
-            <button 
-              onClick={() => setSelectedOrderIds(new Set())}
-              className="px-3 py-1.5 text-[#1677FF] text-xs hover:underline"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <AlertCard
+          title={`${selectedOrderIds.size} orders selected`}
+          severity="info"
+          className="animate-in slide-in-from-top-2"
+          actions={[
+            { label: 'Bulk Assign', onClick: () => handleBulkAction('Assign') },
+            { label: 'Print Labels', onClick: () => handleBulkAction('Print Labels') },
+            { label: 'Clear', onClick: () => setSelectedOrderIds(new Set()), variant: 'outline' },
+          ]}
+        />
       )}
 
-      {/* Kanban / List View */}
-      <div className="bg-white border border-[#E0E0E0] rounded-xl shadow-sm overflow-hidden">
+      {viewMode === 'kanban' && activeTab !== 'cancelled' ? (
+        <LiveOrdersKanban
+          orders={filteredOrders}
+          onOrderClick={(o) => void handleViewDetails(o)}
+          onQuickAssign={(o) => openAssignPicker(o)}
+        />
+      ) : (
+      <div className="darkstore-card overflow-hidden darkstore-content-loaded">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+          <table className="w-full text-left text-sm darkstore-table">
+            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
               <tr>
-                <th className="px-6 py-4 font-medium w-16">
+                <th className="px-6 py-4 font-medium w-16 sticky left-0 bg-slate-50 z-10">
                   <input 
                     type="checkbox" 
                     checked={paginatedOrders.length > 0 && selectedOrderIds.size === paginatedOrders.length}
                     onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded border-gray-300 text-[#1677FF] focus:ring-[#1677FF]" 
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" 
                   />
                 </th>
-                <th className="px-6 py-4 font-medium">Order Details</th>
+                <th className="px-6 py-4 font-medium sticky left-16 bg-slate-50 z-10 min-w-[140px]">Order Details</th>
                 <th className="px-6 py-4 font-medium">Items</th>
                 <th className="px-6 py-4 font-medium">Customer</th>
                 <th className="px-6 py-4 font-medium">SLA Timer</th>
@@ -945,29 +1195,39 @@ export function LiveOrders() {
                 <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F0F0F0]">
+            <tbody className="divide-y divide-slate-100">
               {paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-gray-500">
+                  <td colSpan={9} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       {!isWsConnected ? (
                         <>
                           <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin mb-2" />
-                          <p className="font-medium text-gray-600">Connecting to live order stream...</p>
+                          <p className="font-medium text-slate-600">Connecting to live order stream...</p>
                           <p className="text-xs">If this takes too long, please check your connection.</p>
                         </>
                       ) : isLoading ? (
                         <>
                           <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin mb-2" />
-                          <p className="font-medium text-gray-600">Fetching live orders...</p>
+                          <p className="font-medium text-slate-600">Fetching live orders...</p>
                         </>
                       ) : (
                         <>
                           <Search size={24} className="opacity-20" />
                           <p>No orders found for {tabs.find(t => t.id === activeTab)?.label || activeTab}.</p>
-                          <button onClick={handleClearFilters} className="text-[#1677FF] text-xs hover:underline font-medium">
-                            Clear Filters
-                          </button>
+                          <div className="flex gap-3 mt-1">
+                            <button onClick={handleClearFilters} className="text-blue-600 text-xs hover:underline font-medium">
+                              Clear Filters
+                            </button>
+                            {activeTab === 'new' && (
+                              <button onClick={() => setActiveTab('processing')} className="text-slate-500 text-xs hover:underline font-medium">
+                                View active picks
+                              </button>
+                            )}
+                            <button onClick={() => setQuickFilter('sla_critical')} className="text-red-600 text-xs hover:underline font-medium">
+                              Check SLA risks
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>
@@ -975,26 +1235,46 @@ export function LiveOrders() {
                 </tr>
               ) : (
                 paginatedOrders.map((order) => (
-                  <tr key={order.id} className={cn("hover:bg-[#FAFAFA] transition-colors group", selectedOrderIds.has(order.id) && "bg-[#F0F7FF]")}>
-                    <td className="px-6 py-4">
+                  <tr
+                    key={order.id}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      "hover:bg-slate-50 transition-colors group cursor-pointer",
+                      selectedOrderIds.has(order.id) && "bg-blue-50",
+                      slaRowClassName(order)
+                    )}
+                    onClick={() => void handleViewDetails(order)}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      setQuickDrawerOrderId(resolveOrderId(order));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        void handleViewDetails(order);
+                      }
+                    }}
+                  >
+                    <td className="px-6 py-4 sticky left-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
                       <input 
                         type="checkbox" 
                         checked={selectedOrderIds.has(order.id)}
                         onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
-                        className="rounded border-gray-300 text-[#1677FF] focus:ring-[#1677FF]" 
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" 
                       />
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 sticky left-16 bg-white z-10 min-w-[140px]">
                       <div className="flex flex-col">
-                         <span className="font-bold text-[#212121] text-base">{order.id}</span>
-                         <span className="text-[10px] text-[#9E9E9E] font-bold uppercase tracking-wider mt-0.5">
+                         <span className="font-bold text-slate-900 text-base">{order.id}</span>
+                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
                            {order.order_type || order.zone || 'Normal'}
                          </span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-[#616161]">
-                         <div className="bg-[#F5F5F5] p-2 rounded-lg">
+                      <div className="flex items-center gap-2 text-slate-600">
+                         <div className="bg-slate-100 p-2 rounded-lg">
                            <Package size={16} />
                          </div>
                          <span className="font-medium">{order.items}</span>
@@ -1002,13 +1282,13 @@ export function LiveOrders() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded-full bg-[#E0E7FF] text-[#4F46E5] flex items-center justify-center text-xs font-bold">
+                         <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
                            {order.customer.charAt(0)}
                          </div>
                          <div className="flex flex-col">
-                            <span className="font-medium text-[#212121]">{order.customer}</span>
+                            <span className="font-medium text-slate-900">{order.customer}</span>
                             {order.customerPhone && (
-                              <span className="text-xs text-[#9E9E9E] font-mono">{order.customerPhone}</span>
+                              <span className="text-xs text-slate-400 font-mono">{order.customerPhone}</span>
                             )}
                          </div>
                       </div>
@@ -1019,8 +1299,8 @@ export function LiveOrders() {
                         return (
                           <div className={cn(
                             "flex items-center gap-2 font-mono font-bold text-sm px-3 py-1.5 rounded-lg w-fit",
-                            isBreached ? 'bg-[#FEE2E2] text-[#EF4444] ring-1 ring-[#EF4444]/30' :
-                            order.urgency === 'warning' ? 'bg-[#FFFBE6] text-[#D48806]' : 'bg-[#DCFCE7] text-[#16A34A]'
+                            isBreached ? 'bg-red-50 text-red-500 ring-1 ring-red-500/30' :
+                            order.urgency === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
                           )}>
                             {isBreached ? <AlertOctagon size={14} aria-hidden /> : <Clock size={14} />}
                             {order.sla}
@@ -1033,9 +1313,9 @@ export function LiveOrders() {
                     </td>
                     <td className="px-6 py-4">
                       {order.assignee && order.assignee !== '-' ? (
-                        <div className="flex items-center gap-2 text-[#212121] font-medium">
+                        <div className="flex items-center gap-2 text-slate-900 font-medium">
                           {order.assigneeInitials && (
-                            <div className="w-6 h-6 rounded-full bg-[#E0E7FF] text-[#4F46E5] flex items-center justify-center text-[10px] font-bold">
+                            <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-bold">
                               {order.assigneeInitials}
                             </div>
                           )}
@@ -1043,8 +1323,11 @@ export function LiveOrders() {
                         </div>
                       ) : (
                         <button
-                          className="text-[#1677FF] text-xs font-bold hover:underline"
-                          onClick={() => openAssignPicker(order)}
+                          className="text-blue-600 text-xs font-bold hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openAssignPicker(order);
+                          }}
                         >
                           + Assign
                         </button>
@@ -1052,42 +1335,38 @@ export function LiveOrders() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-0.5">
-                        {(() => {
-                          const pd = getPaymentDisplay(order);
-                          return (
-                            <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide w-fit", pd.className)}>
-                              {pd.label}
-                            </span>
-                          );
-                        })()}
+                        <StatusBadge variant="payment" status={getPaymentDisplay(order).label} />
                         {order.total_bill > 0 && (
-                          <span className="text-xs text-[#757575] font-medium">
+                          <span className="text-xs text-slate-500 font-medium">
                             ₹{Number(order.total_bill).toLocaleString('en-IN')}
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className={cn(
-                          "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide",
-                          order.status === 'Packing' ? 'bg-[#F3E8FF] text-[#9333EA]' :
-                          order.status === 'Picking' ? 'bg-[#E6F7FF] text-[#1677FF]' :
-                          'bg-[#F5F5F5] text-[#616161]'
-                        )}>
-                          {order.status}
-                        </span>
-                        {(order.supportTicketId || order.refundStatus) && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700" title={order.supportTicketId ? `Ticket: ${order.supportTicketId}` : `Refund: ${order.refundStatus}`}>
-                            <AlertTriangle size={12} />
-                          </span>
-                        )}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <StatusBadge variant="workflow" status={order.status} />
+                          {(order.supportTicketId || order.refundStatus) && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700" title={order.supportTicketId ? `Ticket: ${order.supportTicketId}` : `Refund: ${order.refundStatus}`}>
+                              <AlertTriangle size={12} />
+                            </span>
+                          )}
+                        </div>
+                        <OrderJourneyStepper status={order.status} timeline={order.timeline} compact />
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right relative" onClick={(e) => e.stopPropagation()}>
+                      <OrderRowQuickActions
+                        showAssign={isUnassigned(order)}
+                        calling={callingOrderId === resolveOrderId(order)}
+                        onAssign={() => openAssignPicker(order)}
+                        onCall={() => void handleCallCustomer(order)}
+                        onRto={() => setRtoDialog({ open: true, orderId: resolveOrderId(order) })}
+                      />
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="p-2 text-[#9E9E9E] hover:text-[#212121] hover:bg-[#E0E0E0] rounded-full transition-all">
+                          <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-200 rounded-full transition-all">
                             <MoreHorizontal size={20} />
                           </button>
                         </DropdownMenuTrigger>
@@ -1115,16 +1394,6 @@ export function LiveOrders() {
                           >
                             <User className="mr-2 h-4 w-4" /> Assign Picker
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={order.status === 'Cancelled' || order.status === 'cancelled'}
-                            onClick={() => {
-                              handleCancelOrder(order);
-                            }}
-                          >
-                            Cancel Order
-                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -1136,15 +1405,15 @@ export function LiveOrders() {
         </div>
         
         {/* Pagination */}
-        <div className="p-4 border-t border-[#E0E0E0] bg-[#FAFAFA] flex items-center justify-between">
-           <span className="text-sm text-[#757575]">
-             Showing <span className="font-bold text-[#212121]">{filteredOrders.length > 0 ? startIndex + 1 : 0}-{Math.min(startIndex + itemsPerPage, filteredOrders.length)}</span> of <span className="font-bold text-[#212121]">{filteredOrders.length}</span> orders
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+           <span className="text-sm text-slate-500">
+             Showing <span className="font-bold text-slate-900">{filteredOrders.length > 0 ? startIndex + 1 : 0}-{Math.min(startIndex + itemsPerPage, filteredOrders.length)}</span> of <span className="font-bold text-slate-900">{filteredOrders.length}</span> orders
            </span>
            <div className="flex gap-2">
               <button 
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 border border-[#E0E0E0] bg-white rounded text-sm font-medium text-[#212121] disabled:text-[#C1C1C1] disabled:cursor-not-allowed hover:bg-[#F5F5F5] transition-colors"
+                className="px-3 py-1.5 border border-slate-200 bg-white rounded text-sm font-medium text-slate-900 disabled:text-slate-300 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
               >
                 Previous
               </button>
@@ -1154,7 +1423,7 @@ export function LiveOrders() {
                   onClick={() => setCurrentPage(page)}
                   className={cn(
                     "w-8 h-8 rounded flex items-center justify-center text-sm font-medium transition-colors",
-                    currentPage === page ? "bg-[#1677FF] text-white" : "bg-white border border-[#E0E0E0] text-[#212121] hover:bg-[#F5F5F5]"
+                    currentPage === page ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-900 hover:bg-slate-100"
                   )}
                 >
                   {page}
@@ -1163,132 +1432,120 @@ export function LiveOrders() {
               <button 
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages || totalPages === 0}
-                className="px-3 py-1.5 border border-[#E0E0E0] bg-white rounded text-sm font-medium text-[#212121] disabled:text-[#C1C1C1] disabled:cursor-not-allowed hover:bg-[#F5F5F5] transition-colors"
+                className="px-3 py-1.5 border border-slate-200 bg-white rounded text-sm font-medium text-slate-900 disabled:text-slate-300 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
               >
                 Next
               </button>
            </div>
         </div>
       </div>
+      )}
       {/* Order Details Sheet */}
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+        <DarkstoreSheetContent className="overflow-y-auto">
           {selectedOrder && (
             <div className="flex flex-col h-full">
-              <SheetHeader className="border-b border-gray-100 pb-4 px-6">
+              <SheetHeader className="border-b border-slate-100 pb-4 px-6">
                 <SheetTitle className="flex items-center gap-2 text-xl">
                   {selectedOrder.id}
-                  <span className={cn(
-                    "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide",
-                    selectedOrder.status === 'Ready for Dispatch' ? 'bg-emerald-100 text-emerald-800' :
-                    selectedOrder.status === 'Packing' ? 'bg-[#F3E8FF] text-[#9333EA]' :
-                    selectedOrder.status === 'Picking' ? 'bg-[#E6F7FF] text-[#1677FF]' :
-                    selectedOrder.status === 'Assigned' ? 'bg-amber-50 text-amber-700' :
-                    'bg-[#F5F5F5] text-[#616161]'
-                  )}>
-                    {selectedOrder.status}
-                  </span>
+                  <StatusBadge variant="workflow" status={selectedOrder.status} />
                   {selectedOrder.readyForDispatch && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      Ready for Dispatch
-                    </span>
+                    <StatusBadge variant="workflow" status="ready_for_dispatch" />
                   )}
                 </SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-1">
-                  <User size={14} className="text-gray-400" />
-                  <span className="font-semibold text-gray-700">{selectedOrder.customer}</span>
-                  <span className="text-gray-300">·</span>
+                  <User size={14} className="text-slate-400" />
+                  <span className="font-semibold text-slate-700">{selectedOrder.customer}</span>
+                  <span className="text-slate-300">·</span>
                   <span>{selectedOrder.items} item{selectedOrder.items !== 1 ? 's' : ''}</span>
                   {selectedOrder.total_bill > 0 && (
                     <>
-                      <span className="text-gray-300">·</span>
-                      <span className="font-semibold text-gray-700">₹{Number(selectedOrder.total_bill).toLocaleString('en-IN')}</span>
+                      <span className="text-slate-300">·</span>
+                      <span className="font-semibold text-slate-700">₹{Number(selectedOrder.total_bill).toLocaleString('en-IN')}</span>
                     </>
                   )}
                 </SheetDescription>
               </SheetHeader>
 
-              <Tabs defaultValue="details" className="flex flex-col flex-1 overflow-hidden">
-                <div className="px-6 pt-2 border-b border-gray-100">
-                  <TabsList className="bg-gray-100">
+              <Tabs
+                value={detailsTab}
+                onValueChange={(value) => {
+                  setDetailsTab(value);
+                  if (value === 'audit') void loadOrderActionLogs(selectedOrder);
+                }}
+                className="flex flex-col flex-1 overflow-hidden"
+              >
+                <div className="px-6 pt-2 border-b border-slate-100">
+                  <TabsList className="bg-slate-100">
                     <TabsTrigger value="details">Details</TabsTrigger>
-                    <TabsTrigger
-                      value="audit"
-                      onClick={() => {
-                        const oid = selectedOrder?.order_id || selectedOrder?.id?.replace('#', '');
-                        if (oid) {
-                          setOrderActionLogsLoading(true);
-                          getOrderActionLogs(oid)
-                            .then((data) => setOrderActionLogs(Array.isArray(data) ? data : []))
-                            .catch(() => setOrderActionLogs([]))
-                            .finally(() => setOrderActionLogsLoading(false));
-                        }
-                      }}
-                    >
-                      Audit
-                    </TabsTrigger>
+                    <TabsTrigger value="audit">Audit</TabsTrigger>
                   </TabsList>
                 </div>
                 <TabsContent value="details" className="flex-1 overflow-y-auto mt-0">
               <div className="space-y-6 p-6">
                 {/* Customer Info */}
-                <div className="bg-gray-50 p-4 rounded-xl space-y-3">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
+                  <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                     <User size={18} /> Customer Information
                   </h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-gray-500">Name</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.customer}</p>
+                      <p className="text-slate-500">Name</p>
+                      <p className="font-medium text-slate-900">{selectedOrder.customer}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Contact</p>
-                      <div className="flex items-center gap-1.5">
-                        <Phone size={13} className="text-gray-400" />
-                        <p className="font-medium text-gray-900 font-mono">{selectedOrder.customerPhone || 'Not available'}</p>
+                      <p className="text-slate-500">Contact</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Phone size={13} className="text-slate-400" />
+                        <p className="font-medium text-slate-900 font-mono">{selectedOrder.customerPhone || 'Not available'}</p>
+                        <button
+                          type="button"
+                          disabled={detailActionBusy !== 'none' || !selectedOrder.customerPhone}
+                          onClick={() => void handleCallCustomer(selectedOrder)}
+                          className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
+                        >
+                          {callingOrderId === resolveOrderId(selectedOrder) ? 'Calling…' : 'Call Customer'}
+                        </button>
                       </div>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-gray-500">Delivery Address</p>
+                      <p className="text-slate-500">Delivery Address</p>
                       <div className="flex items-start gap-1.5 mt-0.5">
-                        <MapPin size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                        <p className="font-medium text-gray-900">{selectedOrder.deliveryAddress || 'Not available'}</p>
+                        <MapPin size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                        <p className="font-medium text-slate-900">{selectedOrder.deliveryAddress || 'Not available'}</p>
                       </div>
                     </div>
                     {selectedOrder.deliveryNotes && (
                       <div className="col-span-2">
-                        <p className="text-gray-500">Delivery Notes</p>
-                        <p className="font-medium text-gray-900 italic">{selectedOrder.deliveryNotes}</p>
+                        <p className="text-slate-500">Delivery Notes</p>
+                        <p className="font-medium text-slate-900 italic">{selectedOrder.deliveryNotes}</p>
                       </div>
                     )}
                   </div>
                 </div>
 
                 {/* Payment Information */}
-                <div className="bg-gray-50 p-4 rounded-xl space-y-3">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
+                  <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                     <ShoppingBag size={18} /> Payment Information
                   </h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-gray-500">Payment Status</p>
-                      {(() => {
-                        const pd = getPaymentDisplay(selectedOrder);
-                        return (
-                          <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mt-1", pd.className)}>
-                            {pd.label === 'COD' ? 'COD - Pending' : pd.label}
-                          </span>
-                        );
-                      })()}
+                      <p className="text-slate-500">Payment Status</p>
+                      <StatusBadge
+                        variant="payment"
+                        status={getPaymentDisplay(selectedOrder).label === 'COD' ? 'COD' : getPaymentDisplay(selectedOrder).label}
+                        className="mt-1"
+                      />
                     </div>
                     <div>
-                      <p className="text-gray-500">Payment Method</p>
-                      <p className="font-medium text-gray-900 capitalize mt-1">{selectedOrder.payment_method || 'Cash'}</p>
+                      <p className="text-slate-500">Payment Method</p>
+                      <p className="font-medium text-slate-900 capitalize mt-1">{selectedOrder.payment_method || 'Cash'}</p>
                     </div>
                     {selectedOrder.total_bill > 0 && (
                       <div>
-                        <p className="text-gray-500">Total Amount</p>
-                        <p className="font-bold text-gray-900 mt-1">₹{Number(selectedOrder.total_bill).toLocaleString('en-IN')}</p>
+                        <p className="text-slate-500">Total Amount</p>
+                        <p className="font-bold text-slate-900 mt-1">₹{Number(selectedOrder.total_bill).toLocaleString('en-IN')}</p>
                       </div>
                     )}
                   </div>
@@ -1296,12 +1553,12 @@ export function LiveOrders() {
 
                 {/* Fulfillment Details */}
                 <div className="space-y-3">
-                   <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                   <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                     <Clock size={18} /> Fulfillment Status
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="border border-gray-200 p-3 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">SLA Deadline</p>
+                    <div className="border border-slate-200 p-3 rounded-lg">
+                      <p className="text-xs text-slate-500 mb-1">SLA Deadline</p>
                       <div className={cn(
                         "font-mono font-bold text-lg",
                         selectedOrder.urgency === 'critical' ? 'text-red-600' :
@@ -1310,52 +1567,52 @@ export function LiveOrders() {
                         {selectedOrder.sla} remaining
                       </div>
                     </div>
-                    <div className="border border-gray-200 p-3 rounded-lg">
-                       <p className="text-xs text-gray-500 mb-1">Assigned To</p>
-                       <p className="font-medium text-gray-900">{selectedOrder.assignee !== '-' ? selectedOrder.assignee : 'Unassigned'}</p>
+                    <div className="border border-slate-200 p-3 rounded-lg">
+                       <p className="text-xs text-slate-500 mb-1">Assigned To</p>
+                       <p className="font-medium text-slate-900">{selectedOrder.assignee !== '-' ? selectedOrder.assignee : 'Unassigned'}</p>
                     </div>
-                    <div className="border border-gray-200 p-3 rounded-lg">
-                       <p className="text-xs text-gray-500 mb-1">Zone</p>
-                       <p className="font-medium text-gray-900">{selectedOrder.zone}</p>
+                    <div className="border border-slate-200 p-3 rounded-lg">
+                       <p className="text-xs text-slate-500 mb-1">Zone</p>
+                       <p className="font-medium text-slate-900">{selectedOrder.zone}</p>
                     </div>
-                    <div className="border border-gray-200 p-3 rounded-lg">
-                       <p className="text-xs text-gray-500 mb-1">Total Items</p>
-                       <p className="font-medium text-gray-900">{selectedOrder.items} items</p>
+                    <div className="border border-slate-200 p-3 rounded-lg">
+                       <p className="text-xs text-slate-500 mb-1">Total Items</p>
+                       <p className="font-medium text-slate-900">{selectedOrder.items} items</p>
                     </div>
                     {selectedOrder.bagId && (
-                      <div className="border border-gray-200 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">Bag ID</p>
-                        <p className="font-medium text-gray-900 font-mono">{selectedOrder.bagId}</p>
+                      <div className="border border-slate-200 p-3 rounded-lg">
+                        <p className="text-xs text-slate-500 mb-1">Bag ID</p>
+                        <p className="font-medium text-slate-900 font-mono">{selectedOrder.bagId}</p>
                       </div>
                     )}
                     {selectedOrder.rackLocation && (
-                      <div className="border border-gray-200 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">Rack Location</p>
-                        <p className="font-medium text-gray-900 font-mono">{selectedOrder.rackLocation}</p>
+                      <div className="border border-slate-200 p-3 rounded-lg">
+                        <p className="text-xs text-slate-500 mb-1">Rack Location</p>
+                        <p className="font-medium text-slate-900 font-mono">{selectedOrder.rackLocation}</p>
                       </div>
                     )}
                     {selectedOrder.pickingData?.startTime && (
                       <>
-                        <div className="border border-gray-200 p-3 rounded-lg">
-                          <p className="text-xs text-gray-500 mb-1">Pick Start</p>
-                          <p className="font-medium text-gray-900 text-sm">{new Date(selectedOrder.pickingData.startTime).toLocaleString()}</p>
+                        <div className="border border-slate-200 p-3 rounded-lg">
+                          <p className="text-xs text-slate-500 mb-1">Pick Start</p>
+                          <p className="font-medium text-slate-900 text-sm">{new Date(selectedOrder.pickingData.startTime).toLocaleString()}</p>
                         </div>
                         {selectedOrder.pickingData?.endTime && (
-                          <div className="border border-gray-200 p-3 rounded-lg">
-                            <p className="text-xs text-gray-500 mb-1">Pick End</p>
-                            <p className="font-medium text-gray-900 text-sm">{new Date(selectedOrder.pickingData.endTime).toLocaleString()}</p>
+                          <div className="border border-slate-200 p-3 rounded-lg">
+                            <p className="text-xs text-slate-500 mb-1">Pick End</p>
+                            <p className="font-medium text-slate-900 text-sm">{new Date(selectedOrder.pickingData.endTime).toLocaleString()}</p>
                           </div>
                         )}
                         {selectedOrder.pickingData?.pickDuration != null && (
-                          <div className="border border-gray-200 p-3 rounded-lg">
-                            <p className="text-xs text-gray-500 mb-1">Pick Duration</p>
-                            <p className="font-medium text-gray-900">{selectedOrder.pickingData.pickDuration}s</p>
+                          <div className="border border-slate-200 p-3 rounded-lg">
+                            <p className="text-xs text-slate-500 mb-1">Pick Duration</p>
+                            <p className="font-medium text-slate-900">{selectedOrder.pickingData.pickDuration}s</p>
                           </div>
                         )}
                         {selectedOrder.pickingData?.accuracy != null && (
-                          <div className="border border-gray-200 p-3 rounded-lg">
-                            <p className="text-xs text-gray-500 mb-1">Accuracy</p>
-                            <p className="font-medium text-gray-900">{Math.round(selectedOrder.pickingData.accuracy * 100)}%</p>
+                          <div className="border border-slate-200 p-3 rounded-lg">
+                            <p className="text-xs text-slate-500 mb-1">Accuracy</p>
+                            <p className="font-medium text-slate-900">{Math.round(selectedOrder.pickingData.accuracy * 100)}%</p>
                           </div>
                         )}
                       </>
@@ -1365,12 +1622,12 @@ export function LiveOrders() {
 
                 {/* Order Items */}
                 <div className="space-y-3">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                     <Package size={18} /> Order Items
                   </h3>
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
                     <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 text-gray-500">
+                      <thead className="bg-slate-50 text-slate-500">
                         <tr>
                           <th className="px-4 py-2 font-medium">Item</th>
                           <th className="px-4 py-2 font-medium text-right">Qty</th>
@@ -1384,11 +1641,11 @@ export function LiveOrders() {
                             <tr key={idx}>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
-                                  {item.image && <img src={item.image} alt="" className="w-8 h-8 rounded object-cover border border-gray-100" />}
+                                  {item.image && <img src={item.image} alt="" className="w-8 h-8 rounded object-cover border border-slate-100" />}
                                   <div>
-                                    <span className="font-medium text-gray-900">{item.productName || item.name || 'Item'}</span>
+                                    <span className="font-medium text-slate-900">{item.productName || item.name || 'Item'}</span>
                                     {item.variantSize && (
-                                      <p className="text-xs text-gray-400">{item.variantSize}</p>
+                                      <p className="text-xs text-slate-400">{item.variantSize}</p>
                                     )}
                                   </div>
                                 </div>
@@ -1397,20 +1654,14 @@ export function LiveOrders() {
                               <td className="px-4 py-3 text-right font-medium">₹{(item.price || 0).toFixed(2)}</td>
                               <td className="px-4 py-3 text-right">
                                 {item.itemStatus ? (
-                                  <span className={cn(
-                                    "text-xs px-2 py-0.5 rounded-full font-medium",
-                                    item.itemStatus === 'picked' ? 'bg-green-100 text-green-700' :
-                                    item.itemStatus === 'not_found' ? 'bg-red-100 text-red-700' :
-                                    item.itemStatus === 'damaged' ? 'bg-orange-100 text-orange-700' :
-                                    'bg-gray-100 text-gray-600'
-                                  )}>{item.itemStatus.replace('_', ' ')}</span>
-                                ) : <span className="text-xs text-gray-400">—</span>}
+                                  <StatusBadge variant="workflow" status={item.itemStatus} />
+                                ) : <span className="text-xs text-slate-400">—</span>}
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={4} className="px-4 py-6 text-gray-500 italic text-center">
+                            <td colSpan={4} className="px-4 py-6 text-slate-500 italic text-center">
                               {selectedOrder.items} item(s) — detailed list not available
                             </td>
                           </tr>
@@ -1442,10 +1693,7 @@ export function LiveOrders() {
                               <td className="px-4 py-3 font-medium text-red-900">{mi.productName || mi.name || 'Item'}</td>
                               <td className="px-4 py-3 text-right text-red-800">{mi.expectedQty || mi.quantity || '—'}</td>
                               <td className="px-4 py-3">
-                                <span className={cn(
-                                  "text-xs px-2 py-0.5 rounded-full font-medium",
-                                  mi.status === 'not_found' ? 'bg-red-200 text-red-800' : 'bg-orange-200 text-orange-800'
-                                )}>{(mi.status || 'not_found').replace('_', ' ')}</span>
+                                <StatusBadge variant="workflow" status={mi.status || 'not_found'} />
                               </td>
                               <td className="px-4 py-3 text-xs text-red-700">{mi.pickerName || mi.markedBy || '—'}</td>
                             </tr>
@@ -1459,11 +1707,11 @@ export function LiveOrders() {
                 {/* Order Timeline */}
                 {selectedOrder.timeline && selectedOrder.timeline.length > 0 && (
                   <div className="space-y-3">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                       <Clock size={18} /> Order Timeline
                     </h3>
                     <div className="relative pl-6">
-                      <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200" />
+                      <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-slate-200" />
                       {selectedOrder.timeline.map((t: any, idx: number) => {
                         const status = t.status || t.stage || 'unknown';
                         const isSuccess = ['PICKED', 'PACKED', 'READY_FOR_DISPATCH', 'completed', 'delivered'].includes(status);
@@ -1473,8 +1721,8 @@ export function LiveOrders() {
                         const badgeColor = isSuccess ? 'border-green-500 bg-green-500' :
                           isActive ? 'border-blue-500 bg-blue-50' :
                           isError ? 'border-red-500 bg-red-50' :
-                          isWarning ? 'border-amber-500 bg-amber-50' : 'border-gray-300 bg-gray-50';
-                        const textColor = isSuccess ? 'text-green-700' : isActive ? 'text-blue-700' : isError ? 'text-red-700' : isWarning ? 'text-amber-700' : 'text-gray-600';
+                          isWarning ? 'border-amber-500 bg-amber-50' : 'border-slate-300 bg-slate-50';
+                        const textColor = isSuccess ? 'text-green-700' : isActive ? 'text-blue-700' : isError ? 'text-red-700' : isWarning ? 'text-amber-700' : 'text-slate-600';
                         return (
                           <div key={idx} className="relative flex items-start gap-3 pb-4">
                             <div className={cn(
@@ -1486,7 +1734,7 @@ export function LiveOrders() {
                               ) : isActive ? (
                                 <CircleDot size={14} className="text-blue-500" />
                               ) : (
-                                <div className={cn("w-2 h-2 rounded-full", isError ? "bg-red-500" : "bg-gray-300")} />
+                                <div className={cn("w-2 h-2 rounded-full", isError ? "bg-red-500" : "bg-slate-300")} />
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1494,10 +1742,10 @@ export function LiveOrders() {
                                 {status.replace(/_/g, ' ')}
                               </p>
                               {t.timestamp && (
-                                <p className="text-xs text-gray-500">{new Date(t.timestamp).toLocaleString()}</p>
+                                <p className="text-xs text-slate-500">{new Date(t.timestamp).toLocaleString()}</p>
                               )}
                               {t.updatedBy && (
-                                <p className="text-xs text-gray-400">by {t.updatedBy}</p>
+                                <p className="text-xs text-slate-400">by {t.updatedBy}</p>
                               )}
                             </div>
                           </div>
@@ -1510,128 +1758,76 @@ export function LiveOrders() {
                 {/* Issues Section (P1-7) */}
                 {(selectedOrder.cancellationReason || selectedOrder.refundStatus || selectedOrder.supportTicketId) && (
                   <div className="space-y-3">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                       <AlertTriangle size={18} className="text-red-500" /> Issues
                     </h3>
                     <div className="space-y-2">
                       {selectedOrder.cancellationReason && (
-                        <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">CANCELLATION</span>
-                          <span className="text-sm text-red-800">{selectedOrder.cancellationReason}</span>
-                        </div>
+                        <AlertCard severity="danger" title={selectedOrder.cancellationReason}>
+                          <StatusBadge variant="issueTag" status="cancellation" />
+                        </AlertCard>
                       )}
                       {selectedOrder.refundStatus && (
-                        <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white">REFUND</span>
-                          <span className="text-sm text-amber-800 capitalize">{selectedOrder.refundStatus.replace('_', ' ')}</span>
-                        </div>
+                        <AlertCard severity="warning" title={selectedOrder.refundStatus.replace('_', ' ')}>
+                          <StatusBadge variant="issueTag" status="refund" />
+                        </AlertCard>
                       )}
                       {selectedOrder.supportTicketId && (
-                        <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500 text-white">SUPPORT</span>
-                          <span className="text-sm text-blue-800">Ticket: {selectedOrder.supportTicketId}</span>
-                        </div>
+                        <AlertCard severity="info" title={`Ticket: ${selectedOrder.supportTicketId}`}>
+                          <StatusBadge variant="issueTag" status="support" />
+                        </AlertCard>
                       )}
                       {selectedOrder.missingItems && selectedOrder.missingItems.length > 0 && (
-                        <div className="flex items-center gap-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500 text-white">MISSING</span>
-                          <span className="text-sm text-orange-800">{selectedOrder.missingItems.length} item(s) marked as missing/damaged</span>
-                        </div>
+                        <AlertCard severity="warning" title={`${selectedOrder.missingItems.length} item(s) marked as missing/damaged`}>
+                          <StatusBadge variant="issueTag" status="missing" />
+                        </AlertCard>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Accept / Reject Buttons for new orders */}
-                {(selectedOrder.status === 'Queued' || selectedOrder.status === 'new') && (
-                  <div className="flex gap-3 pt-4 border-t border-gray-100">
-                    <Button
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={detailActionBusy !== 'none'}
-                      onClick={async () => {
-                        try {
-                          setDetailActionBusy('accept');
-                          const rawId = selectedOrder.order_id || selectedOrder.id.replace('#', '');
-                          try {
-                            await startPicking(rawId);
-                          } catch {
-                            // Fallback to generic status update when start-picking route fails.
-                            await updateOrder(rawId, { status: toApiStatus('Picking') });
-                          }
-                          setOrders(prev => prev.map(o =>
-                            o.id === selectedOrder.id ? { ...o, status: 'Picking' } : o
-                          ));
-                          setSelectedOrder({ ...selectedOrder, status: 'Picking' });
-                          toast.success('Order accepted and moved to processing');
-                        } catch (err: any) {
-                          toast.error(err?.message || 'Failed to accept order');
-                        } finally {
-                          setDetailActionBusy('none');
-                        }
-                      }}
+                {/* Action Buttons — stacked grid avoids label overflow in narrow sheet */}
+                <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handlePrintLabel(selectedOrder)}
+                      disabled={printingOrderId === resolveOrderId(selectedOrder)}
+                      className="min-w-0 w-full px-2 py-2.5 text-sm bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 text-center leading-tight"
                     >
-                      <CheckCircle2 size={16} className="mr-1.5" />
-                      {detailActionBusy === 'accept' ? 'Accepting...' : 'Accept Order'}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      className="flex-1"
-                      disabled={detailActionBusy !== 'none'}
-                      onClick={async () => {
-                        try {
-                          setDetailActionBusy('reject');
-                          const rawId = selectedOrder.order_id || selectedOrder.id.replace('#', '');
-                          await cancelOrder(rawId, 'Rejected from live order board');
-                          setOrders(prev => prev.filter(o => o.id !== selectedOrder.id));
-                          toast.success(`Order ${selectedOrder.id} rejected and cancelled`);
-                          setIsDetailsOpen(false);
-                        } catch {
-                          toast.error('Failed to reject order');
-                        } finally {
-                          setDetailActionBusy('none');
-                        }
+                      {printingOrderId === resolveOrderId(selectedOrder) ? 'Printing…' : 'Print Label'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Avoid stacked focus-trap conflict from two open sheets.
+                        setIsDetailsOpen(false);
+          setSelectedOrder(null);
+                        openAssignPicker(selectedOrder);
                       }}
+                      className="min-w-0 w-full px-2 py-2.5 text-sm bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors text-center leading-tight"
                     >
-                      <XCircle size={16} className="mr-1.5" />
-                      {detailActionBusy === 'reject' ? 'Rejecting...' : 'Reject Order'}
-                    </Button>
+                      Assign Picker
+                    </button>
                   </div>
-                )}
 
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    onClick={() => void handlePrintLabel(selectedOrder)}
-                    disabled={printingOrderId === resolveOrderId(selectedOrder)}
-                    className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    {printingOrderId === resolveOrderId(selectedOrder) ? 'Printing…' : 'Print Label'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Avoid stacked focus-trap conflict from two open sheets.
-                      setIsDetailsOpen(false);
-                      openAssignPicker(selectedOrder);
-                    }}
-                    className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Assign Picker
-                  </button>
-                  
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button 
-                        className="flex-1 py-2.5 bg-[#1677FF] text-white font-medium rounded-lg hover:bg-[#409EFF] transition-colors flex items-center justify-center gap-2"
+                      <button
+                        type="button"
+                        className="w-full min-w-0 px-3 py-2.5 text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-500 transition-colors flex items-center justify-center gap-2"
                       >
-                        Manage Order
-                        <ChevronDown size={16} />
+                        <span className="truncate">Manage Order</span>
+                        <ChevronDown size={16} className="shrink-0" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56 z-[200]">
                       <DropdownMenuLabel>Update Status</DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Queued', selectedOrder.status)}>
-                        <Clock className="mr-2 h-4 w-4 text-gray-500" /> Queued
+                        <Clock className="mr-2 h-4 w-4 text-slate-500" /> Queued
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Assigned', selectedOrder.status)}>
+                        <User className="mr-2 h-4 w-4 text-amber-600" /> Assigned
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleUpdateStatus(selectedOrder.id, 'Picking', selectedOrder.status)}>
                         <Package className="mr-2 h-4 w-4 text-blue-500" /> Picking
@@ -1655,13 +1851,28 @@ export function LiveOrders() {
                       <DropdownMenuItem onClick={() => handleUpdateUrgency(selectedOrder.id, 'critical')}>
                         <span className="w-2 h-2 rounded-full bg-red-500 mr-2" /> Critical
                       </DropdownMenuItem>
+
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Customer &amp; Issues</DropdownMenuLabel>
+                      <DropdownMenuItem
+                        disabled={detailActionBusy !== 'none' || !selectedOrder.customerPhone}
+                        onClick={() => void handleCallCustomer(selectedOrder)}
+                      >
+                        <Phone className="mr-2 h-4 w-4 text-blue-600" /> Call Customer
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={selectedOrder.status === 'RTO' || selectedOrder.status === 'rto'}
+                        onClick={() => setRtoDialog({ open: true, orderId: selectedOrder.id })}
+                      >
+                        <AlertOctagon className="mr-2 h-4 w-4 text-orange-600" /> Mark RTO
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
               </div>
                 </TabsContent>
                 <TabsContent value="audit" className="flex-1 overflow-y-auto mt-0 p-6">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                  <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
                     <Clock size={18} /> Action Logs
                   </h3>
                   <ActionLogsTimeline
@@ -1673,12 +1884,12 @@ export function LiveOrders() {
               </Tabs>
             </div>
           )}
-        </SheetContent>
+        </DarkstoreSheetContent>
       </Sheet>
 
       {/* Assign Picker Sheet */}
-      <Sheet open={assignDialog.open} onOpenChange={(open) => !open && setAssignDialog({ open: false, orderId: '', order: null })}>
-        <SheetContent className="w-[400px] sm:w-[420px]">
+      <Sheet open={assignDialog.open} onOpenChange={(open) => !open && setAssignDialog({ open: false, orderId: '', order: null, storeId: '' })}>
+        <DarkstoreSheetContent>
           <SheetHeader>
             <SheetTitle>Assign Picker</SheetTitle>
             <SheetDescription>
@@ -1687,7 +1898,7 @@ export function LiveOrders() {
           </SheetHeader>
           <AssignPickerContent
             orderId={assignDialog.orderId}
-            storeId={storeId}
+            storeId={assignDialog.storeId || storeId}
             onAssign={async (pickerId, pickerName) => {
               try {
                 const res = await assignOrder(assignDialog.orderId, { pickerId, pickerName });
@@ -1696,11 +1907,14 @@ export function LiveOrders() {
                     o.order_id === assignDialog.orderId ? applyAssignResponseToOrder(o, res) : o
                   )
                 );
-                if (selectedOrder?.order_id === assignDialog.orderId) {
+                if (selectedOrder && resolveOrderId(selectedOrder) === assignDialog.orderId) {
                   setSelectedOrder((prev: any) => (prev ? applyAssignResponseToOrder(prev, res) : prev));
                 }
-                setAssignDialog({ open: false, orderId: '', order: null });
+                setAssignDialog({ open: false, orderId: '', order: null, storeId: '' });
                 toast.success(res.message || `Order assigned to ${pickerName}`);
+                if (assignDialog.order) {
+                  await refreshSelectedOrderDetails(assignDialog.order);
+                }
               } catch (err: any) {
                 toast.error(err.message || 'Failed to assign order');
               }
@@ -1716,28 +1930,24 @@ export function LiveOrders() {
                 if (selectedOrder?.order_id === assignDialog.orderId) {
                   setSelectedOrder((prev: any) => (prev ? applyAssignResponseToOrder(prev, res) : prev));
                 }
-                setAssignDialog({ open: false, orderId: '', order: null });
+                setAssignDialog({ open: false, orderId: '', order: null, storeId: '' });
                 const name = res.assignee?.name ?? res.pickerAssignment?.pickerName ?? 'picker';
                 toast.success(res.message || `Order auto-assigned to ${name}`);
               } catch (err: any) {
-                toast.error(err.message || 'Failed to auto-assign order');
+                const msg = err.message || 'Failed to auto-assign order';
+                const hint =
+                  /no available picker/i.test(msg)
+                    ? ' Punch in on the picker app and keep it open, or pick someone from the list below.'
+                    : '';
+                toast.error(msg + hint);
               }
             }}
-            onClose={() => setAssignDialog({ open: false, orderId: '', order: null })}
+            onClose={() => setAssignDialog({ open: false, orderId: '', order: null, storeId: '' })}
           />
-        </SheetContent>
+        </DarkstoreSheetContent>
       </Sheet>
 
       {/* Confirmation Dialogs */}
-      <CancelOrderConfirmation
-        open={cancelDialog.open}
-        orderId={cancelDialog.orderId}
-        onConfirm={confirmCancelOrder}
-        onOpenChange={(open) => { if (!open) setCancelDialog({ open: false, orderId: '' }); }}
-        onCancel={() => setCancelDialog({ open: false, orderId: '' })}
-        isLoading={isCancelling}
-      />
-
       <StatusChangeConfirmation
         open={statusDialog.open}
         onOpenChange={(open) => { if (!open) setStatusDialog({ open: false, orderId: '', currentStatus: '', newStatus: '' }); }}
@@ -1746,6 +1956,26 @@ export function LiveOrders() {
         newStatus={statusDialog.newStatus}
         onConfirm={confirmStatusUpdate}
       />
-    </div>
+
+      <ConfirmationDialog
+        open={rtoDialog.open}
+        onOpenChange={(open) => { if (!open) setRtoDialog({ open: false, orderId: '' }); }}
+        title="Mark order as RTO?"
+        description={`Order ${rtoDialog.orderId} will be marked return-to-origin. This removes it from the active live board.`}
+        confirmText="Mark RTO"
+        variant="warning"
+        isLoading={isMarkingRto}
+        onConfirm={async () => {
+          const rawId = resolveOrderId({ id: rtoDialog.orderId, order_id: rtoDialog.orderId });
+          await handleMarkRTO(rawId);
+        }}
+      />
+
+      <OrderDetailsDrawer
+        orderId={quickDrawerOrderId}
+        open={!!quickDrawerOrderId}
+        onOpenChange={(open) => !open && setQuickDrawerOrderId(null)}
+      />
+    </DarkstoreScreenShell>
   );
 }

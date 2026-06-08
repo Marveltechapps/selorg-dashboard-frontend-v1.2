@@ -118,12 +118,12 @@ export function PutawayRoutingGuide({
   }, [hasMap, targetFound, aisles, targetNorm, loading]);
 
   return (
-    <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex-1 p-6 relative overflow-hidden min-h-[200px] flex flex-col">
-      <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur p-2 rounded border border-[#E0E0E0] shadow-sm max-w-[220px]">
-        <h4 className="font-bold text-[#212121] text-sm flex items-center gap-2">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 p-6 relative overflow-hidden min-h-[200px] flex flex-col">
+      <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur p-2 rounded border border-slate-200 shadow-sm max-w-[220px]">
+        <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
           <Map size={14} /> Routing Guide
         </h4>
-        <p className="text-xs text-[#616161]">
+        <p className="text-xs text-slate-600">
           {targetLocation
             ? targetFound
               ? `Route to ${targetLocation}`
@@ -134,23 +134,23 @@ export function PutawayRoutingGuide({
 
       <div
         ref={gridRef}
-        className="w-full flex-1 bg-[#F5F5F5] rounded-lg border border-[#E0E0E0] relative flex items-center justify-center mt-12 min-h-[140px]"
+        className="w-full flex-1 bg-slate-100 rounded-lg border border-slate-200 relative flex items-center justify-center mt-12 min-h-[140px]"
       >
         {loading ? (
-          <span className="text-sm text-[#9E9E9E]">Loading store layout...</span>
+          <span className="text-sm text-slate-400">Loading store layout...</span>
         ) : loadError ? (
-          <span className="text-sm text-[#EF4444]">Failed to load layout</span>
+          <span className="text-sm text-red-500">Failed to load layout</span>
         ) : !hasMap ? (
           <div className="text-center px-4">
-            <p className="text-sm text-[#616161] font-bold mb-2">No shelves configured</p>
-            <p className="text-xs text-[#9E9E9E] mb-3">
+            <p className="text-sm text-slate-600 font-bold mb-2">No shelves configured</p>
+            <p className="text-xs text-slate-400 mb-3">
               Add shelf locations in Store Setup to enable routing.
             </p>
             {onOpenStoreSetup && (
               <button
                 type="button"
                 onClick={onOpenStoreSetup}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-[#1677FF] border border-[#91CAFF] rounded-lg hover:bg-[#F0F7FF]"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
               >
                 <Settings2 size={14} /> Open Store Setup
               </button>
@@ -161,7 +161,7 @@ export function PutawayRoutingGuide({
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 w-full h-full p-4 overflow-auto content-start">
               {aisles.map((aisleObj: any) => (
                 <div key={aisleObj.aisle} className="flex flex-col gap-1.5">
-                  <div className="text-[10px] font-bold text-[#757575] text-center uppercase">
+                  <div className="text-[10px] font-bold text-slate-500 text-center uppercase">
                     Aisle {aisleObj.aisle}
                   </div>
                   {(aisleObj.shelves || []).map((shelf: any, shelfIdx: number) => {
@@ -176,10 +176,10 @@ export function PutawayRoutingGuide({
                         className={cn(
                           'h-10 rounded border-2 flex items-center justify-center text-[10px] font-mono font-bold transition-all',
                           isTarget
-                            ? 'border-[#4ADE80] bg-[#F0FDF4] text-[#16A34A] ring-2 ring-[#4ADE80]/30 scale-105 shadow-md z-10'
+                            ? 'border-emerald-400 bg-emerald-50 text-emerald-600 ring-2 ring-emerald-400/30 scale-105 shadow-md z-10'
                             : isStart
-                              ? 'border-[#1677FF] bg-[#E6F7FF] text-[#1677FF]'
-                              : 'border-[#E0E0E0] bg-white text-[#9E9E9E]'
+                              ? 'border-blue-600 bg-blue-50 text-blue-600'
+                              : 'border-slate-200 bg-white text-slate-400'
                         )}
                         title={loc}
                       >
@@ -191,11 +191,11 @@ export function PutawayRoutingGuide({
               ))}
             </div>
             {pathD && targetFound && (
-              <svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden>
+              <svg className="absolute inset-0 w-full h-full pointer-events-none text-blue-600" aria-hidden>
                 <path
                   d={pathD}
                   fill="none"
-                  stroke="#1677FF"
+                  stroke="currentColor"
                   strokeWidth="3"
                   strokeDasharray="8 4"
                   className="animate-pulse"

@@ -4,6 +4,10 @@ import { VendorSidebar } from './vendor/VendorSidebar';
 import { VendorTopBar } from './vendor/VendorTopBar';
 import { CardSkeleton } from './ui/ux-components';
 import { useDashboardNavigation } from '../hooks/useDashboardNavigation';
+import { DashboardBreadcrumbs } from './ui/DashboardBreadcrumbs';
+import { HubRequiredGuard } from './dashboard/HubRequiredGuard';
+import { VENDOR_TAB_ALIASES, VENDOR_TAB_IDS } from '../layouts/sidebar/vendorNavigationConfig';
+import { resolveOpsTab } from '../layouts/sidebar/opsNavigationTypes';
 
 const VendorOverview = React.lazy(() =>
   import('./screens/vendor/VendorOverview').then((m) => ({ default: m.VendorOverview }))
@@ -40,7 +44,9 @@ const VendorUtilities = React.lazy(() =>
 );
 
 export function VendorManagement({ onLogout }: { onLogout: () => void }) {
-  const { activeTab, setActiveTab } = useDashboardNavigation('overview');
+  const { activeTab: rawTab, setActiveTab } = useDashboardNavigation('overview');
+  const activeTab = resolveOpsTab(rawTab, VENDOR_TAB_ALIASES);
+  const effectiveTab = (VENDOR_TAB_IDS as readonly string[]).includes(activeTab) ? activeTab : 'overview';
   const location = useLocation();
   const [vendorSearchQuery, setVendorSearchQuery] = React.useState('');
 
@@ -50,10 +56,13 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
   }, [location.search]);
 
   useEffect(() => {
-    if (activeTab === 'onboarding' || activeTab === 'communication' || activeTab === 'system') {
-      setActiveTab('overview');
-    }
-  }, [activeTab, setActiveTab]);
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tab?: string };
+      if (detail?.tab) setActiveTab(resolveOpsTab(detail.tab, VENDOR_TAB_ALIASES));
+    };
+    window.addEventListener('vendor:navigate', onNav);
+    return () => window.removeEventListener('vendor:navigate', onNav);
+  }, [setActiveTab]);
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] text-[#18181b] font-sans">
@@ -63,6 +72,8 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
         <VendorTopBar filterQuery={vendorSearchQuery} onFilterQueryChange={setVendorSearchQuery} />
 
         <main className="pt-[88px] px-4 sm:px-6 md:px-8 pb-12 min-h-screen max-w-[1920px] mx-auto">
+          <DashboardBreadcrumbs dashboard="vendor" activeTab={effectiveTab} />
+          <HubRequiredGuard title="Select a supply hub" requireStore={false}>
           <Suspense
             fallback={
               <div className="p-6">
@@ -70,18 +81,19 @@ export function VendorManagement({ onLogout }: { onLogout: () => void }) {
               </div>
             }
           >
-            {activeTab === 'overview' && <VendorOverview searchQuery={vendorSearchQuery} />}
-            {activeTab === 'vendor-list' && <VendorList onNavigateTab={setActiveTab} />}
-            {activeTab === 'po' && <PurchaseOrders />}
-            {activeTab === 'inbound' && <InboundOperations />}
-            {activeTab === 'inventory' && <InventoryCoordination />}
-            {activeTab === 'qc' && <QCCompliance />}
-            {activeTab === 'approvals' && <VendorTaskApprovals />}
-            {activeTab === 'alerts' && <VendorAlerts />}
-            {activeTab === 'analytics' && <ReportsAnalytics />}
-            {activeTab === 'finance' && <VendorFinance />}
-            {activeTab === 'utilities' && <VendorUtilities />}
+            {effectiveTab === 'overview' && <VendorOverview searchQuery={vendorSearchQuery} />}
+            {effectiveTab === 'vendor-list' && <VendorList onNavigateTab={setActiveTab} />}
+            {effectiveTab === 'po' && <PurchaseOrders />}
+            {effectiveTab === 'inbound' && <InboundOperations />}
+            {effectiveTab === 'inventory' && <InventoryCoordination />}
+            {effectiveTab === 'qc' && <QCCompliance />}
+            {effectiveTab === 'approvals' && <VendorTaskApprovals />}
+            {effectiveTab === 'alerts' && <VendorAlerts />}
+            {effectiveTab === 'analytics' && <ReportsAnalytics />}
+            {effectiveTab === 'finance' && <VendorFinance />}
+            {effectiveTab === 'utilities' && <VendorUtilities />}
           </Suspense>
+          </HubRequiredGuard>
         </main>
       </div>
     </div>

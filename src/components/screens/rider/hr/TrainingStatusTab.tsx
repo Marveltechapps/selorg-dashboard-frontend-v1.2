@@ -15,22 +15,30 @@ interface TrainingStatusTabProps {
   onRiderTrainingUpdated?: (riderId: string) => void;
 }
 
+function resolveTrainingProgress(rider: Rider) {
+  if (rider.trainingProgress) {
+    return {
+      progress: rider.trainingProgress.progressPercentage,
+      modules: `${rider.trainingProgress.modulesCompleted}/${rider.trainingProgress.totalModules}`,
+    };
+  }
+  if (rider.trainingStatus === "completed") return { progress: 100, modules: "5/5" };
+  if (rider.trainingStatus === "in_progress") return { progress: 20, modules: "1/5" };
+  return { progress: 0, modules: "0/5" };
+}
+
 export function TrainingStatusTab({ riders, loading, onRefresh, onRiderTrainingUpdated }: TrainingStatusTabProps) {
   const trainingRiders = riders.filter(r => r.trainingStatus !== "completed" || r.status === "onboarding");
 
   const handleMarkCompleted = async (riderId: string, riderName: string) => {
-    // Optimistic update - update UI immediately
     onRiderTrainingUpdated?.(riderId);
     
     try {
       await updateRiderTraining(riderId);
       toast.success(`Training marked completed for ${riderName}`);
-      // Background refresh to sync with server (non-blocking)
       onRefresh?.().catch(() => {});
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Update failed");
-      // Note: We don't revert optimistic update here as the UI state is already updated
-      // The background refresh will sync the correct state from server
     }
   };
 
@@ -61,11 +69,7 @@ export function TrainingStatusTab({ riders, loading, onRefresh, onRiderTrainingU
                </TableRow>
             ) : (
               trainingRiders.map((rider) => {
-                // Mock progress logic
-                const progress = rider.trainingStatus === "completed" ? 100 : 
-                                 rider.trainingStatus === "in_progress" ? 60 : 0;
-                const modules = rider.trainingStatus === "completed" ? "5/5" : 
-                                rider.trainingStatus === "in_progress" ? "3/5" : "0/5";
+                const { progress, modules } = resolveTrainingProgress(rider);
 
                 return (
                   <TableRow key={rider.id}>

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { ArrowRight, Bell, BellRing, Search, X, Clock, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Bell, BellRing, Search, X, Clock, ShieldCheck, Menu } from 'lucide-react';
 import {
   globalSearch,
   getRecentSearches,
@@ -107,9 +107,10 @@ function formatTimeAgo(ts: string) {
 export interface ProductionTopBarProps {
   setActiveTab?: (tab: string) => void;
   onOpenDowntime?: () => void;
+  onMenuClick?: () => void;
 }
 
-export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
+export function ProductionTopBar({ setActiveTab, onMenuClick }: ProductionTopBarProps = {}) {
   const navigate = useNavigate();
   const badge = envBadge();
   const { selectedFactoryId } = useProductionFactory();
@@ -369,6 +370,16 @@ export function ProductionTopBar({ setActiveTab }: ProductionTopBarProps = {}) {
           searchOpen ? 'z-[170] border-[#f0f0f3] shadow-[0_6px_24px_-8px_rgba(15,23,42,0.08)]' : 'z-40'
         )}
       >
+        {onMenuClick && (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="production-mobile-only p-2 -ml-1 rounded-lg text-[#52525b] hover:bg-[#f4f4f5]"
+            aria-label="Open menu"
+          >
+            <Menu size={24} />
+          </button>
+        )}
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-xl">
           <div ref={searchWrapRef} className="relative z-[1] w-full min-w-0">
             <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] shrink-0 pointer-events-none" size={16} aria-hidden />

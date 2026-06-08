@@ -12,6 +12,7 @@ import {
   Map as MapIcon,
   Plus,
   Minus,
+  Sparkles,
 } from 'lucide-react';
 import { api } from './overview/riderApi';
 import { Rider } from './overview/types';
@@ -29,6 +30,7 @@ import {
 import type { Cluster, GroupDeliveryFilterOptions, GroupDeliveryOrder } from './groupDeliveryTypes';
 import { GROUP_CLUSTER_COLORS } from './groupDeliveryTypes';
 import { defaultMapCenter, moveOrdersToCluster } from './groupDeliveryUtils';
+import { suggestAutoClusters } from './groupDeliveryClustering';
 import { GroupDeliveryClusterColumn } from './GroupDeliveryClusterColumn';
 import { GroupDeliveryOrdersColumn } from './GroupDeliveryOrdersColumn';
 import { GroupDeliveryMetricsPanel } from './GroupDeliveryMetricsPanel';
@@ -468,10 +470,35 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
     });
   };
 
+  const handleAutoCluster = () => {
+    const withCoords = unclusteredOrders.filter((o) => o.coordinates);
+    if (withCoords.length === 0) {
+      toast.error('No geocoded orders available to auto-cluster');
+      return;
+    }
+    const suggested = suggestAutoClusters(withCoords, clusters.length);
+    if (suggested.length === 0) {
+      toast.info('Nothing to cluster');
+      return;
+    }
+    const clusteredIds = new Set(suggested.flatMap((c) => c.orders.map((o) => o.id)));
+    setClusters((prev) => [...prev, ...suggested]);
+    setUnclusteredOrders((prev) => prev.filter((o) => !clusteredIds.has(o.id)));
+    toast.success(`Created ${suggested.length} suggested group(s)`);
+  };
+
   const saveAllClusters = async () => {
-    const unsavedClusters = clusters.filter(c => !c.isSaved);
+    const unsavedClusters = clusters.filter((c) => !c.isSaved);
     if (unsavedClusters.length === 0) {
       toast.info('No new clusters to save');
+      return;
+    }
+
+    const missingGeocode = unsavedClusters.some((c) =>
+      c.orders.some((o) => !o.coordinates)
+    );
+    if (missingGeocode) {
+      toast.error('Cannot save clusters: all orders must have geocoded coordinates (no fallback locations)');
       return;
     }
 
@@ -719,6 +746,15 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
           actions={
             <div className="flex items-center gap-3">
               <button
+                type="button"
+                onClick={handleAutoCluster}
+                disabled={loading || saving || clustering || unclusteredOrders.length === 0}
+                className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] disabled:opacity-50 flex items-center gap-2"
+              >
+                <Sparkles size={16} />
+                Auto-cluster
+              </button>
+              <button
                 onClick={saveAllClusters}
                 disabled={loading || saving || clustering || !clusters.some((c) => !c.isSaved)}
                 className="px-4 py-2 bg-[#F97316] text-white font-medium rounded-lg hover:bg-[#EA580C] disabled:opacity-50 flex items-center gap-2"
@@ -830,6 +866,15 @@ export function GroupDelivery({ searchQuery = '' }: { searchQuery?: string }) {
                 <span>Geocoding: {geocodingProgress}%</span>
               </div>
             )}
+            <button
+              type="button"
+              onClick={handleAutoCluster}
+              disabled={loading || saving || clustering || unclusteredOrders.length === 0}
+              className="px-4 py-2 bg-white border border-[#E0E0E0] text-[#212121] font-medium rounded-lg hover:bg-[#F5F5F5] disabled:opacity-50 flex items-center gap-2"
+            >
+              <Sparkles size={16} />
+              Auto-cluster
+            </button>
             <button
               onClick={saveAllClusters}
               disabled={loading || saving || clustering || !clusters.some((c) => !c.isSaved)}

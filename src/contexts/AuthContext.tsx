@@ -135,6 +135,22 @@ function isTokenExpired(token: string): boolean {
   return Date.now() >= payload.exp * 1000;
 }
 
+/** Resolve hub/store scope from persisted selection or JWT user fields (ignores empty strings). */
+export function resolveOperationalScope(
+  user: AuthUser | null,
+  activeStoreId: string | null | undefined
+): string | null {
+  const fromActive = activeStoreId?.trim();
+  if (fromActive) return fromActive;
+  if (!user) return null;
+  const primary = user.primaryStoreId?.trim();
+  if (primary) return primary;
+  const assigned = user.assignedStores?.map((s) => s?.trim()).find(Boolean);
+  if (assigned) return assigned;
+  const hub = user.hubKey?.trim();
+  return hub || null;
+}
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
@@ -171,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     _token = newToken;
     _user = enriched;
-    _activeStoreId = enriched.primaryStoreId ?? enriched.assignedStores?.[0] ?? null;
+    _activeStoreId = resolveOperationalScope(enriched, null);
 
     persistAuth(newToken, enriched, _activeStoreId);
     setToken(newToken);
@@ -225,6 +241,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (mergedUser && mergedUser !== _user) {
         _user = mergedUser;
+        persistAuth(_token, mergedUser, _activeStoreId);
+      }
+      const restoredScope = resolveOperationalScope(mergedUser, _activeStoreId);
+      if (restoredScope && restoredScope !== _activeStoreId) {
+        _activeStoreId = restoredScope;
         persistAuth(_token, mergedUser, _activeStoreId);
       }
       setToken(_token);

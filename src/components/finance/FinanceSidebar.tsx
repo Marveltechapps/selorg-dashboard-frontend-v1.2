@@ -1,25 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
-import {
-  LayoutDashboard,
-  CreditCard,
-  Wallet,
-  RotateCcw,
-  Scale,
-  Truck,
-  BookOpen,
-  FileText,
-  AlertTriangle,
-  BarChart3,
-  CheckSquare,
-  Wrench,
-  LogOut,
-  Store,
-  Users,
-} from 'lucide-react';
+import { LogOut, Store } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { DASHBOARD_BRANDS } from '@/utils/dashboardFavicon';
 import { getAuthUser, useAuth, type AuthUser } from '@/contexts/AuthContext';
+import { FINANCE_NAV_SECTIONS } from '@/layouts/sidebar/financeNavigationConfig';
 
 function formatEntityLabel(hubKeyOrStore?: string | null): string {
   const raw = (hubKeyOrStore && String(hubKeyOrStore).trim()) || '';
@@ -79,21 +65,13 @@ export function FinanceSidebar({
     (profile?.role ? profile.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null) ||
     'Finance';
 
-  const navItems = [
-    { id: 'overview', label: 'Finance Overview', icon: LayoutDashboard },
-    { id: 'customer-payments', label: 'Customer Payments', icon: CreditCard },
-    { id: 'vendor-payments', label: 'Vendor & Suppliers', icon: Wallet },
-    { id: 'rider-cash', label: 'Rider Cash', icon: Truck },
-    { id: 'refunds', label: 'Refunds & Returns', icon: RotateCcw },
-    { id: 'picker-payouts', label: 'Picker Payouts', icon: Users },
-    { id: 'reconciliation', label: 'Reconciliation', icon: Scale },
-    { id: 'ledger', label: 'Accounting Ledger', icon: BookOpen },
-    { id: 'billing', label: 'Billing & Invoicing', icon: FileText },
-    { id: 'alerts', label: 'Alerts & Exceptions', icon: AlertTriangle },
-    { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
-    { id: 'approvals', label: 'Task Approvals', icon: CheckSquare },
-    { id: 'utilities', label: 'Utilities & Tools', icon: Wrench },
-  ];
+  const [sectionOpen, setSectionOpen] = React.useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const section of FINANCE_NAV_SECTIONS) {
+      initial[section.category] = !(section.collapseDefault ?? false);
+    }
+    return initial;
+  });
 
   return (
     <>
@@ -159,30 +137,53 @@ export function FinanceSidebar({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
+        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-4 custom-scrollbar">
+          {FINANCE_NAV_SECTIONS.map((section) => {
+            const isOpen = sectionOpen[section.category] ?? true;
             return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  onMobileClose?.();
-                }}
-                className={cn(
-                  'w-full h-10 px-3 flex items-center gap-3 transition-all rounded-lg relative group',
-                  isActive
-                    ? 'bg-[#14B8A6] text-white shadow-[0_2px_4px_rgba(0,0,0,0.2)]'
-                    : 'text-[#B3B3B3] hover:bg-[#1F2937] hover:text-white'
+              <div key={section.category}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSectionOpen((prev) => ({ ...prev, [section.category]: !isOpen }))
+                  }
+                  className="w-full px-3 mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#64748B] hover:text-[#94A3B8]"
+                >
+                  {section.category}
+                  <ChevronDown size={12} className={cn('transition-transform', isOpen && 'rotate-180')} />
+                </button>
+                {isOpen && (
+                  <div className="space-y-0.5">
+                    {section.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive =
+                        activeTab === item.id || (item.aliases?.includes(activeTab) ?? false);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            onMobileClose?.();
+                          }}
+                          className={cn(
+                            'w-full h-10 px-3 flex items-center gap-3 transition-all rounded-lg relative group',
+                            isActive
+                              ? 'bg-[#14B8A6] text-white shadow-[0_2px_4px_rgba(0,0,0,0.2)]'
+                              : 'text-[#B3B3B3] hover:bg-[#1F2937] hover:text-white'
+                          )}
+                        >
+                          <Icon
+                            size={18}
+                            className={cn(isActive ? 'text-white' : 'text-[#808080] group-hover:text-white')}
+                          />
+                          <span className="text-sm font-medium truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              >
-                <Icon
-                  size={18}
-                  className={cn(isActive ? 'text-white' : 'text-[#808080] group-hover:text-white')}
-                />
-                <span className="text-sm font-medium truncate">{item.label}</span>
-              </button>
+              </div>
             );
           })}
         </nav>

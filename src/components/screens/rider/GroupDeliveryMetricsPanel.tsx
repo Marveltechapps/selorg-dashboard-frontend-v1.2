@@ -10,6 +10,10 @@ import {
 } from 'lucide-react';
 import { computeClusterMetrics } from './groupDeliveryApi';
 import type { Cluster, ClusterMetrics, SlaRiskLevel } from './groupDeliveryTypes';
+import {
+  estimateClusterRouteKm,
+  estimateClusterDeliveryMinutes,
+} from './groupDeliveryClustering';
 import { cn } from '@/lib/utils';
 
 const SLA_STYLES: Record<SlaRiskLevel, { bg: string; text: string; border: string }> = {
@@ -77,6 +81,8 @@ export function GroupDeliveryMetricsPanel({ cluster }: GroupDeliveryMetricsPanel
   }
 
   const slaStyle = SLA_STYLES[metrics.slaRisk] || SLA_STYLES.ok;
+  const previewRouteKm = estimateClusterRouteKm(cluster.orders);
+  const previewDeliveryMin = estimateClusterDeliveryMinutes(previewRouteKm, cluster.orders.length);
 
   return (
     <div className="rounded-xl border border-[#E0E0E0] bg-white p-4 shadow-sm">
@@ -129,6 +135,20 @@ export function GroupDeliveryMetricsPanel({ cluster }: GroupDeliveryMetricsPanel
           {metrics.ordersAtRisk} order(s) may miss SLA at current route estimate.
         </p>
       )}
+
+      <div className="mt-3 pt-3 border-t border-[#F0F0F0]">
+        <p className="text-[10px] font-semibold text-[#757575] uppercase mb-2">Route preview (local estimate)</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-md bg-[#FFF7ED] border border-orange-100 px-2 py-1.5">
+            <span className="text-[#757575]">Tour distance</span>
+            <p className="font-bold text-[#212121]">{previewRouteKm.toFixed(1)} km</p>
+          </div>
+          <div className="rounded-md bg-[#FFF7ED] border border-orange-100 px-2 py-1.5">
+            <span className="text-[#757575]">Est. completion</span>
+            <p className="font-bold text-[#212121]">{previewDeliveryMin} min</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { Checkbox } from '../../../../components/ui/checkbox';
 import { ScrollArea } from '../../../../components/ui/scroll-area';
 import { Order, Rider } from './types';
 import { toast } from 'sonner';
+import { useRiderPermissions } from '@/components/rider/useRiderPermissions';
 
 interface DispatchDrawerProps {
   isOpen: boolean;
@@ -30,8 +31,11 @@ export function DispatchDrawer({
   onAssign,
   preselectedOrder 
 }: DispatchDrawerProps) {
+  const { can } = useRiderPermissions();
+  const canAssign = can('dispatch.assign');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [selectedRider, setSelectedRider] = useState<string>('');
+  const [batchZone, setBatchZone] = useState<string>('');
 
   React.useEffect(() => {
     if (isOpen && preselectedOrder) {
@@ -50,6 +54,10 @@ export function DispatchDrawer({
   };
 
   const handleBatchAssign = async () => {
+    if (!canAssign) {
+      toast.error('You do not have permission to assign orders');
+      return;
+    }
     if (selectedOrders.length === 0 || !selectedRider) return;
     for (const orderId of selectedOrders) {
       await onAssign(orderId, selectedRider);
@@ -68,6 +76,26 @@ export function DispatchDrawer({
     const isFree = !r.currentOrderId;
     return isEligibleStatus && isFree;
   });
+
+  const zoneOptions = Array.from(
+    new Set(
+      unassignedOrders
+        .map((o) => (o as Order & { zone?: string }).zone)
+        .filter(Boolean) as string[]
+    )
+  );
+
+  const selectOrdersByZone = () => {
+    if (!batchZone) {
+      toast.error('Select a delivery zone first');
+      return;
+    }
+    const ids = unassignedOrders
+      .filter((o) => (o as Order & { zone?: string }).zone === batchZone)
+      .map((o) => o.id);
+    setSelectedOrders(ids);
+    toast.success(`Selected ${ids.length} order(s) in zone ${batchZone}`);
+  };
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
@@ -138,7 +166,8 @@ export function DispatchDrawer({
                         </div>
                         <Button 
                             className="w-full bg-[#F97316] hover:bg-[#EA580C]" 
-                            disabled={selectedOrders.length === 0 || !selectedRider}
+                            disabled={!canAssign || selectedOrders.length === 0 || !selectedRider}
+                            title={canAssign ? undefined : 'You do not have permission to assign orders'}
                             onClick={handleBatchAssign}
                         >
                             Assign {selectedOrders.length} Order{selectedOrders.length !== 1 ? 's' : ''}
@@ -147,31 +176,31 @@ export function DispatchDrawer({
                 </TabsContent>
                 
                 <TabsContent value="batch" className="mt-4">
-                    <div className="p-8 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-center">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-gray-400">
-                           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                        </div>
-                        <h3 className="font-medium text-lg text-gray-900">Batch Dispatch Mode</h3>
-                        <p className="text-sm text-gray-500 mt-2 max-w-xs">
-                            Select a zone on the map to bulk assign orders to the nearest available fleet.
+                    <div className="p-6 border rounded-lg space-y-4">
+                        <h3 className="font-medium text-lg text-gray-900">Batch by delivery zone</h3>
+                        <p className="text-sm text-gray-500">
+                          Select a zone to bulk-select unassigned orders, then assign from the Unassigned tab.
                         </p>
-                        <Button variant="outline" className="mt-4">
-                            Select Zone on Map
-                        </Button>
-                        
-                        <div className="mt-8 w-full">
-                            <h4 className="text-sm font-medium text-left mb-2">Load Distribution Preview</h4>
-                            <div className="h-4 w-full bg-gray-100 rounded-full overflow-hidden flex">
-                                <div className="h-full bg-green-500 w-[60%]" title="Optimal"></div>
-                                <div className="h-full bg-yellow-500 w-[25%]" title="Heavy"></div>
-                                <div className="h-full bg-red-500 w-[15%]" title="Overload"></div>
-                            </div>
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                <span>Optimal (60%)</span>
-                                <span>Heavy (25%)</span>
-                                <span>Overload (15%)</span>
-                            </div>
+                        <div className="flex gap-2">
+                          <select
+                            className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                            value={batchZone}
+                            onChange={(e) => setBatchZone(e.target.value)}
+                          >
+                            <option value="">Choose zone…</option>
+                            {zoneOptions.map((z) => (
+                              <option key={z} value={z}>{z}</option>
+                            ))}
+                          </select>
+                          <Button variant="outline" onClick={selectOrdersByZone} disabled={!canAssign || !batchZone}>
+                            Select zone orders
+                          </Button>
                         </div>
+                        {selectedOrders.length > 0 && (
+                          <p className="text-xs text-[#757575]">
+                            {selectedOrders.length} order(s) selected — switch to Unassigned tab to assign.
+                          </p>
+                        )}
                     </div>
                 </TabsContent>
             </Tabs>

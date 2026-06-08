@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, User, Loader2 } from 'lucide-react';
 import { fetchOnlineRiders } from './dispatch/dispatchApi';
 import type { DispatchRider } from './dispatch/types';
+import { useRiderPermissions } from '@/components/rider/useRiderPermissions';
 
 interface AssignGroupRiderModalProps {
   open: boolean;
@@ -33,6 +34,8 @@ export function AssignGroupRiderModal({
   onConfirm,
   saving = false,
 }: AssignGroupRiderModalProps) {
+  const { can } = useRiderPermissions();
+  const canAssign = can('dispatch.assign');
   const [search, setSearch] = useState('');
   const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
   const [overrideSla, setOverrideSla] = useState(false);
@@ -209,7 +212,8 @@ export function AssignGroupRiderModal({
             </Button>
             <Button
               className="bg-[#F97316] hover:bg-[#EA580C] flex-1 sm:flex-none"
-              disabled={!selectedRiderId || saving}
+              disabled={!canAssign || !selectedRiderId || saving}
+              title={canAssign ? undefined : 'You do not have permission to assign orders'}
               onClick={() => void handleConfirm()}
             >
               {saving ? (

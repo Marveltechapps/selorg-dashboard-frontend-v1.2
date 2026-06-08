@@ -333,3 +333,109 @@ export async function exportReport(payload: ExportReportRequest): Promise<Export
   };
 }
 
+export interface DrillDownRow {
+  id: string;
+  status?: string;
+  riderId?: string;
+  customerName?: string;
+  slaDeadline?: string;
+  createdAt?: string;
+  completedAt?: string;
+}
+
+export interface DrillDownResult {
+  metric: string;
+  timestamp: string;
+  label: string;
+  rows: DrillDownRow[];
+  total: number;
+}
+
+export async function fetchAnalyticsDrillDown(params: {
+  metric: 'rider' | 'sla' | 'fleet';
+  timestamp: string;
+  granularity?: Granularity;
+}): Promise<DrillDownResult> {
+  const qs = new URLSearchParams({
+    metric: params.metric,
+    timestamp: params.timestamp,
+    granularity: params.granularity || 'day',
+  });
+  const raw = await apiRequest(`${ANALYTICS_ENDPOINT}/drill-down?${qs.toString()}`) as {
+    success?: boolean;
+    data?: DrillDownResult;
+  };
+  return raw.data ?? { metric: params.metric, timestamp: params.timestamp, label: '', rows: [], total: 0 };
+}
+
+export interface ReportSchedule {
+  _id?: string;
+  email: string;
+  metric: string;
+  format: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  dateRange?: string;
+  active?: boolean;
+  nextRunAt?: string;
+}
+
+export async function scheduleAnalyticsReport(payload: ReportSchedule): Promise<ReportSchedule> {
+  const raw = await apiRequest(`${ANALYTICS_ENDPOINT}/reports/schedules`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }) as { data?: ReportSchedule };
+  return raw.data ?? payload;
+}
+
+export async function listAnalyticsSchedules(): Promise<ReportSchedule[]> {
+  const raw = await apiRequest(`${ANALYTICS_ENDPOINT}/reports/schedules`) as { data?: ReportSchedule[] };
+  return raw.data ?? [];
+}
+
+export interface HubComparisonRow {
+  hubId: string;
+  orders: number;
+  delivered: number;
+  onTimePercent: number;
+  slaBreaches: number;
+}
+
+export interface RiderLeaderboardRow {
+  riderId: string;
+  riderName: string;
+  deliveries: number;
+}
+
+export interface DispatchEfficiencySummary {
+  totalOrders: number;
+  assignedCount: number;
+  unassignedCount: number;
+  autoAssignSuccessRate: number;
+  avgTimeToAssignMinutes: number;
+}
+
+export async function fetchHubComparison(dateRange = '7d'): Promise<HubComparisonRow[]> {
+  const raw = await apiRequest(`${ANALYTICS_ENDPOINT}/hub-comparison?dateRange=${dateRange}`) as { data?: HubComparisonRow[] };
+  return raw.data ?? [];
+}
+
+export async function fetchRiderLeaderboard(dateRange = '7d', limit = 10): Promise<RiderLeaderboardRow[]> {
+  const raw = await apiRequest(
+    `${ANALYTICS_ENDPOINT}/rider-leaderboard?dateRange=${dateRange}&limit=${limit}`
+  ) as { data?: RiderLeaderboardRow[] };
+  return raw.data ?? [];
+}
+
+export async function fetchDispatchEfficiency(dateRange = '7d'): Promise<DispatchEfficiencySummary> {
+  const raw = await apiRequest(`${ANALYTICS_ENDPOINT}/dispatch-efficiency?dateRange=${dateRange}`) as {
+    data?: DispatchEfficiencySummary;
+  };
+  return raw.data ?? {
+    totalOrders: 0,
+    assignedCount: 0,
+    unassignedCount: 0,
+    autoAssignSuccessRate: 0,
+    avgTimeToAssignMinutes: 0,
+  };
+}
+

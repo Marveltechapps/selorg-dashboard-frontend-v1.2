@@ -8,9 +8,10 @@ import { format } from 'date-fns';
 interface Props {
   data: SlaAdherencePoint[];
   loading?: boolean;
+  onDrillDown?: (point: SlaAdherencePoint) => void;
 }
 
-export function SlaAdherenceCharts({ data, loading }: Props) {
+export function SlaAdherenceCharts({ data, loading, onDrillDown }: Props) {
   if (loading) return <div className="h-[400px] w-full bg-gray-50 animate-pulse rounded-lg"></div>;
   if (!data || data.length === 0) return <div className="text-center p-10 text-gray-500">No data available</div>;
 
@@ -49,7 +50,14 @@ export function SlaAdherenceCharts({ data, loading }: Props) {
         <h3 className="text-lg font-semibold mb-6">SLA Adherence Trend (Target: 95%)</h3>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
+            <LineChart
+              data={data}
+              onClick={(state) => {
+                const payload = state?.activePayload?.[0]?.payload as SlaAdherencePoint | undefined;
+                if (payload && onDrillDown) onDrillDown(payload);
+              }}
+              style={{ cursor: onDrillDown ? 'pointer' : 'default' }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis 
                 dataKey="timestamp" 

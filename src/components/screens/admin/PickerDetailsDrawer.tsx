@@ -24,6 +24,7 @@ import {
   fetchPickerFaceVerification,
   overrideFaceVerification,
   PickerStatus,
+  type PickerFaceVerificationData,
 } from './pickerApprovalsApi';
 import { toast } from 'sonner';
 import {
@@ -35,6 +36,8 @@ import {
   type ShiftSlotItem,
 } from '@/api/admin/pickerOpsApi';
 import { fetchStores, type Store } from './storeWarehouseApi';
+import { ImageWithFallback } from '@/components/figma/ImageWithFallback';
+import { normalizePickerDocSide, type PickerDocSidePayload } from '@/utils/resolveMediaUrl';
 
 const STATUS_BADGE_CLASSES: Record<string, string> = {
   PENDING: 'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -45,6 +48,45 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   APPROVED: 'bg-green-50 text-green-700 border-green-200',
   DEACTIVATED: 'bg-gray-50 text-gray-700 border-gray-200',
 };
+
+const FACE_APPROVED_STATUSES = new Set(['verified', 'overridden_approved']);
+const FACE_REJECTED_STATUSES = new Set(['rejected', 'overridden_rejected']);
+
+function faceStatusFromPicker(picker: PickerApprovalDetails): PickerFaceVerificationData {
+  const rec = picker.faceVerificationRecord;
+  const status = rec?.status || (picker.faceVerification ? 'verified' : 'pending');
+  return {
+    status,
+    verifiedAt: rec?.verifiedAt ?? null,
+    confidence: rec?.confidence ?? null,
+    faceVerification: !!picker.faceVerification,
+    overrideReason: rec?.overrideReason,
+    overrideAt: rec?.overrideAt ?? null,
+  };
+}
+
+function formatFaceStatusLabel(status: string): string {
+  switch (status) {
+    case 'overridden_approved':
+      return 'Approved';
+    case 'overridden_rejected':
+      return 'Rejected';
+    case 'verified':
+      return 'Verified';
+    case 'pending':
+      return 'Pending';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return status.replace(/_/g, ' ');
+  }
+}
+
+function faceStatusBadgeClass(status: string, isApproved: boolean, isRejected: boolean): string {
+  if (isApproved) return 'bg-green-50 text-green-700 border-green-200';
+  if (isRejected) return 'bg-red-50 text-red-700 border-red-200';
+  return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+}
 
 /** Normalize ops list status (lowercase) and DB status (uppercase) for drawer UI */
 function normalizePickerStatus(status?: string): PickerStatus {
@@ -74,7 +116,8 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
   const [actionLogs, setActionLogs] = useState<any[]>([]);
   const [actionLogsLoading, setActionLogsLoading] = useState(false);
   const [trainingRows, setTrainingRows] = useState<Array<{ videoId: string; title: string; watchedSeconds: number; duration: number; progress: number; completed: boolean; completedAt: string | null }>>([]);
-  const [faceVerification, setFaceVerification] = useState<{ status: string; verifiedAt: string | null; confidence: number | null; faceVerification: boolean } | null>(null);
+  const [faceVerification, setFaceVerification] = useState<PickerFaceVerificationData | null>(null);
+  const [faceActionLoading, setFaceActionLoading] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [agencies, setAgencies] = useState<AgencyItem[]>([]);
@@ -90,6 +133,23 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
     () => trainingRows.length > 0 && trainingRows.every((row) => row.completed),
     [trainingRows]
   );
+
+  const faceState = useMemo((): PickerFaceVerificationData => {
+    if (faceVerification) return faceVerification;
+    if (picker) return faceStatusFromPicker(picker);
+    return {
+      status: 'pending',
+      verifiedAt: null,
+      confidence: null,
+      faceVerification: false,
+    };
+  }, [faceVerification, picker]);
+
+  const faceStatusKey = (faceState.status || 'pending').toLowerCase();
+  const faceIsApproved =
+    FACE_APPROVED_STATUSES.has(faceStatusKey) || faceState.faceVerification;
+  const faceIsRejected = FACE_REJECTED_STATUSES.has(faceStatusKey);
+  const faceIsPending = !faceIsApproved && !faceIsRejected;
 
   const handleStatusUpdate = async (status: PickerStatus, reason?: string) => {
     if (!picker) return;
@@ -164,6 +224,14 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
   }, [open]);
 
   useEffect(() => {
+    if (!open || !picker?.pickerId) {
+      setFaceVerification(null);
+      return;
+    }
+    setFaceVerification(faceStatusFromPicker(picker));
+  }, [open, picker?.pickerId, picker?.faceVerificationRecord, picker?.faceVerification]);
+
+  useEffect(() => {
     if (!open || !picker?.pickerId) return;
     setAgencyId((picker as { agencyId?: string; agency?: { _id?: string } }).agencyId || picker.agency?._id || 'none');
     setStoreId((picker as { storeId?: string; store?: { _id?: string } }).storeId || picker.store?._id || 'none');
@@ -184,60 +252,89 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
 
   if (!open) return null;
 
+  const refreshPickerDetails = async () => {
+    if (!picker?.pickerId) return;
+    const detailed = await fetchPickerDetails(picker.pickerId);
+    onPickerUpdated?.(detailed);
+  };
+
+  const refreshFaceVerification = async () => {
+    if (!picker?.pickerId) return;
+    const [faceRes, detailed] = await Promise.all([
+      fetchPickerFaceVerification(picker.pickerId),
+      fetchPickerDetails(picker.pickerId),
+    ]);
+    setFaceVerification(faceRes.data);
+    onPickerUpdated?.(detailed);
+  };
+
   const docThumb = (
     label: string,
     docType: 'aadhar' | 'pan',
     side: 'front' | 'back',
-    payload?: { url: string | null; status?: string; rejectionReason?: string | null } | null
-  ) => (
-    <div className="border rounded-lg p-3 space-y-2" key={`${docType}-${side}`}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">{label}</p>
-        <Badge variant="outline" className="capitalize">
-          {payload?.status || 'pending'}
-        </Badge>
+    rawPayload?: PickerDocSidePayload
+  ) => {
+    const payload = normalizePickerDocSide(rawPayload);
+    const imageUrl = payload?.url ?? null;
+    return (
+      <div className="border rounded-lg p-3 space-y-2" key={`${docType}-${side}`}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium">{label}</p>
+          <Badge variant="outline" className="capitalize shrink-0">
+            {payload?.status || 'pending'}
+          </Badge>
+        </div>
+        {imageUrl ? (
+          <a href={imageUrl} target="_blank" rel="noreferrer" className="block">
+            <div className="aspect-[4/3] w-full overflow-hidden rounded-md border bg-gray-50">
+              <ImageWithFallback
+                src={imageUrl}
+                alt={label}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          </a>
+        ) : (
+          <p className="text-xs text-gray-500 py-8 text-center border rounded-md bg-gray-50">
+            Not uploaded
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={reviewLoading || !imageUrl}
+            onClick={async () => {
+              if (!picker) return;
+              setReviewLoading(true);
+              try {
+                await approveDocument(picker.pickerId, docType, side);
+                toast.success('Document approved');
+                await refreshPickerDetails();
+                onRefresh();
+              } finally {
+                setReviewLoading(false);
+              }
+            }}
+          >
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={reviewLoading || !imageUrl}
+            onClick={() => {
+              if (!picker) return;
+              setDocReject({ open: true, docType, side });
+              setDocRejectReason(payload?.rejectionReason || '');
+            }}
+          >
+            Reject
+          </Button>
+        </div>
       </div>
-      {payload?.url ? (
-        <a href={payload.url} target="_blank" rel="noreferrer">
-          <img src={payload.url} alt={`${docType}-${side}`} className="h-24 w-24 rounded object-cover border" />
-        </a>
-      ) : (
-        <p className="text-xs text-gray-500">Not uploaded</p>
-      )}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={reviewLoading || !payload?.url}
-          onClick={async () => {
-            if (!picker) return;
-            setReviewLoading(true);
-            try {
-              await approveDocument(picker.pickerId, docType, side);
-              toast.success('Document approved');
-              onRefresh();
-            } finally {
-              setReviewLoading(false);
-            }
-          }}
-        >
-          Approve
-        </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          disabled={reviewLoading || !payload?.url}
-          onClick={async () => {
-            if (!picker) return;
-            setDocReject({ open: true, docType, side });
-            setDocRejectReason(payload?.rejectionReason || '');
-          }}
-        >
-          Reject
-        </Button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
@@ -275,7 +372,17 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
           <div className="px-6 pt-2 border-b border-gray-100">
             <TabsList className="bg-gray-100 flex-wrap h-auto">
               <TabsTrigger value="profile">Profile</TabsTrigger>
-              <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger
+                value="documents"
+                onClick={() => {
+                  if (!picker?.pickerId) return;
+                  void refreshPickerDetails().catch(() => {
+                    toast.error('Failed to refresh documents');
+                  });
+                }}
+              >
+                Documents
+              </TabsTrigger>
               <TabsTrigger
                 value="training"
                 onClick={() => {
@@ -292,9 +399,9 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
                 value="face"
                 onClick={() => {
                   if (!picker?.pickerId) return;
-                  fetchPickerFaceVerification(picker.pickerId)
-                    .then((res) => setFaceVerification(res.data))
-                    .catch(() => setFaceVerification(null));
+                  void refreshFaceVerification().catch(() => {
+                    toast.error('Failed to load face verification');
+                  });
                 }}
               >
                 Face Verification
@@ -625,37 +732,107 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
             </div>
           </TabsContent>
           <TabsContent value="face" className="flex-1 overflow-y-auto mt-0 p-6">
-            <h4 className="font-semibold text-gray-900 mb-4">Face Verification</h4>
-            <div className="space-y-2 text-sm">
-              <div>Status: <span className="font-medium capitalize">{faceVerification?.status || (picker?.faceVerification ? 'verified' : 'pending')}</span></div>
-              <div>Verified At: {faceVerification?.verifiedAt ? new Date(faceVerification.verifiedAt).toLocaleString() : '—'}</div>
-              <div>Confidence: {faceVerification?.confidence ?? '—'}</div>
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <h4 className="font-semibold text-gray-900">Face Verification</h4>
+              <Badge
+                variant="outline"
+                className={faceStatusBadgeClass(faceStatusKey, faceIsApproved, faceIsRejected)}
+              >
+                {formatFaceStatusLabel(faceStatusKey)}
+              </Badge>
             </div>
+            <div className="space-y-2 text-sm border rounded-lg p-4 bg-gray-50">
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-500">Verified At</span>
+                <span className="font-medium text-right">
+                  {faceState.verifiedAt ? new Date(faceState.verifiedAt).toLocaleString() : '—'}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-500">Confidence</span>
+                <span className="font-medium">
+                  {faceState.confidence != null ? `${faceState.confidence}%` : '—'}
+                </span>
+              </div>
+              {faceState.overrideAt && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-500">Reviewed At</span>
+                  <span className="font-medium text-right">
+                    {new Date(faceState.overrideAt).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {faceState.overrideReason ? (
+                <div className="pt-2 border-t border-gray-200">
+                  <span className="text-gray-500 block mb-1">Admin Note</span>
+                  <p className="text-gray-800">{faceState.overrideReason}</p>
+                </div>
+              ) : null}
+            </div>
+
+            {faceIsApproved && (
+              <p className="text-sm text-green-700 mt-4 flex items-center gap-2">
+                <CheckCircle2 size={16} /> Face verification is approved.
+              </p>
+            )}
+            {faceIsRejected && !faceIsApproved && (
+              <p className="text-sm text-red-700 mt-4 flex items-center gap-2">
+                <XCircle size={16} /> Face verification was rejected.
+              </p>
+            )}
+
             <div className="flex gap-2 mt-4">
-              <Button
-                size="sm"
-                onClick={async () => {
-                  if (!picker) return;
-                  await overrideFaceVerification(picker.pickerId, 'approve', 'Approved by admin');
-                  toast.success('Face verification approved');
-                  onRefresh();
-                }}
-              >
-                Approve
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={async () => {
-                  if (!picker) return;
-                  const reason = window.prompt('Override reason') || 'Rejected by admin';
-                  await overrideFaceVerification(picker.pickerId, 'reject', reason);
-                  toast.success('Face verification rejected');
-                  onRefresh();
-                }}
-              >
-                Reject
-              </Button>
+              {(faceIsPending || faceIsRejected) && (
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={faceActionLoading || !picker}
+                  onClick={async () => {
+                    if (!picker) return;
+                    setFaceActionLoading(true);
+                    try {
+                      await overrideFaceVerification(picker.pickerId, 'approve', 'Approved by admin');
+                      toast.success('Face verification approved');
+                      await refreshFaceVerification();
+                      onRefresh();
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Approval failed');
+                    } finally {
+                      setFaceActionLoading(false);
+                    }
+                  }}
+                >
+                  {faceActionLoading ? 'Saving…' : 'Approve'}
+                </Button>
+              )}
+              {(faceIsPending || faceIsApproved) && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={faceActionLoading || !picker}
+                  onClick={async () => {
+                    if (!picker) return;
+                    const reason = window.prompt('Rejection reason')?.trim();
+                    if (!reason) {
+                      toast.error('Rejection reason is required');
+                      return;
+                    }
+                    setFaceActionLoading(true);
+                    try {
+                      await overrideFaceVerification(picker.pickerId, 'reject', reason);
+                      toast.success('Face verification rejected');
+                      await refreshFaceVerification();
+                      onRefresh();
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Rejection failed');
+                    } finally {
+                      setFaceActionLoading(false);
+                    }
+                  }}
+                >
+                  {faceActionLoading ? 'Saving…' : 'Reject'}
+                </Button>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="audit" className="flex-1 overflow-y-auto mt-0 p-6">
@@ -795,6 +972,7 @@ export function PickerDetailsDrawer({ picker, open, onClose, onRefresh, onPicker
                     toast.message('Document rejected (push notification failed)');
                   }
                   toast.success('Document rejected');
+                  await refreshPickerDetails();
                   onRefresh();
                   setDocReject(null);
                   setDocRejectReason('');

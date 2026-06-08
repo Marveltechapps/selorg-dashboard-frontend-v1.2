@@ -109,14 +109,24 @@ export function LoginScreen() {
       }
 
       const ru = result.user as typeof result.user & { _id?: string; hubKey?: string };
+      const assignedStores = Array.isArray(ru.assignedStores)
+        ? ru.assignedStores.filter((s) => typeof s === 'string' && s.trim())
+        : undefined;
+      const primaryStoreId =
+        typeof ru.primaryStoreId === 'string' && ru.primaryStoreId.trim()
+          ? ru.primaryStoreId.trim()
+          : undefined;
+      const hubKey =
+        typeof ru.hubKey === 'string' && ru.hubKey.trim() ? ru.hubKey.trim() : undefined;
+
       auth.login(result.token, {
         id: ru.id || String(ru._id ?? ''),
         email: ru.email,
         name: ru.name,
         role: ru.role,
-        assignedStores: ru.assignedStores ?? [],
-        primaryStoreId: ru.primaryStoreId ?? '',
-        hubKey: ru.hubKey,
+        ...(assignedStores?.length ? { assignedStores } : {}),
+        ...(primaryStoreId ? { primaryStoreId } : {}),
+        ...(hubKey ? { hubKey } : {}),
       });
 
       const finalRole = canAccessAny ? selectedRole : result.user.role;

@@ -1,21 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
-import {
-  LayoutDashboard,
-  ShoppingBag,
-  Tag,
-  Megaphone,
-  Boxes,
-  Map,
-  BarChart3,
-  AlertTriangle,
-  ShieldCheck,
-  LogOut,
-  Store,
-} from 'lucide-react';
+import { LogOut, Store } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { DASHBOARD_BRANDS } from '@/utils/dashboardFavicon';
 import { getAuthUser, useAuth, type AuthUser } from '@/contexts/AuthContext';
+import { MERCH_NAV_SECTIONS } from '@/layouts/sidebar/merchNavigationConfig';
 
 /** Merch dashboard chrome — matches main content (#7C3AED) and legacy sidebar (#111827). */
 const MERCH_SIDEBAR = {
@@ -89,30 +78,7 @@ export function MerchSidebar({
     (profile?.role ? profile.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null) ||
     'Merchandising';
 
-  const navItems = [
-    {
-      category: 'Overview',
-      items: [{ id: 'overview', label: 'Merchandising Overview', icon: LayoutDashboard }],
-    },
-    {
-      category: 'Merchandising',
-      items: [
-        { id: 'catalog', label: 'Catalog Merchandising', icon: ShoppingBag },
-        { id: 'pricing', label: 'Pricing Engine', icon: Tag },
-        { id: 'promotions', label: 'Promotion Campaigns', icon: Megaphone },
-        { id: 'allocation', label: 'Allocation & Stock', icon: Boxes },
-        { id: 'geofence', label: 'Geofence & Targeting', icon: Map },
-      ],
-    },
-    {
-      category: 'Insights & Compliance',
-      items: [
-        { id: 'analytics', label: 'Analytics & Insights', icon: BarChart3 },
-        { id: 'alerts', label: 'Alerts & Exceptions', icon: AlertTriangle },
-        { id: 'compliance', label: 'Compliance & Approvals', icon: ShieldCheck },
-      ],
-    },
-  ];
+  const navItems = MERCH_NAV_SECTIONS;
 
   return (
     <>

@@ -34,6 +34,10 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { OrderCommandDrawer } from '@/components/rider/OrderCommandDrawer';
+import { alertToCommandOrder } from '@/components/rider/orderCommandAdapter';
+import { api as riderOverviewApi } from '@/components/screens/rider/overview/riderApi';
+import type { Order } from '@/components/screens/rider/overview/types';
 
 interface AlertsExceptionsPageProps {
   searchQuery?: string;
@@ -48,6 +52,8 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [commandOrder, setCommandOrder] = useState<Order | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -484,6 +490,13 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
               key={alert.id} 
               alert={alert} 
               onAction={handleAction}
+              onViewOrder={(a) => {
+                const order = alertToCommandOrder(a);
+                if (order) {
+                  setCommandOrder(order);
+                  setCommandOpen(true);
+                }
+              }}
               isLoading={actionLoading.has(alert.id)}
             />
           ))
@@ -539,6 +552,33 @@ export function AlertsExceptionsPage({ searchQuery: propSearchQuery = '' }: Aler
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <OrderCommandDrawer
+        order={commandOrder}
+        isOpen={commandOpen}
+        onClose={() => setCommandOpen(false)}
+        onReassign={() => {
+          setCommandOpen(false);
+          if (commandOrder) {
+            const alert = alerts.find((a) => a.source?.orderId === commandOrder.id);
+            if (alert) {
+              setActiveAlertId(alert.id);
+              setModalState((s) => ({ ...s, reassign: true }));
+            }
+          }
+        }}
+        onAlert={async (orderId, reason) => {
+          await riderOverviewApi.alertOrder(orderId, reason);
+        }}
+        onOpenDispatch={() => {
+          setCommandOpen(false);
+          window.dispatchEvent(new CustomEvent('rider:navigate', { detail: { tab: 'dispatch' } }));
+        }}
+        onEscalate={() => {
+          setCommandOpen(false);
+          window.dispatchEvent(new CustomEvent('rider:navigate', { detail: { tab: 'escalations' } }));
+        }}
+      />
 
     </div>
   );

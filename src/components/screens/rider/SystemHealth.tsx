@@ -12,6 +12,8 @@ import {
   DeviceHealth,
   DiagnosticsReport,
 } from './systemHealthApi';
+import { RiderAuditLogPanel } from '@/components/rider/RiderAuditLogPanel';
+import { useRiderPermissions } from '@/components/rider/useRiderPermissions';
 
 let _lastDiagnosticsReport: DiagnosticsReport | null = null;
 
@@ -28,6 +30,7 @@ export function SystemHealth() {
   const [devices, setDevices] = useState<DeviceHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningDiagnostics, setRunningDiagnostics] = useState(false);
+  const { can } = useRiderPermissions();
   const [lastDiagnosticsReport, setLastDiagnosticsReport] = useState<DiagnosticsReport | null>(() => loadStoredDiagnostics());
 
   const loadData = async () => {
@@ -335,6 +338,10 @@ export function SystemHealth() {
           </table>
         </div>
       </div>
+
+      {can('audit.view') && (
+        <RiderAuditLogPanel limit={20} />
+      )}
     </div>
   );
 }

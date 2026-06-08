@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PageHeader } from '../../ui/page-header';
 import { toast } from 'sonner';
-import { RefreshCw, Settings2, User, Truck, Camera } from 'lucide-react';
+import { RefreshCw, Settings2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
-import { apiRequest } from '@/api/apiClient';
+import { OrderCommandDrawer } from '@/components/rider/OrderCommandDrawer';
+import { dispatchOrderToCommandOrder } from '@/components/rider/orderCommandAdapter';
+import { api as riderOverviewApi } from './overview/riderApi';
 import { UnassignedOrdersPanel } from "./dispatch/UnassignedOrdersPanel";
 import { DispatchMapPanel } from "./dispatch/DispatchMapPanel";
 import { AssignRiderModal } from "./dispatch/AssignRiderModal";
@@ -24,6 +24,7 @@ import {
   batchCreateAssignment,
   autoAssignOrders
 } from "./dispatch/dispatchApi";
+import { useRiderPermissions } from '@/components/rider/useRiderPermissions';
 
 export function DispatchOps() {
   // Data State
@@ -44,10 +45,10 @@ export function DispatchOps() {
   const [batchOrders, setBatchOrders] = useState<DispatchOrder[]>([]);
 
   // Order Detail Drawer State (P1-11 to P1-13)
-  const [detailOrder, setDetailOrder] = useState<any>(null);
+  const [detailOrder, setDetailOrder] = useState<DispatchOrder | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
   const unassignedOrdersRef = useRef(unassignedOrders);
+  const { can } = useRiderPermissions();
   unassignedOrdersRef.current = unassignedOrders;
 
   // Initial Load
@@ -136,18 +137,9 @@ export function DispatchOps() {
     return () => clearInterval(interval);
   }, [autoAssignEnabled]);
 
-  const handleViewOrderDetail = async (order: DispatchOrder) => {
+  const handleViewOrderDetail = (order: DispatchOrder) => {
     setDetailOrder(order);
     setDetailOpen(true);
-    setDetailLoading(true);
-    try {
-      const res = await apiRequest<{ success: boolean; data: any }>(`/rider/dispatch/order/${order.id}/assignment-details`);
-      setDetailOrder({ ...order, ...res.data });
-    } catch {
-      // keep basic order data
-    } finally {
-      setDetailLoading(false);
-    }
   };
 
   const handleAssignClick = (order: DispatchOrder) => {
@@ -212,7 +204,8 @@ export function DispatchOps() {
             </button>
             <button
               onClick={() => runAutoAssign()}
-              disabled={!autoAssignEnabled || autoAssignRunning || unassignedOrders.length === 0}
+              disabled={!can('dispatch.auto_assign') || !autoAssignEnabled || autoAssignRunning || unassignedOrders.length === 0}
+              title={can('dispatch.auto_assign') ? undefined : 'You do not have permission to run auto-assign'}
               className="px-4 py-2 bg-[#F97316] text-white font-medium rounded-lg hover:bg-[#EA580C] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <RefreshCw size={16} className={autoAssignRunning ? "animate-spin" : ""} />
@@ -262,80 +255,36 @@ export function DispatchOps() {
         }}
       />
 
-      {/* Order Detail Drawer (P1-11 to P1-13) */}
-      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent className="w-[400px] sm:w-[520px] p-0 flex flex-col h-full gap-0 overflow-hidden">
-          {detailOrder && (
-            <>
-              <SheetHeader className="shrink-0 px-6 pt-6 pb-4 pr-14 border-b border-[#E0E0E0] space-y-1.5 text-left">
-                <SheetTitle className="flex flex-wrap items-center gap-2 text-lg text-[#212121]">
-                  Order {detailOrder.id}
-                  <Badge variant="outline" className="capitalize">{detailOrder.status}</Badge>
-                </SheetTitle>
-                <SheetDescription className="text-sm text-[#757575]">
-                  Delivery details
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
-              {detailLoading && <p className="text-sm text-gray-400">Loading details...</p>}
-
-              {/* Basic Info */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">Priority</p><p className="font-medium capitalize">{detailOrder.priority}</p></div>
-                <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">Zone</p><p className="font-medium">{detailOrder.zone}</p></div>
-                <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">Distance</p><p className="font-medium">{detailOrder.distanceKm} km</p></div>
-                <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-500">ETA</p><p className="font-medium">{detailOrder.etaMinutes} mins</p></div>
-              </div>
-
-              {/* Assignment History (P1-12) */}
-              {(detailOrder.assignmentHistory || []).length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900 flex items-center gap-2"><User size={16} /> Assignment History</h4>
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 text-gray-500"><tr><th className="px-4 py-2 font-medium">Rider</th><th className="px-4 py-2 font-medium">Action</th><th className="px-4 py-2 font-medium">Time</th></tr></thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {detailOrder.assignmentHistory.map((entry: any, idx: number) => (
-                          <tr key={idx}><td className="px-4 py-2">{entry.riderName || entry.riderId || '—'}</td><td className="px-4 py-2 capitalize">{entry.action || 'assigned'}</td><td className="px-4 py-2 text-xs text-gray-500">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}</td></tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Delivery Attempts (P1-13) */}
-              {(detailOrder.deliveryAttempts || []).length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900 flex items-center gap-2"><Truck size={16} /> Delivery Attempts</h4>
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 text-gray-500"><tr><th className="px-4 py-2 font-medium">#</th><th className="px-4 py-2 font-medium">Outcome</th><th className="px-4 py-2 font-medium">Proof</th><th className="px-4 py-2 font-medium">Time</th></tr></thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {detailOrder.deliveryAttempts.map((attempt: any, idx: number) => (
-                          <tr key={idx}>
-                            <td className="px-4 py-2">{idx + 1}</td>
-                            <td className="px-4 py-2 capitalize">{(attempt.outcome || attempt.status || '—').replace(/_/g, ' ')}</td>
-                            <td className="px-4 py-2">{attempt.proofPhoto ? <a href={attempt.proofPhoto} target="_blank" rel="noopener noreferrer" className="text-blue-600 flex items-center gap-1"><Camera size={12} /> View</a> : '—'}</td>
-                            <td className="px-4 py-2 text-xs text-gray-500">{attempt.timestamp ? new Date(attempt.timestamp).toLocaleString() : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" className="flex-1" onClick={() => setDetailOpen(false)}>Close</Button>
-                <Button className="flex-1 bg-[#F97316] hover:bg-[#EA580C]" onClick={() => { setDetailOpen(false); handleAssignClick(detailOrder); }}>Assign Rider</Button>
-              </div>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Unified Order Command Drawer */}
+      <OrderCommandDrawer
+        order={detailOrder ? dispatchOrderToCommandOrder(detailOrder) : null}
+        riders={riders.map((r) => ({
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          avatarInitials: r.name.slice(0, 2).toUpperCase(),
+          status: r.status,
+          capacity: { currentLoad: r.activeOrdersCount, maxLoad: r.maxCapacity },
+          avgEtaMins: r.avgEtaMinutes,
+          rating: 4.5,
+          currentOrderId: r.currentOrderId || undefined,
+        }))}
+        isOpen={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        onReassign={() => {
+          if (detailOrder) {
+            setDetailOpen(false);
+            handleAssignClick(detailOrder);
+          }
+        }}
+        onAlert={async (orderId, reason) => {
+          await riderOverviewApi.alertOrder(orderId, reason);
+        }}
+        onEscalate={() => {
+          setDetailOpen(false);
+          window.dispatchEvent(new CustomEvent('rider:navigate', { detail: { tab: 'escalations' } }));
+        }}
+      />
     </div>
   );
 }

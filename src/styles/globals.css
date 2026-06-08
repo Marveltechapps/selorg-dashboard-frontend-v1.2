@@ -247,6 +247,24 @@ html {
   }
 }
 
+/* Admin top bar — notifications dropdown (plain CSS; precompiled Tailwind lacks some arbitrary max-heights) */
+.admin-notifications-panel {
+  overflow: hidden;
+}
+
+.admin-notifications-panel__list {
+  max-height: 480px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+@media (max-height: 700px) {
+  .admin-notifications-panel__list {
+    max-height: 50vh;
+  }
+}
+
 /* Darkstore dashboard — responsive sidebar + top bar (same pattern as admin) */
 .darkstore-sidebar-nav {
   transform: translateX(-100%);
@@ -277,20 +295,105 @@ html {
   }
 }
 
-/* Rider dashboard — top bar spans content area (sidebar offset), same pattern as admin */
-.rider-content-area {
-  margin-left: 220px;
+/* Warehouse dashboard — responsive sidebar + top bar */
+.warehouse-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
 }
-.rider-topbar {
-  left: 220px;
+.warehouse-sidebar-nav.is-open {
+  transform: translateX(0);
 }
 
-/* Vendor dashboard — align top bar with admin layout (240px sidebar) */
-.vendor-content-area {
-  margin-left: 240px;
+@media (min-width: 768px) {
+  .warehouse-sidebar-nav {
+    transform: translateX(0);
+  }
+  .warehouse-content-area {
+    margin-left: 260px;
+  }
+  .warehouse-topbar {
+    left: 260px;
+  }
+  .warehouse-mobile-only {
+    display: none !important;
+  }
 }
-.vendor-topbar {
-  left: 240px;
+
+/* Rider dashboard — responsive sidebar + top bar */
+.rider-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.rider-sidebar-nav.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .rider-sidebar-nav {
+    transform: translateX(0);
+  }
+  .rider-content-area {
+    margin-left: 260px;
+  }
+  .rider-topbar {
+    left: 260px;
+  }
+  .rider-mobile-only {
+    display: none !important;
+  }
+}
+
+.rider-density-compact .rider-ops-table th,
+.rider-density-compact .rider-ops-table td {
+  font-size: 12px;
+}
+
+/* Production dashboard — responsive sidebar */
+.production-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.production-sidebar-nav.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .production-sidebar-nav {
+    transform: translateX(0);
+  }
+  .production-content-area {
+    margin-left: 260px;
+  }
+  .production-topbar {
+    left: 260px;
+  }
+  .production-mobile-only {
+    display: none !important;
+  }
+}
+
+/* Vendor dashboard — responsive sidebar + top bar */
+.vendor-sidebar-nav {
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+}
+.vendor-sidebar-nav.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .vendor-sidebar-nav {
+    transform: translateX(0);
+  }
+  .vendor-content-area {
+    margin-left: 260px;
+  }
+  .vendor-topbar {
+    left: 260px;
+  }
+  .vendor-mobile-only {
+    display: none !important;
+  }
 }
 
 /* Production dashboard — top bar spans content area (220px sidebar), same pattern as darkstore */

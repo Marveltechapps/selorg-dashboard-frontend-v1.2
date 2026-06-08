@@ -15,7 +15,7 @@ function encodeId(id) {
 /**
  * Get inbound summary
  */
-export async function getInboundSummary(storeId = getActiveStoreId() || 'DS-Adyar-01', date) {
+export async function getInboundSummary(storeId = getActiveStoreId() || '', date) {
   const params = { storeId };
   if (date) params.date = date;
   return get(`${BASE_PATH}/summary`, params);
@@ -26,7 +26,7 @@ export async function getInboundSummary(storeId = getActiveStoreId() || 'DS-Adya
  */
 export async function getGRNList(params = {}) {
   const {
-    storeId = getActiveStoreId() || 'DS-Adyar-01',
+    storeId = getActiveStoreId() || '',
     status = 'all',
     truckId,
     search,
@@ -76,7 +76,7 @@ export async function completeGRNProcessing(grnId, data = {}) {
  */
 export async function getInterStoreTransfers(params = {}) {
   const {
-    storeId = getActiveStoreId() || 'DS-Adyar-01',
+    storeId = getActiveStoreId() || '',
     status = 'all',
     page = 1,
     limit = 50,

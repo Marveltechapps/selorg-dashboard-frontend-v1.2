@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { getStoreProfile, getWarehouseProfile } from '@/api/darkstore/store.api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createLogisticsHttp, type LogisticsApiPrefix } from '@/api/logisticsHttp';
 import type { LogisticsItem, LogisticsLocation, LogisticsOrder, LogisticsOrderDetailResponse } from '@/types/logistics';
@@ -11,6 +13,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Truck, RefreshCw, Search } from 'lucide-react';
+import { DarkstoreScreenShell } from '@/components/darkstore/DarkstoreScreenShell';
+import { MetricCard } from '@/components/darkstore/MetricCard';
 
 export type LogisticsVariant = 'warehouse' | 'darkstore';
 export type LogisticsSection = 'hub' | 'tracking' | 'estimate';
@@ -23,26 +27,91 @@ function titleFor(variant: LogisticsVariant) {
   return variant === 'warehouse' ? 'Vendor → Warehouse pickups' : 'Warehouse → Darkstore replenishment';
 }
 
+function DarkstoreLogisticsShell({
+  variant,
+  title,
+  subtitle,
+  toolbar,
+  actions,
+  children,
+}: {
+  variant: LogisticsVariant;
+  title: string;
+  subtitle?: string;
+  toolbar?: React.ComponentProps<typeof DarkstoreScreenShell>['toolbar'];
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (variant !== 'darkstore') return <>{children}</>;
+  return (
+    <DarkstoreScreenShell title={title} subtitle={subtitle} actions={actions} toolbar={toolbar}>
+      {children}
+    </DarkstoreScreenShell>
+  );
+}
+
 export function LogisticsModule({ variant, section }: { variant: LogisticsVariant; section: LogisticsSection }) {
+  const { activeStoreId } = useAuth();
   const http = useMemo(() => createLogisticsHttp(prefixFor(variant)), [variant]);
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [refId, setRefId] = useState('');
   const [pickup, setPickup] = useState<LogisticsLocation>({
-    name: 'Vendor hub',
-    phone: '+919999999999',
-    address: 'Vendor address',
+    name: 'Warehouse',
+    phone: '',
+    address: '',
     lat: 12.97,
     lng: 77.59,
   });
   const [drop, setDrop] = useState<LogisticsLocation>({
-    name: 'Warehouse gate',
-    phone: '+919999999998',
-    address: 'Warehouse address',
+    name: 'Darkstore',
+    phone: '',
+    address: '',
     lat: 12.93,
     lng: 77.62,
   });
+
+  useEffect(() => {
+    if (variant !== 'darkstore' || !activeStoreId) return;
+    Promise.all([
+      getWarehouseProfile(activeStoreId).catch(() => null),
+      getStoreProfile(activeStoreId).catch(() => null),
+    ]).then(([warehouseRes, storeRes]) => {
+      if (warehouseRes?.data) {
+        setPickup({
+          name: warehouseRes.data.name,
+          phone: warehouseRes.data.phone || '',
+          address: warehouseRes.data.address,
+          lat: warehouseRes.data.lat,
+          lng: warehouseRes.data.lng,
+        });
+        setEstPickup({
+          name: warehouseRes.data.name,
+          phone: warehouseRes.data.phone || '',
+          address: warehouseRes.data.address,
+          lat: warehouseRes.data.lat,
+          lng: warehouseRes.data.lng,
+        });
+      }
+      if (storeRes?.data) {
+        setDrop({
+          name: storeRes.data.name,
+          phone: storeRes.data.phone || '',
+          address: storeRes.data.address,
+          lat: storeRes.data.lat,
+          lng: storeRes.data.lng,
+        });
+        setEstDrop({
+          name: storeRes.data.name,
+          phone: storeRes.data.phone || '',
+          address: storeRes.data.address,
+          lat: storeRes.data.lat,
+          lng: storeRes.data.lng,
+        });
+      }
+    });
+  }, [variant, activeStoreId]);
   const [items, setItems] = useState<LogisticsItem[]>([{ name: 'Pallet', quantity: 1, weight: 50 }]);
   const [trackId, setTrackId] = useState('');
   const [estPickup, setEstPickup] = useState<LogisticsLocation>({
@@ -207,11 +276,13 @@ export function LogisticsModule({ variant, section }: { variant: LogisticsVarian
 
   if (section === 'tracking') {
     return (
+      <DarkstoreLogisticsShell
+        variant={variant}
+        title="Replenishment Tracking"
+        subtitle="Polls provider tracking every 15s while the move is active."
+        toolbar={{ showConnection: true }}
+      >
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Live tracking</h1>
-          <p className="text-sm text-slate-600">Polls provider tracking every 15s while the move is active.</p>
-        </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[240px] flex-1">
             <Label>Logistics order ID</Label>
@@ -236,6 +307,7 @@ export function LogisticsModule({ variant, section }: { variant: LogisticsVarian
           </div>
         )}
       </div>
+      </DarkstoreLogisticsShell>
     );
   }
 
@@ -247,19 +319,19 @@ export function LogisticsModule({ variant, section }: { variant: LogisticsVarian
       time: h.eventTime,
     })) ?? [];
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Logistics</h1>
-          <p className="text-sm text-slate-600">{titleFor(variant)}</p>
-        </div>
-        <Button onClick={() => setOpen(true)} className="gap-2">
-          <Truck className="h-4 w-4" />
-          New bulk move
-        </Button>
+  const kpiCards =
+    variant === 'darkstore' ? (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Moves today" value={kpiQuery.data?.today ?? '—'} loading={kpiQuery.isLoading} />
+        <MetricCard label="In transit" value={kpiQuery.data?.inTransit ?? '—'} loading={kpiQuery.isLoading} />
+        <MetricCard label="Delivered today" value={kpiQuery.data?.delivered ?? '—'} loading={kpiQuery.isLoading} />
+        <MetricCard
+          label="Cost / km (today)"
+          value={kpiQuery.data ? kpiQuery.data.costPerKm.toFixed(2) : '—'}
+          loading={kpiQuery.isLoading}
+        />
       </div>
-
+    ) : (
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Moves today', value: kpiQuery.data?.today ?? '—' },
@@ -273,14 +345,19 @@ export function LogisticsModule({ variant, section }: { variant: LogisticsVarian
           </div>
         ))}
       </div>
+    );
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  const hubBody = (
+    <>
+      <div className={variant === 'darkstore' ? 'darkstore-card overflow-hidden' : 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'}>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h2 className="font-semibold text-slate-900">Orders</h2>
-          <Button variant="outline" size="sm" onClick={() => listQuery.refetch()} className="gap-1">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+          {variant !== 'darkstore' && (
+            <Button variant="outline" size="sm" onClick={() => listQuery.refetch()} className="gap-1">
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
@@ -373,6 +450,42 @@ export function LogisticsModule({ variant, section }: { variant: LogisticsVarian
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
+  );
+
+  return (
+    <DarkstoreLogisticsShell
+      variant={variant}
+      title="Replenishment"
+      subtitle={titleFor(variant)}
+      toolbar={{
+        onRefresh: () => listQuery.refetch(),
+        refreshing: listQuery.isFetching,
+        showConnection: variant === 'darkstore',
+        toolbarActions: (
+          <Button onClick={() => setOpen(true)} className="gap-2 h-9">
+            <Truck className="h-4 w-4" />
+            New bulk move
+          </Button>
+        ),
+      }}
+    >
+      <div className="space-y-6">
+        {variant !== 'darkstore' && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Logistics</h1>
+              <p className="text-sm text-slate-600">{titleFor(variant)}</p>
+            </div>
+            <Button onClick={() => setOpen(true)} className="gap-2">
+              <Truck className="h-4 w-4" />
+              New bulk move
+            </Button>
+          </div>
+        )}
+        {kpiCards}
+        {hubBody}
+      </div>
+    </DarkstoreLogisticsShell>
   );
 }

@@ -196,13 +196,33 @@ export const reviewBankAccount = async (
     body: JSON.stringify({ action, reason }),
   });
 
+export interface PickerFaceVerificationData {
+  pickerId?: string;
+  status: string;
+  verifiedAt: string | null;
+  confidence: number | null;
+  faceVerification: boolean;
+  overrideBy?: string | null;
+  overrideReason?: string;
+  overrideAt?: string | null;
+}
+
 export const fetchPickerFaceVerification = async (pickerId: string) =>
-  apiRequest<{ success: boolean; data: { status: string; verifiedAt: string | null; confidence: number | null; faceVerification: boolean } }>(
+  apiRequest<{ success: boolean; data: PickerFaceVerificationData }>(
     `${ADMIN_PICKER_BASE}/pickers/${pickerId}/face-verification`
   );
 
-export const overrideFaceVerification = async (pickerId: string, action: 'approve' | 'reject', reason: string) =>
-  apiRequest(`${ADMIN_PICKER_BASE}/pickers/${pickerId}/face-verification/override`, {
-    method: 'PATCH',
-    body: JSON.stringify({ action, reason }),
-  });
+export const overrideFaceVerification = async (
+  pickerId: string,
+  action: 'approve' | 'reject',
+  reason: string
+): Promise<PickerApprovalDetails> => {
+  const res = await apiRequest<{ success: boolean; data: PickerApprovalDetails }>(
+    `${ADMIN_PICKER_BASE}/pickers/${pickerId}/face-verification/override`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ action, reason }),
+    }
+  );
+  return res.data;
+};

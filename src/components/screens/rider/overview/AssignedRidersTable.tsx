@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Rider } from './types';
-import { Skeleton } from '../../../../components/ui/skeleton';
+import { OpsDataTable, type OpsColumn } from '../../../shared/OpsDataTable';
 
 function statusLabel(rider: Rider): { text: string; className: string } {
   const avail = rider.availability ?? rider.status;
@@ -39,6 +39,38 @@ export function AssignedRidersTable({ riders, loading }: AssignedRidersTableProp
     [riders]
   );
 
+  const columns: OpsColumn<Rider>[] = [
+    {
+      key: 'name',
+      header: 'Rider',
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-[#F97316]/10 text-[#F97316] flex items-center justify-center text-xs font-bold">
+            {r.avatarInitials}
+          </div>
+          <span className="font-medium text-[#212121]">{r.name}</span>
+        </div>
+      ),
+    },
+    { key: 'id', header: 'Rider ID', render: (r) => <span className="font-mono text-xs">{r.id}</span> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (r) => {
+        const s = statusLabel(r);
+        return (
+          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
+            {s.text}
+          </span>
+        );
+      },
+    },
+    { key: 'hub', header: 'Hub', render: (r) => r.hubName || r.hubId || '—' },
+    { key: 'shift', header: 'Shift', render: (r) => r.shiftLabel || '—' },
+    { key: 'vehicle', header: 'Vehicle', render: (r) => r.vehicleType || '—' },
+    { key: 'availability', header: 'Availability', render: (r) => availabilityLabel(r) },
+  ];
+
   return (
     <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
       <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
@@ -52,74 +84,13 @@ export function AssignedRidersTable({ riders, loading }: AssignedRidersTableProp
           {loading ? '…' : `${sorted.length} rider${sorted.length === 1 ? '' : 's'}`}
         </span>
       </div>
-
-      <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-[#FAFAFA] z-10">
-            <tr className="text-left text-xs text-[#757575] uppercase tracking-wider border-b border-[#E0E0E0]">
-              <th className="px-4 py-3 font-medium">Rider</th>
-              <th className="px-4 py-3 font-medium">Rider ID</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Hub</th>
-              <th className="px-4 py-3 font-medium">Shift</th>
-              <th className="px-4 py-3 font-medium">Vehicle</th>
-              <th className="px-4 py-3 font-medium">Availability</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && sorted.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-8">
-                  <Skeleton className="h-8 w-full mb-2" />
-                  <Skeleton className="h-8 w-full mb-2" />
-                  <Skeleton className="h-8 w-full" />
-                </td>
-              </tr>
-            ) : sorted.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[#757575]">
-                  No riders in fleet list. Riders appear after login, onboarding, and going online in the Rider App.
-                </td>
-              </tr>
-            ) : (
-              sorted.map((rider) => {
-                const st = statusLabel(rider);
-                const hub = rider.hubName || rider.hubId || rider.cityName || '—';
-                const shift = rider.shiftLabel || '—';
-                const vehicle = rider.vehicleType
-                  ? rider.vehicleType.charAt(0).toUpperCase() + rider.vehicleType.slice(1)
-                  : '—';
-                return (
-                  <tr
-                    key={rider.id}
-                    className="border-b border-[#F0F0F0] hover:bg-[#FAFAFA]"
-                  >
-                    <td className="px-4 py-3 font-medium text-[#212121] whitespace-nowrap">
-                      {rider.name}
-                    </td>
-                    <td className="px-4 py-3 text-[#616161] font-mono text-xs whitespace-nowrap">
-                      {rider.id}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
-                        {st.text}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[#616161] max-w-[140px] truncate" title={hub}>
-                      {hub}
-                    </td>
-                    <td className="px-4 py-3 text-[#616161] whitespace-nowrap">{shift}</td>
-                    <td className="px-4 py-3 text-[#616161] capitalize whitespace-nowrap">{vehicle}</td>
-                    <td className="px-4 py-3 text-[#616161] whitespace-nowrap">
-                      {availabilityLabel(rider)}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      <OpsDataTable
+        columns={columns}
+        rows={sorted}
+        rowKey={(r) => r.id}
+        loading={loading}
+        emptyMessage="No riders online for this hub"
+      />
     </div>
   );
 }

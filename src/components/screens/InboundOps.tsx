@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useScreenTab } from '../../hooks/useScreenUrlState';
 import { 
   Truck, ClipboardCheck, ArrowDownToLine, CheckCircle2, 
-  Clock, RefreshCw, Filter, Search, X, Package, LayoutGrid
+  Clock, RefreshCw, Filter, Search, X, Package, LayoutGrid, User, ListChecks
 } from 'lucide-react';
 import { PutawayRoutingGuide } from './inbound/PutawayRoutingGuide';
 import { StoreSetupTab } from './inbound/StoreSetupTab';
 import { cn } from "../../lib/utils";
 import { useAuth } from '../../contexts/AuthContext';
-import { PageHeader } from '../ui/page-header';
+import { DarkstoreScreenShell } from '../darkstore/DarkstoreScreenShell';
+import { DarkstoreTabBar } from '../darkstore/DarkstoreTabBar';
+import { MetricCard } from '../darkstore/MetricCard';
+import { StatusBadge } from '../darkstore/StatusBadge';
 import { EmptyState, LoadingState, InlineNotification } from '../ui/ux-components';
 import { DeleteConfirmation, StatusChangeConfirmation } from '../ui/confirmation-dialog';
 import { toast } from "sonner";
@@ -25,17 +29,18 @@ import {
   assignPutawayTask,
   completePutawayTask,
 } from '../../api/inventory-management/putaway.api';
-const DEFAULT_STORE_ID = 'DS-Adyar-01';
+
+const INBOUND_TABS = ['grn', 'putaway', 'store-setup'] as const;
 
 export function InboundOps() {
-  const [activeTab, setActiveTab] = useState<'grn' | 'putaway' | 'store-setup'>('grn');
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(INBOUND_TABS, 'grn');
   const [shelfLayoutRefreshKey, setShelfLayoutRefreshKey] = useState(0);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [putawayRefreshKey, setPutawayRefreshKey] = useState(0);
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || DEFAULT_STORE_ID;
+  const storeId = activeStoreId || '';
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -90,67 +95,53 @@ export function InboundOps() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Inbound Operations"
-        subtitle="Manage GRN processing and putaway tasks."
-        actions={
-          <div className="flex gap-4 items-center">
-            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-[#E6F7FF] text-[#1677FF] rounded-lg">
-                <Truck size={20} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-[#757575]">Inbound Today</div>
-                <div className="font-bold text-[#212121]">
-                  {loading ? '...' : summary?.summary.trucks_today || 0} Trucks
-                </div>
-              </div>
-            </div>
-            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-[#FFF7E6] text-[#D46B08] rounded-lg">
-                <ClipboardCheck size={20} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-[#757575]">Pending GRN</div>
-                <div className="font-bold text-[#212121]">
-                  {loading ? '...' : summary?.summary.pending_grn || 0} Orders
-                </div>
-              </div>
-            </div>
-            <div className="bg-white px-4 py-2 rounded-lg border border-[#E0E0E0] shadow-sm flex items-center gap-3">
-              <div className="p-2 bg-[#F0FDF4] text-[#16A34A] rounded-lg">
-                <ArrowDownToLine size={20} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-[#757575]">Putaway Queue</div>
-                <div className="font-bold text-[#212121]">
-                  {loading ? '...' : summary?.summary.putaway_tasks || 0} Tasks
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => loadSummary(false, true)}
-              disabled={loading}
-              className="p-2 hover:bg-gray-100 rounded-lg border border-[#E0E0E0] disabled:opacity-50"
-              title="Refresh summary"
-            >
-              <RefreshCw size={16} className={cn(loading && "animate-spin")} />
-            </button>
-            {lastRefresh && (
-              <span className="text-xs text-[#757575] hidden sm:inline">
-                Updated {lastRefresh.toLocaleTimeString()}
-              </span>
-            )}
-          </div>
-        }
-      />
+    <DarkstoreScreenShell
+      title="Inbound Operations"
+      subtitle="Manage GRN processing and putaway tasks."
+      actions={
+        <div className="flex gap-3 items-center flex-wrap">
+          <MetricCard
+            variant="inline"
+            label="Inbound Today"
+            value={`${summary?.summary.trucks_today || 0} Trucks`}
+            icon={Truck}
+            loading={loading}
+          />
+          <MetricCard
+            variant="inline"
+            label="Pending GRN"
+            value={`${summary?.summary.pending_grn || 0} Orders`}
+            icon={ClipboardCheck}
+            accent="warning"
+            loading={loading}
+          />
+          <MetricCard
+            variant="inline"
+            label="Putaway Queue"
+            value={`${summary?.summary.putaway_tasks || 0} Tasks`}
+            icon={ArrowDownToLine}
+            accent="success"
+            loading={loading}
+          />
+        </div>
+      }
+      toolbar={{
+        onRefresh: () => loadSummary(false, true),
+        refreshing: loading,
+        lastSync: lastRefresh ?? undefined,
+        showConnection: true,
+      }}
+    >
 
-      <div className="flex items-center gap-1 border-b border-[#E0E0E0] mb-6 overflow-x-auto">
-        <TabButton id="grn" label="GRN Processing" icon={ClipboardCheck} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="putaway" label="Putaway Manager" icon={ArrowDownToLine} active={activeTab} onClick={setActiveTab} />
-        <TabButton id="store-setup" label="Store Setup" icon={LayoutGrid} active={activeTab} onClick={setActiveTab} />
-      </div>
+      <DarkstoreTabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: 'grn', label: 'GRN Processing', icon: ClipboardCheck },
+          { id: 'putaway', label: 'Putaway Manager', icon: ArrowDownToLine },
+          { id: 'store-setup', label: 'Store Setup', icon: LayoutGrid },
+        ]}
+      />
 
       <div className="min-h-[500px]">
         {activeTab === 'grn' && (
@@ -182,24 +173,7 @@ export function InboundOps() {
           />
         )}
       </div>
-    </div>
-  );
-}
-
-function TabButton({ id, label, icon: Icon, active, onClick }: any) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      className={cn(
-        "flex items-center gap-2 px-5 py-3 text-sm font-bold transition-all border-b-2 whitespace-nowrap",
-        active === id 
-          ? "border-[#1677FF] text-[#1677FF] bg-[#F0F7FF]" 
-          : "border-transparent text-[#616161] hover:text-[#212121] hover:bg-[#F5F5F5]"
-      )}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
+    </DarkstoreScreenShell>
   );
 }
 
@@ -217,7 +191,7 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
   const [showFilters, setShowFilters] = useState(false);
   const [itemEdits, setItemEdits] = useState<Record<string, { received: number; damaged: number }>>({});
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || DEFAULT_STORE_ID;
+  const storeId = activeStoreId || '';
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -408,39 +382,39 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
 
   return (
     <div className="grid grid-cols-12 gap-6 h-[600px]">
-       <div className="col-span-12 md:col-span-4 bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-             <h3 className="font-bold text-[#212121]">Incoming Shipments</h3>
+       <div className="col-span-12 md:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+             <h3 className="font-bold text-slate-900">Incoming Shipments</h3>
              <div className="flex gap-2">
                 <button 
                   onClick={() => setShowSearch(!showSearch)} 
-                  className={cn("p-1.5 rounded transition-colors", (showSearch || searchQuery) ? "bg-[#E6F7FF] text-[#1677FF]" : "hover:bg-[#E0E0E0] text-[#616161]")}
+                  className={cn("p-1.5 rounded transition-colors", (showSearch || searchQuery) ? "bg-blue-50 text-blue-600" : "hover:bg-slate-200 text-slate-600")}
                 >
                   <Search size={16} />
                 </button>
                 <button 
                   onClick={() => setShowFilters(!showFilters)} 
-                  className={cn("p-1.5 rounded transition-colors", (showFilters || statusFilter !== 'all') ? "bg-[#E6F7FF] text-[#1677FF]" : "hover:bg-[#E0E0E0] text-[#616161]")}
+                  className={cn("p-1.5 rounded transition-colors", (showFilters || statusFilter !== 'all') ? "bg-blue-50 text-blue-600" : "hover:bg-slate-200 text-slate-600")}
                 >
                   <Filter size={16} />
                 </button>
              </div>
           </div>
           {showSearch && (
-            <div className="p-3 bg-white border-b border-[#E0E0E0] relative">
+            <div className="p-3 bg-white border-b border-slate-200 relative">
               <input 
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search GRN ID or Supplier..."
-                className="w-full pl-8 pr-8 py-1.5 text-xs border border-[#E0E0E0] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1677FF]"
+                className="w-full pl-8 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-600"
                 autoFocus
               />
-              <Search size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#9E9E9E]" />
+              <Search size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
               {searchQuery && (
                 <button 
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-[#9E9E9E] hover:text-[#212121]"
+                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900"
                 >
                   <X size={14} />
                 </button>
@@ -448,7 +422,7 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
             </div>
           )}
           {showFilters && (
-            <div className="p-3 bg-[#F9FAFB] border-b border-[#E0E0E0] flex gap-2 overflow-x-auto custom-scrollbar">
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex gap-2 overflow-x-auto custom-scrollbar">
               {['all', 'pending', 'in_progress', 'completed'].map(status => (
                 <button 
                   key={status} 
@@ -456,8 +430,8 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                   className={cn(
                     "px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-colors border whitespace-nowrap",
                     statusFilter === status 
-                      ? "bg-[#1677FF] border-[#1677FF] text-white" 
-                      : "bg-white border-[#E0E0E0] text-[#616161] hover:bg-[#F5F5F5]"
+                      ? "bg-blue-600 border-blue-600 text-white" 
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
                   )}
                 >
                   {status}
@@ -467,23 +441,23 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
           )}
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
             {loading ? (
-              <div className="flex items-center justify-center p-8 text-[#9E9E9E]">Loading GRN orders...</div>
+              <div className="flex items-center justify-center p-8 text-slate-400">Loading GRN orders...</div>
             ) : grnList.length === 0 ? (
-              <div className="flex items-center justify-center p-8 text-[#9E9E9E]">No GRN orders found</div>
+              <div className="flex items-center justify-center p-8 text-slate-400">No GRN orders found</div>
             ) : (
               grnList.map(grn => {
                   const progress = grn.received_quantity > 0 && grn.total_quantity > 0 ? Math.round((grn.received_quantity / grn.total_quantity) * 100) : 0;
                   const time = new Date(grn.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                   return (
-                    <div key={grn.grn_id} onClick={() => setSelectedGRN(grn.grn_id)} className={cn("p-3 rounded-lg border cursor-pointer transition-all hover:shadow-sm", selectedGRN === grn.grn_id ? "bg-[#F0F7FF] border-[#1677FF] ring-1 ring-[#1677FF]" : "bg-white border-[#E0E0E0]")}>
+                    <div key={grn.grn_id} onClick={() => setSelectedGRN(grn.grn_id)} className={cn("p-3 rounded-lg border cursor-pointer transition-all hover:shadow-sm", selectedGRN === grn.grn_id ? "bg-blue-50 border-blue-600 ring-1 ring-blue-600" : "bg-white border-slate-200")}>
                       <div className="flex justify-between items-start mb-2">
-                        <div><div className="font-bold text-[#212121] text-sm">{grn.supplier}</div><div className="text-xs text-[#757575]">{grn.grn_id}</div></div>
-                        <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", grn.status === 'pending' ? "bg-[#FFF7E6] text-[#D46B08]" : grn.status === 'in_progress' ? "bg-[#E6F7FF] text-[#1677FF]" : grn.status === 'rejected' ? "bg-[#FEE2E2] text-[#EF4444]" : "bg-[#F0FDF4] text-[#16A34A]")}>{grn.status}</span>
+                        <div><div className="font-bold text-slate-900 text-sm">{grn.supplier}</div><div className="text-xs text-slate-500">{grn.grn_id}</div></div>
+                        <StatusBadge variant="workflow" status={grn.status} />
                       </div>
                       {grn.status === 'in_progress' && progress > 0 && (
-                        <div className="mb-2"><div className="flex justify-between text-[10px] mb-1"><span>Processing...</span><span className="font-bold">{progress}%</span></div><div className="w-full bg-[#E0E0E0] h-1 rounded-full overflow-hidden"><div className="bg-[#1677FF] h-full rounded-full" style={{ width: `${progress}%` }} /></div></div>
+                        <div className="mb-2"><div className="flex justify-between text-[10px] mb-1"><span>Processing...</span><span className="font-bold">{progress}%</span></div><div className="w-full bg-slate-200 h-1 rounded-full overflow-hidden"><div className="bg-blue-600 h-full rounded-full" style={{ width: `${progress}%` }} /></div></div>
                       )}
-                      <div className="flex items-center justify-between text-xs text-[#616161] mt-2 pt-2 border-t border-[#F5F5F5]"><span className="flex items-center gap-1"><Truck size={12}/> {grn.truck_id}</span><span className="flex items-center gap-1"><Package size={12}/> {grn.items_count} Items</span><span className="flex items-center gap-1"><Clock size={12}/> {time}</span></div>
+                      <div className="flex items-center justify-between text-xs text-slate-600 mt-2 pt-2 border-t border-slate-100"><span className="flex items-center gap-1"><Truck size={12}/> {grn.truck_id}</span><span className="flex items-center gap-1"><Package size={12}/> {grn.items_count} Items</span><span className="flex items-center gap-1"><Clock size={12}/> {time}</span></div>
                     </div>
                   );
                 })
@@ -494,35 +468,35 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
           {selectedGRN ? (
              <>
                {detailsLoading ? 
-                 <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E]">Loading GRN details...</div>
+                 <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-slate-200 text-slate-400">Loading GRN details...</div>
                 : grnDetails ? 
                  <>
-                   <div className="bg-white p-5 rounded-xl border border-[#E0E0E0] shadow-sm flex justify-between items-center">
+                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
                      <div>
-                       <h2 className="text-xl font-bold text-[#212121]">{grnDetails.grn.grn_id}</h2>
-                       <p className="text-sm text-[#757575]">Vendor: <span className="font-bold text-[#212121]">{grnDetails.grn.supplier}</span> • Truck: <span className="font-bold text-[#212121]">{grnDetails.grn.truck_id}</span></p>
+                       <h2 className="text-xl font-bold text-slate-900">{grnDetails.grn.grn_id}</h2>
+                       <p className="text-sm text-slate-500">Vendor: <span className="font-bold text-slate-900">{grnDetails.grn.supplier}</span> • Truck: <span className="font-bold text-slate-900">{grnDetails.grn.truck_id}</span></p>
                      </div>
                      <div className="flex gap-3">
                        {grnDetails.grn.status === 'pending' && (
-                         <button onClick={() => handleStartProcessing(grnDetails.grn.grn_id)} disabled={actionLoading.has(grnDetails.grn.grn_id)} className="px-4 py-2 bg-[#E6F7FF] text-[#1677FF] rounded-lg font-bold text-sm hover:bg-[#BAE7FF] border border-[#91CAFF] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                         <button onClick={() => handleStartProcessing(grnDetails.grn.grn_id)} disabled={actionLoading.has(grnDetails.grn.grn_id)} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-bold text-sm hover:bg-blue-100 border border-blue-300 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                            <CheckCircle2 size={16} className={actionLoading.has(grnDetails.grn.grn_id) ? "animate-spin" : ""} /> Start Processing
                          </button>
                        )}
                        {grnDetails.grn.status === 'in_progress' && (
-                         <button onClick={() => handleCompleteGRN(grnDetails.grn.grn_id)} disabled={actionLoading.has(grnDetails.grn.grn_id)} className="px-4 py-2 bg-[#212121] text-white rounded-lg font-bold text-sm hover:bg-black flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                         <button onClick={() => handleCompleteGRN(grnDetails.grn.grn_id)} disabled={actionLoading.has(grnDetails.grn.grn_id)} className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold text-sm hover:bg-black flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                            <CheckCircle2 size={16} className={actionLoading.has(grnDetails.grn.grn_id) ? "animate-spin" : ""} /> Complete GRN
                          </button>
                        )}
                      </div>
                    </div>
-                   <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex-1 flex flex-col overflow-hidden">
-                     <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA] flex justify-between items-center">
-                       <h3 className="font-bold text-[#212121]">Line Items Verification</h3>
-                       <div className="text-xs font-bold text-[#757575] uppercase">Scanned: <span className="text-[#212121]">{grnDetails.grn.items.filter((i: any) => i.received_quantity > 0).length} of {grnDetails.grn.items.length}</span></div>
+                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
+                     <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                       <h3 className="font-bold text-slate-900">Line Items Verification</h3>
+                       <div className="text-xs font-bold text-slate-500 uppercase">Scanned: <span className="text-slate-900">{grnDetails.grn.items.filter((i: any) => i.received_quantity > 0).length} of {grnDetails.grn.items.length}</span></div>
                      </div>
                      <div className="flex-1 overflow-y-auto">
                        <table className="w-full text-left text-sm">
-                         <thead className="bg-[#FAFAFA] text-[#757575] border-b border-[#E0E0E0]">
+                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                            <tr>
                              <th className="px-4 py-3 font-medium">SKU</th>
                              <th className="px-4 py-3 font-medium">Product Name</th>
@@ -533,15 +507,15 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                              <th className="px-4 py-3 font-medium">Actions</th>
                            </tr>
                          </thead>
-                         <tbody className="divide-y divide-[#F0F0F0]">
+                         <tbody className="divide-y divide-slate-100">
                            {grnDetails.grn.items.map((item: any, i: number) => { 
                              const hasDiscrepancy = item.received_quantity !== item.expected_quantity && item.received_quantity > 0; 
                              const isDamaged = item.damaged_quantity > 0; 
                              return (
-                               <tr key={i} className={cn("hover:bg-[#F9FAFB]", hasDiscrepancy ? "bg-[#FFF7E6]" : isDamaged ? "bg-[#FEF2F2]" : "")}>
+                               <tr key={i} className={cn("hover:bg-slate-50", hasDiscrepancy ? "bg-orange-50" : isDamaged ? "bg-red-50" : "")}>
                                  <td className="px-4 py-3 font-mono text-xs">{item.sku}</td>
                                  <td className="px-4 py-3 font-medium">{item.product_name}</td>
-                                 <td className="px-4 py-3 text-[#616161]">{item.expected_quantity}</td>
+                                 <td className="px-4 py-3 text-slate-600">{item.expected_quantity}</td>
                                  <td className="px-4 py-3">
                                    {grnDetails.grn.status === 'in_progress' ? (
                                      <input
@@ -558,13 +532,13 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                                            },
                                          }))
                                        }
-                                       className="w-16 p-1 border border-[#E0E0E0] rounded text-sm font-bold"
+                                       className="w-16 p-1 border border-slate-200 rounded text-sm font-bold"
                                      />
                                    ) : (
                                      <span className="font-bold">{item.received_quantity}</span>
                                    )}
                                  </td>
-                                 <td className="px-4 py-3 font-bold text-[#EF4444]">
+                                 <td className="px-4 py-3 font-bold text-red-500">
                                    {grnDetails.grn.status === 'in_progress' ? (
                                      <input
                                        type="number"
@@ -579,14 +553,14 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                                            },
                                          }))
                                        }
-                                       className="w-16 p-1 border border-[#E0E0E0] rounded text-sm font-bold"
+                                       className="w-16 p-1 border border-slate-200 rounded text-sm font-bold"
                                      />
                                    ) : (
                                      item.damaged_quantity || 0
                                    )}
                                  </td>
                                  <td className="px-4 py-3">
-                                   <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", item.status === 'completed' ? "bg-[#F0FDF4] text-[#16A34A]" : item.status === 'received' ? "bg-[#E6F7FF] text-[#1677FF]" : item.status === 'damaged' ? "bg-[#FEE2E2] text-[#EF4444]" : "bg-[#F5F5F5] text-[#757575]")}>{item.status}</span>
+                                   <StatusBadge variant="workflow" status={item.status} />
                                  </td>
                                  <td className="px-4 py-3">
                                    {grnDetails.grn.status === 'in_progress' && (
@@ -603,7 +577,7 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                                            );
                                          }}
                                          disabled={actionLoading.has(`${grnDetails.grn.grn_id}-${item.sku}`)}
-                                         className="text-[#1677FF] font-bold text-xs hover:underline disabled:opacity-50"
+                                         className="text-blue-600 font-bold text-xs hover:underline disabled:opacity-50"
                                        >
                                          {actionLoading.has(`${grnDetails.grn.grn_id}-${item.sku}`) ? 'Saving...' : 'Save'}
                                        </button>
@@ -617,7 +591,7 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                                              0
                                            )
                                          }
-                                         className="text-[10px] text-[#616161] hover:underline"
+                                         className="text-[10px] text-slate-600 hover:underline"
                                        >
                                          Receive full
                                        </button>
@@ -633,13 +607,13 @@ function GRNTab({ onPutawayTasksCreated }: { onPutawayTasksCreated?: (count: num
                    </div>
                  </>
                 : 
-                 <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E]">Failed to load GRN details</div>
+                 <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-slate-200 text-slate-400">Failed to load GRN details</div>
                }
              </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E]">
+            <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl border border-slate-200 text-slate-400">
               <ClipboardCheck size={48} className="mb-4 opacity-20" />
-              <h3 className="text-lg font-bold text-[#212121]">Select a GRN</h3>
+              <h3 className="text-lg font-bold text-slate-900">Select a GRN</h3>
               <p>Choose a shipment from the list to start receiving items.</p>
             </div>
           )}
@@ -666,7 +640,7 @@ function PutawayTab({
   const [assignStaffId, setAssignStaffId] = useState('');
   const [actionLoading, setActionLoading] = useState<Set<string>>(new Set());
   const { activeStoreId } = useAuth();
-  const storeId = activeStoreId || DEFAULT_STORE_ID;
+  const storeId = activeStoreId || '';
   const isMountedRef = useRef(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -775,45 +749,45 @@ function PutawayTab({
            type="button"
            onClick={() => loadPutawayTasks(false)}
            disabled={loading}
-           className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-[#1677FF] border border-[#91CAFF] rounded-lg hover:bg-[#F0F7FF] disabled:opacity-50"
+           className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 disabled:opacity-50"
          >
            <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
            Refresh tasks
          </button>
        </div>
-       <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm"><div className="text-xs font-bold text-[#757575] uppercase tracking-wider mb-1">Putaway Queue</div><div className="text-2xl font-bold text-[#212121]">{loading ? '...' : pendingTasks.length} Tasks</div></div>
-          <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm"><div className="text-xs font-bold text-[#757575] uppercase tracking-wider mb-1">Completed Today</div><div className="text-2xl font-bold text-[#212121]">{loading ? '...' : completedTasks.length}</div></div>
-          <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm"><div className="text-xs font-bold text-[#757575] uppercase tracking-wider mb-1">Active Staff</div><div className="text-2xl font-bold text-[#1677FF]">{loading ? '...' : new Set(tasks.filter(t => t.staff_id).map(t => t.staff_id)).size} Assigned</div></div>
-          <div className="bg-white p-4 rounded-xl border border-[#E0E0E0] shadow-sm"><div className="text-xs font-bold text-[#757575] uppercase tracking-wider mb-1">Total Tasks</div><div className="text-2xl font-bold text-[#22C55E]">{loading ? '...' : tasks.length}</div></div>
+       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <MetricCard label="Putaway Queue" value={`${pendingTasks.length} Tasks`} icon={ArrowDownToLine} accent="warning" loading={loading} />
+          <MetricCard label="Completed Today" value={completedTasks.length} icon={CheckCircle2} accent="success" loading={loading} />
+          <MetricCard label="Active Staff" value={`${new Set(tasks.filter(t => t.staff_id).map(t => t.staff_id)).size} Assigned`} icon={User} loading={loading} />
+          <MetricCard label="Total Tasks" value={tasks.length} icon={ListChecks} accent="success" loading={loading} />
        </div>
        <div className="grid grid-cols-12 gap-6 h-[500px]">
           <div className="col-span-8 flex flex-col gap-6">
              {selectedTask ? (
                <>
-                 <div className="bg-[#212121] text-white p-6 rounded-xl shadow-lg flex items-center justify-between">
+                 <div className="bg-slate-900 text-white p-6 rounded-xl shadow-lg flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="bg-[#1677FF] px-2 py-0.5 rounded text-[10px] font-bold uppercase">Next Task</span>
-                        <span className="text-[#9E9E9E] text-sm">Task ID: {selectedTask.task_id}</span>
+                        <StatusBadge variant="workflow" status="next_task" />
+                        <span className="text-slate-400 text-sm">Task ID: {selectedTask.task_id}</span>
                       </div>
                       <h2 className="text-3xl font-bold mb-1">{selectedTask.product_name}</h2>
-                      <p className="text-[#9E9E9E]">Qty: <span className="text-white font-bold">{selectedTask.quantity} Units</span> • SKU: <span className="text-white font-bold">{selectedTask.sku}</span></p>
+                      <p className="text-slate-400">Qty: <span className="text-white font-bold">{selectedTask.quantity} Units</span> • SKU: <span className="text-white font-bold">{selectedTask.sku}</span></p>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm text-[#9E9E9E] uppercase font-bold mb-1">Target Location</div>
-                      <div className="text-4xl font-mono font-bold text-[#4ADE80]">{selectedTask.location}</div>
-                      <div className="text-xs text-[#9E9E9E] mt-1">{selectedTask.assigned_to ? `Assigned to: ${selectedTask.assigned_to}` : 'Unassigned'}</div>
+                      <div className="text-sm text-slate-400 uppercase font-bold mb-1">Target Location</div>
+                      <div className="text-4xl font-mono font-bold text-emerald-400">{selectedTask.location}</div>
+                      <div className="text-xs text-slate-400 mt-1">{selectedTask.assigned_to ? `Assigned to: ${selectedTask.assigned_to}` : 'Unassigned'}</div>
                     </div>
                  </div>
                  {selectedTask.status === 'pending' && (
                    <div className="flex flex-wrap gap-3 items-end">
                      <div className="flex-1 min-w-[180px]">
-                       <label className="block text-xs font-bold text-[#616161] mb-1">Assign to staff</label>
+                       <label className="block text-xs font-bold text-slate-600 mb-1">Assign to staff</label>
                        <select
                          value={assignStaffId}
                          onChange={(e) => setAssignStaffId(e.target.value)}
-                         className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+                         className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white"
                        >
                          <option value="">Select staff...</option>
                          {staffList.map((s) => (
@@ -823,23 +797,23 @@ function PutawayTab({
                          ))}
                        </select>
                      </div>
-                     <button onClick={() => handleAssignTask(selectedTask.task_id)} disabled={actionLoading.has(selectedTask.task_id) || !assignStaffId} className="px-4 py-2 bg-[#1677FF] text-white rounded-lg font-bold text-sm hover:bg-[#0958D9] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(selectedTask.task_id) ? 'Assigning...' : 'Assign Task'}</button>
+                     <button onClick={() => handleAssignTask(selectedTask.task_id)} disabled={actionLoading.has(selectedTask.task_id) || !assignStaffId} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(selectedTask.task_id) ? 'Assigning...' : 'Assign Task'}</button>
                    </div>
                  )}
                  {selectedTask.status === 'assigned' && (
                    <div className="flex gap-3">
-                     <button onClick={() => handleCompleteTask(selectedTask.task_id)} disabled={actionLoading.has(selectedTask.task_id)} className="px-4 py-2 bg-[#22C55E] text-white rounded-lg font-bold text-sm hover:bg-[#16A34A] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(selectedTask.task_id) ? 'Completing...' : 'Complete Task'}</button>
+                     <button onClick={() => handleCompleteTask(selectedTask.task_id)} disabled={actionLoading.has(selectedTask.task_id)} className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-bold text-sm hover:bg-emerald-600 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">{actionLoading.has(selectedTask.task_id) ? 'Completing...' : 'Complete Task'}</button>
                    </div>
                  )}
                </>
              ) : (
-               <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl border border-[#E0E0E0] text-[#9E9E9E] p-8 text-center">
+               <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-xl border border-slate-200 text-slate-400 p-8 text-center">
                  {loading ? (
                    'Loading tasks...'
                  ) : (
                    <>
                      <ArrowDownToLine size={40} className="mb-3 opacity-20" />
-                     <p className="font-bold text-[#212121] mb-1">No putaway tasks</p>
+                     <p className="font-bold text-slate-900 mb-1">No putaway tasks</p>
                      <p className="text-sm max-w-md">
                        Complete a GRN in the GRN Processing tab (receive line items, then Complete GRN) to
                        create putaway tasks for this store.
@@ -855,16 +829,16 @@ function PutawayTab({
                onOpenStoreSetup={onOpenStoreSetup}
              />
           </div>
-          <div className="col-span-4 bg-white rounded-xl border border-[#E0E0E0] shadow-sm flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-[#E0E0E0] bg-[#FAFAFA]"><h3 className="font-bold text-[#212121]">Up Next</h3></div>
+          <div className="col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-slate-50"><h3 className="font-bold text-slate-900">Up Next</h3></div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
-              {loading ? <div className="flex items-center justify-center p-4 text-[#9E9E9E]">Loading tasks...</div> : pendingTasks.length === 0 ? <div className="flex items-center justify-center p-4 text-[#9E9E9E]">No pending tasks</div> : pendingTasks.map((task) => (
-                <div key={task.task_id} onClick={() => setSelectedTask(task)} className={cn("p-3 bg-white border rounded-lg hover:bg-[#F9FAFB] cursor-pointer transition-all", selectedTask?.task_id === task.task_id ? "border-[#1677FF] bg-[#F0F7FF]" : "border-[#E0E0E0]")}>
+              {loading ? <div className="flex items-center justify-center p-4 text-slate-400">Loading tasks...</div> : pendingTasks.length === 0 ? <div className="flex items-center justify-center p-4 text-slate-400">No pending tasks</div> : pendingTasks.map((task) => (
+                <div key={task.task_id} onClick={() => setSelectedTask(task)} className={cn("p-3 bg-white border rounded-lg hover:bg-slate-50 cursor-pointer transition-all", selectedTask?.task_id === task.task_id ? "border-blue-600 bg-blue-50" : "border-slate-200")}>
                   <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-[#212121] text-sm">{task.product_name}</span>
-                    <span className="text-xs font-mono font-bold bg-[#F5F5F5] px-1.5 py-0.5 rounded text-[#616161]">{task.location}</span>
+                    <span className="font-bold text-slate-900 text-sm">{task.product_name}</span>
+                    <span className="text-xs font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{task.location}</span>
                   </div>
-                  <div className="text-xs text-[#757575]">{task.quantity} Units • {task.status}</div>
+                  <div className="text-xs text-slate-500">{task.quantity} Units • {task.status}</div>
                 </div>
               ))}
             </div>

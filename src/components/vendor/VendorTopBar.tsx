@@ -416,7 +416,7 @@ export function VendorTopBar({ filterQuery, onFilterQueryChange }: VendorTopBarP
         )}
       <div
         className={cn(
-          'vendor-topbar admin-topbar h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 left-0 right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
+          'vendor-topbar admin-topbar h-[64px] bg-white border-b border-[#e4e4e7] fixed top-0 right-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 transition-shadow duration-200',
           searchOpen ? 'z-[170] border-[#f0f0f3] shadow-[0_6px_24px_-8px_rgba(15,23,42,0.08)]' : 'z-40'
         )}
       >

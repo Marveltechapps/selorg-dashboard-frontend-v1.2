@@ -2,6 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  guardModalDismissOnPortaledOverlay,
+  isAnyPortaledOverlayOpen,
+  shouldDismissAdminModalBackdrop,
+} from '@/components/ui/modalOverlayGuards';
 
 interface AdminModalProps {
   open: boolean;
@@ -31,6 +36,7 @@ export function AdminModal({
   footer,
 }: AdminModalProps) {
   const backdropPointerDownRef = useRef(false);
+  const portaledOverlayOpenOnPointerDownRef = useRef(false);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -105,21 +111,27 @@ export function AdminModal({
             }}
             onPointerDown={(e) => {
               backdropPointerDownRef.current = e.target === e.currentTarget;
+              portaledOverlayOpenOnPointerDownRef.current = isAnyPortaledOverlayOpen();
               console.debug('[admin-modal][backdrop][onPointerDown]', {
                 title,
                 pathname: window.location.pathname,
                 isBackdropPointerDown: backdropPointerDownRef.current,
+                portaledOverlayOpen: portaledOverlayOpenOnPointerDownRef.current,
                 targetTag: (e.target as HTMLElement | null)?.tagName || null,
               });
             }}
             onClick={(e) => {
-              const isBackdropClick = e.target === e.currentTarget;
-              const shouldClose = isBackdropClick && backdropPointerDownRef.current;
+              const shouldClose = shouldDismissAdminModalBackdrop(
+                e,
+                backdropPointerDownRef.current,
+                portaledOverlayOpenOnPointerDownRef.current,
+              );
               console.debug('[admin-modal][backdrop][onClick]', {
                 title,
                 pathname: window.location.pathname,
-                isBackdropClick,
+                isBackdropClick: e.target === e.currentTarget,
                 backdropPointerDown: backdropPointerDownRef.current,
+                portaledOverlayOpenOnPointerDown: portaledOverlayOpenOnPointerDownRef.current,
                 shouldClose,
               });
               if (shouldClose) {
@@ -131,6 +143,7 @@ export function AdminModal({
                 onOpenChange(false);
               }
               backdropPointerDownRef.current = false;
+              portaledOverlayOpenOnPointerDownRef.current = false;
             }}
           >
             <DialogPrimitive.Content
@@ -154,7 +167,7 @@ export function AdminModal({
                   focusTarget.focus({ preventScroll: true });
                 }
               }}
-              onPointerDownOutside={(e) => {
+              onPointerDownOutside={guardModalDismissOnPortaledOverlay((e) => {
                 console.debug('[admin-modal][onPointerDownOutside]', {
                   title,
                   pathname: window.location.pathname,
@@ -162,8 +175,8 @@ export function AdminModal({
                   target: (e.target as HTMLElement | null)?.tagName || null,
                 });
                 e.preventDefault();
-              }}
-              onInteractOutside={(e) => {
+              })}
+              onInteractOutside={guardModalDismissOnPortaledOverlay((e) => {
                 console.debug('[admin-modal][onInteractOutside]', {
                   title,
                   pathname: window.location.pathname,
@@ -171,13 +184,24 @@ export function AdminModal({
                   target: (e.target as HTMLElement | null)?.tagName || null,
                 });
                 e.preventDefault();
-              }}
+              })}
+              onFocusOutside={guardModalDismissOnPortaledOverlay((e) => {
+                console.debug('[admin-modal][onFocusOutside]', {
+                  title,
+                  pathname: window.location.pathname,
+                  open,
+                  target: (e.target as HTMLElement | null)?.tagName || null,
+                });
+                e.preventDefault();
+              })}
               onEscapeKeyDown={(e) => {
                 console.debug('[admin-modal][onEscapeKeyDown]', {
                   title,
                   pathname: window.location.pathname,
                   open,
+                  portaledOverlayOpen: isAnyPortaledOverlayOpen(),
                 });
+                if (isAnyPortaledOverlayOpen()) return;
                 e.preventDefault();
               }}
               aria-describedby={undefined}
@@ -202,13 +226,15 @@ export function AdminModal({
                       )}
                     </div>
                   </div>
-                  <DialogPrimitive.Close
+                  <button
+                    type="button"
                     data-role="admin-modal-close"
                     className="absolute top-4 right-4 rounded-sm p-1 opacity-70 transition-opacity hover:opacity-100"
+                    onClick={() => onOpenChange(false)}
                   >
                     <XIcon className="h-4 w-4" />
                     <span className="sr-only">Close</span>
-                  </DialogPrimitive.Close>
+                  </button>
                 </div>
 
                 {/* Body */}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellRing, Search, ShieldCheck } from 'lucide-react';
+import { Bell, BellRing, Search, ShieldCheck, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { RiderDensityToggle } from './RiderDensityToggle';
 import {
   fetchRiderDashboardNotifications,
   markAllRiderDashboardNotificationsRead,
@@ -11,6 +12,7 @@ import {
 interface RiderTopBarProps {
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
+  onMenuClick?: () => void;
 }
 
 function envBadge(): { label: string; className: string } | null {
@@ -41,7 +43,7 @@ function formatTimeAgo(ts: string) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function RiderTopBar({ searchQuery = '', onSearchChange }: RiderTopBarProps) {
+export function RiderTopBar({ searchQuery = '', onSearchChange, onMenuClick }: RiderTopBarProps) {
   const badge = envBadge();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<RiderDashboardFeedNotification[]>([]);
@@ -97,6 +99,16 @@ export function RiderTopBar({ searchQuery = '', onSearchChange }: RiderTopBarPro
         'shadow-[0_1px_2px_rgba(0,0,0,0.03)] min-w-0 z-40 transition-shadow duration-200'
       )}
     >
+      {onMenuClick && (
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="rider-mobile-only p-2 -ml-1 rounded-lg text-[#52525b] hover:bg-[#f4f4f5]"
+          aria-label="Open menu"
+        >
+          <Menu size={24} />
+        </button>
+      )}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 max-w-xl">
         <div className="relative w-full min-w-0">
           <Search
@@ -115,6 +127,7 @@ export function RiderTopBar({ searchQuery = '', onSearchChange }: RiderTopBarPro
       </div>
 
       <div className="relative z-[2] flex shrink-0 min-w-0 items-center gap-1 sm:gap-4 ml-1 sm:ml-6">
+        <RiderDensityToggle />
         {badge && (
           <div className={cn('hidden sm:flex items-center gap-2 px-3 py-1.5', badge.className)}>
             <ShieldCheck

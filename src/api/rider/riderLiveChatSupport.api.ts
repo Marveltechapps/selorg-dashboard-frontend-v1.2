@@ -13,6 +13,27 @@ export interface SupportConversation {
   resolvedAt?: string | null;
 }
 
+export interface RiderOrderContext {
+  riderId: string;
+  availability?: string;
+  currentOrderId?: string | null;
+  order?: {
+    id: string;
+    status?: string;
+    customerName?: string;
+    dropLocation?: string;
+    riderId?: string;
+    slaDeadline?: string;
+    isCod?: boolean;
+    codAmount?: number;
+  } | null;
+}
+
+export interface ConversationContextResponse {
+  conversation: SupportConversation;
+  orderContext: RiderOrderContext | null;
+}
+
 export interface SupportMessage {
   messageId: string;
   conversationId: string;
@@ -51,6 +72,16 @@ export async function getSupportConversation(conversationId: string): Promise<{
     success: boolean;
     data: { conversation: SupportConversation; messages: SupportMessage[] };
   }>(`${PREFIX}/conversations/${conversationId}`, {}, 'Live Chat Support');
+  return res.data;
+}
+
+export async function fetchConversationContext(
+  conversationId: string
+): Promise<ConversationContextResponse> {
+  const res = await apiRequest<{
+    success: boolean;
+    data: ConversationContextResponse;
+  }>(`${PREFIX}/conversations/${conversationId}/context`, {}, 'Live Chat Support');
   return res.data;
 }
 

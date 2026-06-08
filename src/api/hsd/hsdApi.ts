@@ -4,15 +4,9 @@
  */
 
 import { getActiveStoreId, getAuthToken } from '../../contexts/AuthContext';
+import { resolveApiBaseUrl } from '../../config/api';
 
-const API_BASE_URL = (() => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) {
-    try { return new URL(String(envUrl).trim()).origin; } catch { return ''; }
-  }
-  return '';
-})();
-const HSD_ENDPOINT = `${API_BASE_URL}/api/v1/darkstore/hsd`;
+const HSD_ENDPOINT = `${resolveApiBaseUrl()}/darkstore/hsd`;
 
 function resolveErrorMessage(raw: unknown, fallback: string): string {
   if (typeof raw === 'string' && raw.trim()) return raw;
@@ -157,8 +151,18 @@ export interface HSDUserListResponse {
 /**
  * API Request Helper
  */
-async function apiRequest(endpoint: string, options: RequestInit = {}) {
+function resolveAuthToken(): string | null {
   const token = getAuthToken();
+  if (token) return token;
+  try {
+    return sessionStorage.getItem('selorg_auth_token');
+  } catch {
+    return null;
+  }
+}
+
+async function apiRequest(endpoint: string, options: RequestInit = {}) {
+  const token = resolveAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -191,7 +195,7 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
   } catch (error) {
     console.error(`API Error [${endpoint}]:`, error);
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error(`Network error: Backend may not be running at ${API_BASE_URL}`);
+      console.error(`Network error: Backend may not be running at ${resolveApiBaseUrl()}`);
       throw new Error('Unable to connect to backend. Please ensure the server is running on port 5000.');
     }
     if (error instanceof Error) throw error;
@@ -564,6 +568,63 @@ export async function getHSDUserList(options?: {
     users: response.users,
     pagination: response.pagination,
   };
+}
+
+export interface HsdUserDeviceOtpResponse {
+  success: boolean;
+  pickerId?: string;
+  otp: string | null;
+  deviceRequestOtp?: string | null;
+  expiresAt?: string | null;
+  expiresInMinutes?: number;
+  message?: string;
+}
+
+/**
+ * Get active 6-digit device approval OTP for an HSD user
+ * GET /api/v1/darkstore/hsd/users/:userId/device-request-otp
+ */
+export async function getHsdUserDeviceOtp(
+  userId: string,
+  options?: { phoneNumber?: string }
+): Promise<HsdUserDeviceOtpResponse> {
+  const params = new URLSearchParams();
+  if (options?.phoneNumber) params.append('phoneNumber', options.phoneNumber);
+
+  const qs = params.toString();
+  const response = await apiRequest(
+    `${HSD_ENDPOINT}/users/${encodeURIComponent(userId)}/device-request-otp${qs ? `?${qs}` : ''}`,
+    { cache: 'no-store' }
+  ) as HsdUserDeviceOtpResponse;
+
+  if (!response.success) {
+    throw new Error('Failed to fetch device request OTP');
+  }
+
+  return response;
+}
+
+/**
+ * Generate 6-digit device approval OTP for an HSD user (supervisor action)
+ * POST /api/v1/darkstore/hsd/users/:userId/generate-device-otp
+ */
+export async function generateHsdUserDeviceOtp(
+  userId: string,
+  options?: { phoneNumber?: string }
+): Promise<HsdUserDeviceOtpResponse> {
+  const response = await apiRequest(
+    `${HSD_ENDPOINT}/users/${encodeURIComponent(userId)}/generate-device-otp`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber: options?.phoneNumber }),
+    }
+  ) as HsdUserDeviceOtpResponse;
+
+  if (!response.success) {
+    throw new Error('Failed to generate device request OTP');
+  }
+
+  return response;
 }
 
 /**

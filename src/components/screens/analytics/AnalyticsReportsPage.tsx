@@ -11,15 +11,26 @@ import {
   fetchRiderPerformance, 
   fetchSlaAdherence, 
   fetchFleetUtilization,
+  fetchAnalyticsDrillDown,
+  fetchHubComparison,
+  fetchRiderLeaderboard,
+  fetchDispatchEfficiency,
   RiderPerformancePoint,
   SlaAdherencePoint,
   FleetUtilizationPoint,
-  Granularity 
+  Granularity,
+  type DrillDownResult,
+  type HubComparisonRow,
+  type RiderLeaderboardRow,
+  type DispatchEfficiencySummary,
 } from '@/api/analytics/analyticsApi';
 import { RiderPerformanceCharts } from './RiderPerformanceCharts';
 import { SlaAdherenceCharts } from './SlaAdherenceCharts';
 import { FleetUtilizationCharts } from './FleetUtilizationCharts';
 import { ExportReportModal } from './ExportReportModal';
+import { AnalyticsDrillDownDrawer } from './AnalyticsDrillDownDrawer';
+import { useRiderPermissions } from '@/components/rider/useRiderPermissions';
+import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 type MetricType = 'rider' | 'sla' | 'fleet';
@@ -45,6 +56,16 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
   const [fleetData, setFleetData] = useState<FleetUtilizationPoint[]>([]);
   const [pickerAnalytics, setPickerAnalytics] = useState<PickerAnalyticsResponse | null>(null);
   const [pickerAnalyticsLoading, setPickerAnalyticsLoading] = useState(false);
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [drillDownLoading, setDrillDownLoading] = useState(false);
+  const [drillDownData, setDrillDownData] = useState<DrillDownResult | null>(null);
+  const { can } = useRiderPermissions();
+  const { user } = useAuth();
+  const canLoadPickerAnalytics = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'darkstore';
+  const [hubComparison, setHubComparison] = useState<HubComparisonRow[]>([]);
+  const [leaderboard, setLeaderboard] = useState<RiderLeaderboardRow[]>([]);
+  const [dispatchEfficiency, setDispatchEfficiency] = useState<DispatchEfficiencySummary | null>(null);
+  const [enterpriseLoading, setEnterpriseLoading] = useState(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -100,7 +121,32 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
   };
 
   useEffect(() => {
+    if (!canLoadPickerAnalytics) {
+      setPickerAnalytics(null);
+      setPickerAnalyticsLoading(false);
+      return;
+    }
     loadPickerAnalytics();
+  }, [dateRange, canLoadPickerAnalytics]);
+
+  useEffect(() => {
+    setEnterpriseLoading(true);
+    Promise.all([
+      fetchHubComparison(dateRange as '7d' | '30d' | '90d'),
+      fetchRiderLeaderboard(dateRange as '7d' | '30d' | '90d'),
+      fetchDispatchEfficiency(dateRange as '7d' | '30d' | '90d'),
+    ])
+      .then(([hubs, leaders, efficiency]) => {
+        setHubComparison(hubs);
+        setLeaderboard(leaders);
+        setDispatchEfficiency(efficiency);
+      })
+      .catch(() => {
+        setHubComparison([]);
+        setLeaderboard([]);
+        setDispatchEfficiency(null);
+      })
+      .finally(() => setEnterpriseLoading(false));
   }, [dateRange]);
 
   const loadData = async (metric: MetricType, silent: boolean = false) => {
@@ -150,6 +196,26 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
 
   const handleManualRefresh = () => {
     loadData(activeMetric, false);
+  };
+
+  const handleChartDrillDown = async (timestamp: string) => {
+    setDrillDownOpen(true);
+    setDrillDownLoading(true);
+    setDrillDownData(null);
+    try {
+      const result = await fetchAnalyticsDrillDown({
+        metric: activeMetric,
+        timestamp,
+        granularity,
+      });
+      setDrillDownData(result);
+    } catch (error: unknown) {
+      toast.error('Failed to load drill-down details', {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setDrillDownLoading(false);
+    }
   };
 
   const MetricCard = ({ 
@@ -211,7 +277,12 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
                </span>
              )}
            </>
-           <Button onClick={() => setIsExportOpen(true)} className="bg-[#212121] hover:bg-black text-white">
+           <Button
+             onClick={() => setIsExportOpen(true)}
+             disabled={!can('analytics.export')}
+             title={can('analytics.export') ? undefined : 'You do not have permission to export reports'}
+             className="bg-[#212121] hover:bg-black text-white disabled:opacity-50"
+           >
              <Download size={16} className="mr-2" />
              Export Report
            </Button>
@@ -303,14 +374,33 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
 
              {/* Dynamic Content */}
              <div className="bg-transparent">
-               {activeMetric === 'rider' && <RiderPerformanceCharts data={riderData} loading={loading} />}
-               {activeMetric === 'sla' && <SlaAdherenceCharts data={slaData} loading={loading} />}
-               {activeMetric === 'fleet' && <FleetUtilizationCharts data={fleetData} loading={loading} />}
+               {activeMetric === 'rider' && (
+                 <RiderPerformanceCharts
+                   data={riderData}
+                   loading={loading}
+                   onDrillDown={(p) => void handleChartDrillDown(p.timestamp)}
+                 />
+               )}
+               {activeMetric === 'sla' && (
+                 <SlaAdherenceCharts
+                   data={slaData}
+                   loading={loading}
+                   onDrillDown={(p) => void handleChartDrillDown(p.timestamp)}
+                 />
+               )}
+               {activeMetric === 'fleet' && (
+                 <FleetUtilizationCharts
+                   data={fleetData}
+                   loading={loading}
+                   onDrillDown={(p) => void handleChartDrillDown(p.timestamp)}
+                 />
+               )}
              </div>
           </div>
       </div>
 
-      {/* Picker workforce performance */}
+      {/* Picker workforce performance (admin / darkstore only) */}
+      {canLoadPickerAnalytics && (
       <div className="space-y-4 border-t border-[#E0E0E0] pt-8">
         <div className="flex items-center gap-2">
           <Users className="text-[#F97316]" size={22} />
@@ -403,8 +493,95 @@ export function AnalyticsReportsPage({ searchQuery = '' }: AnalyticsReportsPageP
           <div className="flex justify-center py-12 text-[#757575] text-sm">Loading picker metrics…</div>
         )}
       </div>
+      )}
+
+      {/* Enterprise ops analytics */}
+      <div className="space-y-4 border-t border-[#E0E0E0] pt-8">
+        <div>
+          <h2 className="text-lg font-bold text-[#212121]">Fleet ops intelligence</h2>
+          <p className="text-xs text-[#757575]">Hub comparison, rider leaderboard, and dispatch efficiency</p>
+        </div>
+        {enterpriseLoading ? (
+          <p className="text-sm text-[#757575]">Loading ops intelligence…</p>
+        ) : (
+          <>
+            {dispatchEfficiency && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { label: 'Orders in period', value: dispatchEfficiency.totalOrders },
+                  { label: 'Assigned', value: dispatchEfficiency.assignedCount },
+                  { label: 'Assign success %', value: `${dispatchEfficiency.autoAssignSuccessRate}%` },
+                  { label: 'Avg assign time', value: `${dispatchEfficiency.avgTimeToAssignMinutes} min` },
+                ].map((kpi) => (
+                  <div key={kpi.label} className="bg-white border rounded-xl p-4 shadow-sm">
+                    <p className="text-xs text-[#757575]">{kpi.label}</p>
+                    <p className="text-xl font-bold text-[#212121]">{kpi.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white border rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b font-semibold text-sm">Hub comparison</div>
+                <table className="w-full text-sm">
+                  <thead className="bg-[#fafafa] text-[#757575] text-left">
+                    <tr>
+                      <th className="px-4 py-2">Hub</th>
+                      <th className="px-4 py-2">Orders</th>
+                      <th className="px-4 py-2">On-time %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hubComparison.length === 0 ? (
+                      <tr><td colSpan={3} className="px-4 py-6 text-center text-[#757575]">No hub data</td></tr>
+                    ) : hubComparison.map((h) => (
+                      <tr key={h.hubId} className="border-t">
+                        <td className="px-4 py-2">{h.hubId}</td>
+                        <td className="px-4 py-2">{h.orders}</td>
+                        <td className="px-4 py-2">{h.onTimePercent}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-white border rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b font-semibold text-sm">Rider leaderboard</div>
+                <table className="w-full text-sm">
+                  <thead className="bg-[#fafafa] text-[#757575] text-left">
+                    <tr>
+                      <th className="px-4 py-2">Rider</th>
+                      <th className="px-4 py-2 text-right">Deliveries</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboard.length === 0 ? (
+                      <tr><td colSpan={2} className="px-4 py-6 text-center text-[#757575]">No rider stats</td></tr>
+                    ) : leaderboard.map((r) => (
+                      <tr key={r.riderId} className="border-t">
+                        <td className="px-4 py-2">{r.riderName}</td>
+                        <td className="px-4 py-2 text-right font-semibold">{r.deliveries}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
       <ExportReportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
+
+      <AnalyticsDrillDownDrawer
+        open={drillDownOpen}
+        onClose={() => setDrillDownOpen(false)}
+        data={drillDownData}
+        loading={drillDownLoading}
+        onOpenDispatch={() => {
+          setDrillDownOpen(false);
+          window.dispatchEvent(new CustomEvent('rider:navigate', { detail: { tab: 'dispatch' } }));
+        }}
+      />
     </div>
   );
 }

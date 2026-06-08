@@ -18,11 +18,19 @@ function authHeaders(): Record<string, string> {
   };
 }
 
-function buildUrl(endpoint: string): string {
+function buildUrl(endpoint: string, params?: Record<string, string | number | undefined>): string {
   const path = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
   const base = BASE.startsWith('http') ? BASE : `${window.location.origin}${BASE.startsWith('/') ? '' : '/'}${BASE}`;
   const baseWithSlash = base.endsWith('/') ? base : `${base}/`;
-  return new URL(path, baseWithSlash).toString();
+  const url = new URL(path, baseWithSlash);
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+  return url.toString();
 }
 
 function parseApiErrorBody(errText: string, fallback: string): string {
@@ -35,8 +43,13 @@ function parseApiErrorBody(errText: string, fallback: string): string {
   }
 }
 
-async function fetchJson(method: string, endpoint: string, data?: Record<string, unknown>) {
-  const url = buildUrl(endpoint);
+async function fetchJson(
+  method: string,
+  endpoint: string,
+  data?: Record<string, unknown>,
+  query?: Record<string, string | number | undefined>
+) {
+  const url = endpoint.startsWith('http') ? endpoint : buildUrl(endpoint, query);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -170,7 +183,8 @@ export async function updateBagRack(orderId: string, data: { bagId?: string; rac
  * Get order action logs. Backend expects GET /api/v1/darkstore/orders/:orderId/action-logs.
  */
 export async function getOrderActionLogs(orderId: string, limit = 50) {
-  const url = buildUrl(`/darkstore/orders/${orderId}/action-logs?limit=${limit}`);
+  const rawId = orderId.replace(/^#/, '').trim();
+  const url = buildUrl(`/darkstore/orders/${encodeURIComponent(rawId)}/action-logs`, { limit });
   const response = await fetch(url, { headers: authHeaders() });
   if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
   const json = await response.json();
@@ -182,9 +196,13 @@ export async function getOrderActionLogs(orderId: string, limit = 50) {
  * Get single order by ID. GET /api/v1/darkstore/orders/:orderId
  */
 export async function getOrderById(orderId: string, storeId?: string) {
-  const rawId = orderId.replace(/^#/, '');
-  const qs = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
-  const result = await fetchJson('GET', `/darkstore/orders/${encodeURIComponent(rawId)}${qs}`);
+  const rawId = orderId.replace(/^#/, '').trim();
+  if (!rawId || !/^ORD-/i.test(rawId)) {
+    throw new Error('Invalid order ID');
+  }
+  const result = await fetchJson('GET', `/darkstore/orders/${encodeURIComponent(rawId)}`, undefined, {
+    storeId: storeId?.trim() || undefined,
+  });
   if (result && result.success === false) {
     throw new Error(result.error || 'Failed to fetch order');
   }

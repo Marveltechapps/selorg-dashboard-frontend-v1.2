@@ -16,8 +16,11 @@ import { websocketService } from '../../../utils/websocket';
 import { ReassignRiderModal } from '../alerts/modals/ReassignRiderModal';
 import { MapPin } from 'lucide-react';
 
+import { RiderOverviewWidgets } from '../../rider/RiderOverviewWidgets';
+
 interface RiderOverviewProps {
   searchQuery?: string;
+  onNavigateTab?: (tab: string) => void;
 }
 
 type RiderOverviewSessionCache = {
@@ -38,7 +41,7 @@ function readOverviewCache(sq: string): RiderOverviewSessionCache | null {
 
 let _autoAssignPref = true;
 
-export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
+export function RiderOverview({ searchQuery = '', onNavigateTab }: RiderOverviewProps) {
   const cached = readOverviewCache(searchQuery);
   const [summary, setSummary] = useState<DashboardSummary | null>(() => cached?.summary ?? null);
   const [orders, setOrders] = useState<Order[]>(() => cached?.orders ?? []);
@@ -553,6 +556,11 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
       {/* Summary Cards */}
       <SummaryCards data={summary} loading={loading} riders={riders} />
 
+      <RiderOverviewWidgets
+        onNavigateCash={() => onNavigateTab?.('rider-cash')}
+        onNavigateHealth={() => onNavigateTab?.('health')}
+      />
+
       <AssignedRidersTable riders={riders} loading={loading} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -627,6 +635,14 @@ export function RiderOverview({ searchQuery = '' }: RiderOverviewProps) {
         }}
         onReassign={handleReassign}
         onAlert={handleAlertFromDrawer}
+        onOpenDispatch={() => {
+          setIsDetailsOpen(false);
+          onNavigateTab?.('dispatch');
+        }}
+        onEscalate={() => {
+          setIsDetailsOpen(false);
+          onNavigateTab?.('escalations');
+        }}
       />
 
       <DispatchDrawer 

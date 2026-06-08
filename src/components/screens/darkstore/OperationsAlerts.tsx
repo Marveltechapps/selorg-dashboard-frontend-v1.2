@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { websocketService } from '@/utils/websocket';
 import { getOperationalAlerts, type OperationalAlertRow } from '@/api/darkstore/operations.api';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AlertTriangle } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -11,16 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { EmptyState, LoadingState } from '@/components/ui/ux-components';
 import { toast } from 'sonner';
+import { DarkstoreScreenShell } from '@/components/darkstore/DarkstoreScreenShell';
+import { DarkstoreDataTable } from '@/components/darkstore/DarkstoreDataTable';
+import { StatusBadge } from '@/components/darkstore/StatusBadge';
 
 export function OperationsAlerts() {
   const { activeStoreId } = useAuth();
@@ -36,7 +29,7 @@ export function OperationsAlerts() {
         status: statusFilter || undefined,
       });
       setData(res.data || []);
-    } catch (e) {
+    } catch {
       toast.error('Failed to load operations alerts');
       setData([]);
     } finally {
@@ -51,7 +44,9 @@ export function OperationsAlerts() {
   useEffect(() => {
     const handler = () => load();
     websocketService.on('OPERATIONAL_ALERT', handler);
-    return () => { websocketService.off('OPERATIONAL_ALERT', handler); };
+    return () => {
+      websocketService.off('OPERATIONAL_ALERT', handler);
+    };
   }, [load]);
 
   const formatDate = (d: string) => {
@@ -60,17 +55,16 @@ export function OperationsAlerts() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-[#212121]">Operations Alerts</h1>
-          <p className="text-[#757575] text-sm">
-            ORDER_SLA_BREACHED, PICKER_INACTIVE, DEVICE_OFFLINE, MULTIPLE_MISSING_ITEMS
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <DarkstoreScreenShell
+      title="Operations Alerts"
+      subtitle="ORDER_SLA_BREACHED, PICKER_INACTIVE, DEVICE_OFFLINE, MULTIPLE_MISSING_ITEMS"
+      toolbar={{
+        onRefresh: load,
+        refreshing: loading,
+        showConnection: true,
+        filters: (
           <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-36 h-9">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -80,53 +74,51 @@ export function OperationsAlerts() {
               <SelectItem value="resolved">Resolved</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-[#e4e4e7] bg-white overflow-hidden">
-        {loading ? (
-          <LoadingState message="Loading operations alerts..." />
-        ) : data.length === 0 ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="No operations alerts"
-            description="No operational alerts match your filters. Alerts are created for SLA breaches, inactive pickers, device offline, and multiple missing items."
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Order</TableHead>
-                <TableHead>Picker</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((row) => (
-                <TableRow key={row._id}>
-                  <TableCell>
-                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                      {row.alertType}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-medium">{row.title}</TableCell>
-                  <TableCell className="font-mono text-sm">{row.orderId || '—'}</TableCell>
-                  <TableCell>{row.pickerId || '—'}</TableCell>
-                  <TableCell>{row.status}</TableCell>
-                  <TableCell className="text-sm text-[#71717a]">{formatDate(row.createdAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
+        ),
+      }}
+    >
+      <DarkstoreDataTable
+        columns={[
+          {
+            key: 'type',
+            header: 'Type',
+            render: (row) => (
+              <StatusBadge variant="exception" status={row.alertType} />
+            ),
+          },
+          {
+            key: 'title',
+            header: 'Title',
+            render: (row) => <span className="font-medium text-slate-800">{row.title}</span>,
+          },
+          {
+            key: 'order',
+            header: 'Order',
+            render: (row) => <span className="font-mono text-sm">{row.orderId || '—'}</span>,
+          },
+          {
+            key: 'picker',
+            header: 'Picker',
+            render: (row) => <span className="text-slate-600">{row.pickerId || '—'}</span>,
+          },
+          {
+            key: 'status',
+            header: 'Status',
+            render: (row) => <StatusBadge variant="issue" status={row.status} />,
+          },
+          {
+            key: 'created',
+            header: 'Created',
+            render: (row) => <span className="text-sm text-slate-500">{formatDate(row.createdAt)}</span>,
+          },
+        ]}
+        data={data}
+        loading={loading}
+        emptyIcon={AlertTriangle}
+        emptyTitle="No operations alerts"
+        emptyDescription="No operational alerts match your filters. Alerts are created for SLA breaches, inactive pickers, device offline, and multiple missing items."
+        rowKey={(row) => row._id}
+      />
+    </DarkstoreScreenShell>
   );
 }

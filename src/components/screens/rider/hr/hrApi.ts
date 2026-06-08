@@ -14,6 +14,11 @@ interface ApiRider {
   status: "onboarding" | "active" | "suspended";
   onboardingStatus: "invited" | "docs_pending" | "under_review" | "approved";
   trainingStatus: "not_started" | "in_progress" | "completed";
+  trainingProgress?: {
+    modulesCompleted: number;
+    totalModules: number;
+    progressPercentage: number;
+  };
   appAccess: "enabled" | "disabled";
   deviceAssigned: boolean;
   deviceId?: string | null;
@@ -209,6 +214,7 @@ function transformRider(apiRider: ApiRider): Rider {
     status: apiRider.status,
     onboardingStatus: apiRider.onboardingStatus,
     trainingStatus: apiRider.trainingStatus,
+    trainingProgress: apiRider.trainingProgress,
     appAccess: apiRider.appAccess,
     deviceAssigned: apiRider.deviceAssigned,
     onboardingDaysActive,

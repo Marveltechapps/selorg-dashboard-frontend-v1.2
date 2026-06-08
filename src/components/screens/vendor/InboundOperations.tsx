@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useScreenTab } from '@/hooks/useScreenUrlState';
 import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import {
   FileText,
@@ -171,8 +172,10 @@ const RTVStatusBadge: React.FC<{ status: RTVStatus }> = ({ status }) => {
 };
 
 // Main Component
+const INBOUND_TABS = ['all', 'tracking', 'exceptions', 'returns'] as const;
+
 export function InboundOperations() {
-  const [activeTab, setActiveTab] = useState<'all' | 'tracking' | 'exceptions' | 'returns'>('all');
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(INBOUND_TABS, 'all');
   const [selectedGRN, setSelectedGRN] = useState<GRN | null>(null);
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
   const [selectedRTV, setSelectedRTV] = useState<RTV | null>(null);

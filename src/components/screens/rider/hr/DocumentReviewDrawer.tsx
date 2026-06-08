@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { CheckCircle2, XCircle, Download, FileText, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { approveDocument, rejectDocument, fetchDocumentDownloadUrl } from "./hrApi";
+import { useRiderPermissions } from "@/components/rider/useRiderPermissions";
 
 interface DocumentReviewDrawerProps {
   document: RiderDocument | null;
@@ -39,6 +40,8 @@ export function DocumentReviewDrawer({
   onStatusUpdate,
   riderDetails,
 }: DocumentReviewDrawerProps) {
+  const { can } = useRiderPermissions();
+  const canApprove = can('hr.approve');
   const [action, setAction] = useState<"view" | "approve" | "reject">("view");
   const [notes, setNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -46,6 +49,10 @@ export function DocumentReviewDrawer({
   const [downloading, setDownloading] = useState(false);
 
   const handleApprove = async () => {
+    if (!canApprove) {
+      toast.error('You do not have permission to approve documents');
+      return;
+    }
     if (!document) return;
     setIsSubmitting(true);
     try {
@@ -74,6 +81,10 @@ export function DocumentReviewDrawer({
   };
 
   const handleReject = async () => {
+    if (!canApprove) {
+      toast.error('You do not have permission to reject documents');
+      return;
+    }
     if (!document) return;
     if (!rejectReason) {
       toast.error("Please provide a rejection reason");
@@ -177,15 +188,30 @@ export function DocumentReviewDrawer({
             </div>
           </div>
 
-          {/* Document Preview Placeholder */}
-          <div className="border border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center bg-gray-50 min-h-[200px]">
-            {/* In a real app, this would be an image or PDF viewer */}
-             <img 
-               src={document.fileUrl} 
-               alt="Document Preview" 
-               className="max-h-[300px] object-contain rounded shadow-sm mb-4"
-             />
-             <Button variant="outline" size="sm" className="gap-2" onClick={handleDownload} disabled={downloading}>
+          {/* Document Preview */}
+          <div className="border border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center bg-gray-50 min-h-[200px]">
+            {document.fileUrl?.toLowerCase().endsWith('.pdf') ? (
+              <iframe
+                src={document.fileUrl}
+                title="Document preview"
+                className="w-full h-[320px] rounded border bg-white"
+              />
+            ) : document.fileUrl ? (
+              <img 
+                src={document.fileUrl} 
+                alt="Document Preview" 
+                className="max-h-[300px] object-contain rounded shadow-sm mb-4"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="flex flex-col items-center text-gray-500 py-8">
+                <FileText size={32} className="mb-2" />
+                <p className="text-sm">No preview available</p>
+              </div>
+            )}
+             <Button variant="outline" size="sm" className="gap-2 mt-3" onClick={handleDownload} disabled={downloading}>
                <Download size={14} /> {downloading ? 'Downloading...' : 'Download File'}
              </Button>
           </div>
@@ -196,6 +222,8 @@ export function DocumentReviewDrawer({
                <div className="grid grid-cols-2 gap-4">
                  <Button 
                    className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
+                   disabled={!canApprove}
+                   title={canApprove ? undefined : 'You do not have permission to approve documents'}
                    onClick={() => setAction("approve")}
                  >
                    <CheckCircle2 size={16} /> Approve
@@ -203,6 +231,8 @@ export function DocumentReviewDrawer({
                  <Button 
                    variant="destructive"
                    className="w-full gap-2"
+                   disabled={!canApprove}
+                   title={canApprove ? undefined : 'You do not have permission to reject documents'}
                    onClick={() => setAction("reject")}
                  >
                    <XCircle size={16} /> Reject

@@ -8,9 +8,10 @@ import { format } from 'date-fns';
 interface Props {
   data: RiderPerformancePoint[];
   loading?: boolean;
+  onDrillDown?: (point: RiderPerformancePoint) => void;
 }
 
-export function RiderPerformanceCharts({ data, loading }: Props) {
+export function RiderPerformanceCharts({ data, loading, onDrillDown }: Props) {
   if (loading) return <div className="h-[400px] w-full bg-gray-50 animate-pulse rounded-lg"></div>;
   if (!data || data.length === 0) return <div className="text-center p-10 text-gray-500">No data available</div>;
 
@@ -41,7 +42,14 @@ export function RiderPerformanceCharts({ data, loading }: Props) {
         <h3 className="text-lg font-semibold mb-6">Deliveries vs Active Riders</h3>
         <div className="h-[350px]">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data}>
+            <ComposedChart
+              data={data}
+              onClick={(state) => {
+                const payload = state?.activePayload?.[0]?.payload as RiderPerformancePoint | undefined;
+                if (payload && onDrillDown) onDrillDown(payload);
+              }}
+              style={{ cursor: onDrillDown ? 'pointer' : 'default' }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis 
                 dataKey="timestamp" 

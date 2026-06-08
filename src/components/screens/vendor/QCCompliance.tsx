@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useScreenTab } from '@/hooks/useScreenUrlState';
 import {
   Clipboard,
   CheckCircle,
@@ -133,7 +134,8 @@ const isValidMongoId = (id: string | null | undefined): boolean =>
   !!id && /^[0-9a-fA-F]{24}$/.test(id);
 
 export function QCCompliance() {
-  const [activeTab, setActiveTab] = useState<'qc' | 'audits' | 'certs' | 'temp' | 'ratings'>('qc');
+  const VENDOR_QC_TABS = ['qc', 'audits', 'certs', 'temp', 'ratings'] as const;
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(VENDOR_QC_TABS, 'qc');
   const [selectedCheck, setSelectedCheck] = useState<QCCheck | null>(null);
   const [selectedAudit, setSelectedAudit] = useState<Audit | null>(null);
   const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);

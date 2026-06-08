@@ -6,6 +6,11 @@ export interface Rider {
   status: "onboarding" | "active" | "suspended";
   onboardingStatus: "invited" | "docs_pending" | "under_review" | "approved";
   trainingStatus: "not_started" | "in_progress" | "completed";
+  trainingProgress?: {
+    modulesCompleted: number;
+    totalModules: number;
+    progressPercentage: number;
+  };
   appAccess: "enabled" | "disabled";
   deviceAssigned: boolean;
   /** Whole days in onboarding; computed on backend from createdAt while status is onboarding */

@@ -59,15 +59,21 @@ function resultTypeBadgeClass(type: string): string {
   return colors[type] || 'bg-gray-100 text-gray-800';
 }
 
+import { ConnectionStatus } from './darkstore/ConnectionStatus';
+import { useDarkstoreNavCounts } from './darkstore/useDarkstoreNavCounts';
+
 const DARKSTORE_TABS = new Set([
+  'my-shift',
   'overview',
   'liveorders',
-  'cancelledorders',
+  'exception-inbox',
+  'fulfillment',
   'pickpackops',
+  'packing-station',
   'livepickingmonitor',
+  'picklists',
   'slamonitor',
   'missingitems',
-  'exceptionqueue',
   'livepickerboard',
   'pickerperformance',
   'issues',
@@ -77,15 +83,13 @@ const DARKSTORE_TABS = new Set([
   'qc',
   'staff',
   'health',
-  'escalations',
-  'alerts',
-  'ops-alerts',
   'reports',
+  'ops-analytics',
   'hsd',
+  'store-settings',
   'utilities',
   'replenishment',
-  'replenishment-tracking',
-  'settings',
+  'regional',
 ]);
 
 const DEFAULT_TAB_BY_RESULT_CATEGORY: Record<string, string> = {
@@ -109,8 +113,16 @@ function suggestionCategoryToTab(category: string, type: string): string {
   return 'inventory';
 }
 
+const DARKSTORE_QUICK_NAV = [
+  { label: 'Fulfillment Floor', tab: 'fulfillment', hint: 'Pick, pack, picklists' },
+  { label: 'Exception Inbox', tab: 'exception-inbox', hint: 'Triage queue' },
+  { label: 'Ops Analytics', tab: 'ops-analytics', hint: 'SLA & performance' },
+  { label: 'Store Settings', tab: 'store-settings', hint: 'Tools & audit logs' },
+];
+
 function inferDarkstoreTabFromRecentQuery(q: string): string {
   const t = q.trim();
+  if (/^PL[-\d]?/i.test(t)) return 'fulfillment';
   if (/^PO[-\d]?/i.test(t)) return 'inbound';
   if (/^TR[F-]?/i.test(t) || /transfer/i.test(t)) return 'outbound';
   if (/^ORD/i.test(t)) return 'liveorders';
@@ -148,11 +160,13 @@ interface TopBarProps {
   setActiveTab?: (tab: string) => void;
   onMenuClick?: () => void;
   wideSidebar?: boolean;
+  dashboard?: 'darkstore' | 'warehouse' | 'admin';
 }
 
-export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBarProps = {}) {
+export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false, dashboard = 'darkstore' }: TopBarProps = {}) {
   const navigate = useNavigate();
   const { user, activeStoreId } = useAuth();
+  const navCounts = useDarkstoreNavCounts();
   const badge = envBadge();
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -178,10 +192,10 @@ export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBa
   }, []);
 
   useEffect(() => {
-    getRecentSearches(10, { dashboard: 'warehouse' })
+    getRecentSearches(10, { dashboard })
       .then((r) => setRecentSearches(Array.isArray(r) ? r : []))
       .catch(() => setRecentSearches([]));
-  }, []);
+  }, [dashboard]);
 
   const dismissSearchOverlay = useCallback(() => {
     setSearchOpen(false);
@@ -217,8 +231,8 @@ export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBa
       (async () => {
         try {
           const [searchResults, sugg] = await Promise.all([
-            globalSearch(q, 'all', 10, { dashboard: 'warehouse' }),
-            getSearchSuggestions(q, 5, { dashboard: 'warehouse' }),
+            globalSearch(q, 'all', 10, { dashboard }),
+            getSearchSuggestions(q, 5, { dashboard }),
           ]);
           if (cancelled) return;
           setResults(searchResults);
@@ -238,7 +252,7 @@ export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBa
       window.clearTimeout(timer);
       setSearchLoading(false);
     };
-  }, [query]);
+  }, [query, dashboard]);
 
   useEffect(() => {
     const handleOutside = (event: MouseEvent) => {
@@ -566,6 +580,29 @@ export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBa
                   )}
 
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth [scrollbar-gutter:stable]">
+                    {dashboard === 'darkstore' && !searchLoading && query.trim().length < 2 && (
+                      <div className="border-b border-[#f4f4f5] p-3">
+                        <div className="mb-2 text-xs font-semibold text-[#71717a]">Quick navigation</div>
+                        <ul className="space-y-0.5">
+                          {DARKSTORE_QUICK_NAV.map((item) => (
+                            <li key={item.tab}>
+                              <button
+                                type="button"
+                                onClick={() => goDarkstore(item.tab)}
+                                className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm text-[#18181b] hover:bg-slate-50"
+                              >
+                                <span>
+                                  <span className="font-medium">{item.label}</span>
+                                  <span className="block text-[11px] text-[#a1a1aa]">{item.hint}</span>
+                                </span>
+                                <ArrowRight size={14} className="shrink-0 text-[#a1a1aa]" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {!searchLoading && query.trim().length < 2 && recentSearches.length > 0 && (
                       <div className="border-b border-[#f4f4f5] p-3">
                         <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#71717a]">
@@ -667,6 +704,21 @@ export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBa
         </div>
 
         <div className="relative z-[2] flex shrink-0 min-w-0 items-center gap-1 sm:gap-4 ml-1 sm:ml-6">
+          {dashboard === 'darkstore' && navCounts.ordersUnder5Min > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab?.('slamonitor')}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors ds-sla-critical"
+            >
+              <Clock size={14} />
+              <span className="text-xs font-bold tabular-nums">
+                {navCounts.ordersUnder5Min} &lt; 5m to breach
+              </span>
+            </button>
+          )}
+          {dashboard === 'darkstore' && (
+            <ConnectionStatus compact className="hidden md:inline-flex" />
+          )}
           {badge && (
             <div className={cn('hidden sm:flex items-center gap-2 px-3 py-1.5', badge.className)}>
               <ShieldCheck size={14} className={import.meta.env.DEV ? 'text-slate-600' : 'text-[#e11d48]'} />
@@ -718,7 +770,7 @@ export function TopBar({ setActiveTab, onMenuClick, wideSidebar = false }: TopBa
                         className="w-full text-left px-4 py-3 border-b border-[#f4f4f5] last:border-b-0 hover:bg-[#fafafa]"
                         onClick={() => {
                           setNotifOpen(false);
-                          if (setActiveTab) setActiveTab('alerts');
+                          if (setActiveTab) setActiveTab('exception-inbox');
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">

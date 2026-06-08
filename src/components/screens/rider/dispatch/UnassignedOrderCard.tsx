@@ -4,6 +4,7 @@ import { Navigation, Clock, MapPin, CheckSquare, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useRiderPermissions } from "@/components/rider/useRiderPermissions";
 
 interface UnassignedOrderCardProps {
   order: DispatchOrder;
@@ -22,6 +23,8 @@ export function UnassignedOrderCard({
   isSelected,
   onToggleSelect,
 }: UnassignedOrderCardProps) {
+  const { can } = useRiderPermissions();
+  const canAssign = can('dispatch.assign');
   const getPriorityColor = (p: string) => {
     switch (p) {
       case "high": return "bg-red-100 text-red-700 hover:bg-red-100";
@@ -86,7 +89,9 @@ export function UnassignedOrderCard({
               )}
               <Button 
                 variant="ghost" 
-                className="text-xs font-bold text-[#F97316] h-auto p-0 hover:bg-transparent hover:underline"
+                className="text-xs font-bold text-[#F97316] h-auto p-0 hover:bg-transparent hover:underline disabled:opacity-40"
+                disabled={!canAssign}
+                title={canAssign ? undefined : 'You do not have permission to assign orders'}
                 onClick={(e) => { e.stopPropagation(); onAssign(order); }}
               >
                 Assign Rider

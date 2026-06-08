@@ -11,6 +11,8 @@ export const DIALOG_SELECT_CONTENT_CLASS =
 export {
   createBackdropClickHandler,
   guardModalDismissOnPortaledOverlay,
+  isAnyPortaledOverlayOpen,
   isPortaledOverlayTarget,
+  shouldDismissAdminModalBackdrop,
   stopModalPointerPropagation,
 } from "./modalOverlayGuards";

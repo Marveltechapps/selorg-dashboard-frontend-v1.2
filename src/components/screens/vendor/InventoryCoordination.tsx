@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useScreenTab } from '@/hooks/useScreenUrlState';
 import { createBackdropClickHandler } from "@/components/ui/modalOverlayGuards";
 import {
   RefreshCw,
@@ -158,7 +159,8 @@ function formatAgingAlertLine(alert: AgingAlert): string {
 }
 
 export function InventoryCoordination() {
-  const [activeTab, setActiveTab] = useState<'reconciliation' | 'aging' | 'stockouts' | 'kpis'>('reconciliation');
+  const INVENTORY_COORD_TABS = ['reconciliation', 'aging', 'stockouts', 'kpis'] as const;
+  const { activeTab, changeTab: setActiveTab } = useScreenTab(INVENTORY_COORD_TABS, 'reconciliation');
   const [selectedStock, setSelectedStock] = useState<StockItem | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<AgingAlert | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState<string | null>(null);

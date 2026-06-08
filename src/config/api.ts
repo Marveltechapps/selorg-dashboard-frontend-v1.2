@@ -115,6 +115,7 @@ export const API_ENDPOINTS = {
     auth: {
       login: '/rider/auth/login',
     },
+    dashboardCounts: '/rider/dashboard/counts',
   },
   finance: {
     auth: {
@@ -299,6 +300,8 @@ export const API_ENDPOINTS = {
     byId: (id: string) => `/rider/shifts/${id}`,
     update: (id: string) => `/rider/shifts/${id}`,
     delete: (id: string) => `/rider/shifts/${id}`,
+    assignments: (id: string) => `/rider/shifts/${id}/assignments`,
+    unassign: (id: string, riderId: string) => `/rider/shifts/${id}/assignments/${riderId}`,
     riderAvailable: '/rider/shifts/available/list',
     riderSelect: '/rider/shifts/select',
     riderStart: '/rider/shifts/start',
@@ -343,6 +346,7 @@ export const API_ENDPOINTS = {
     assignOrder: '/rider/dispatch/assign',
     batchAssign: '/rider/dispatch/batch-assign',
     autoAssign: '/rider/dispatch/auto-assign',
+    autoAssignSimulate: '/rider/dispatch/auto-assign/simulate',
     autoAssignRules: '/rider/dispatch/auto-assign-rules',
   },
   // Fleet (mounted at /api/v1/rider/fleet)

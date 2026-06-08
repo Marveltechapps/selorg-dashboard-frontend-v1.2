@@ -11,6 +11,9 @@ import { apiRequest } from '@/api/apiClient';
 import { PageHeader } from '../../ui/page-header';
 import { Search, RefreshCw, AlertTriangle, CheckCircle2, Phone, UserCheck, XCircle, CalendarClock, Bike } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { OrderCommandDrawer } from '@/components/rider/OrderCommandDrawer';
+import { escalationToCommandOrder } from '@/components/rider/orderCommandAdapter';
+import { api as riderOverviewApi } from './overview/riderApi';
 
 interface AttemptLog {
   attempt?: number;
@@ -69,6 +72,7 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
   const [newRiderId, setNewRiderId] = useState('');
   const [reattemptOpen, setReattemptOpen] = useState(false);
   const [reattemptNotes, setReattemptNotes] = useState('');
+  const [orderCommandOpen, setOrderCommandOpen] = useState(false);
 
   const loadEscalations = useCallback(async () => {
     setLoading(true);
@@ -251,6 +255,18 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
                 <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{selectedEscalation.description || 'No description'}</p>
               </div>
 
+              {selectedEscalation.ticketId && (
+                <p className="text-xs text-[#757575]">
+                  Ticket ID: <span className="font-mono">{selectedEscalation.ticketId}</span>
+                  {' · '}
+                  Linked alert workflows share this ID for deduplication
+                </p>
+              )}
+
+              <Button variant="outline" size="sm" onClick={() => setOrderCommandOpen(true)}>
+                Open Order Command
+              </Button>
+
               {/* Attempt Logs */}
               {selectedEscalation.attemptLogs && selectedEscalation.attemptLogs.length > 0 && (
                 <div>
@@ -329,6 +345,23 @@ export function DeliveryEscalations({ searchQuery: externalSearch }: { searchQue
           </div>
         </DialogContent>
       </Dialog>
+
+      <OrderCommandDrawer
+        order={selectedEscalation ? escalationToCommandOrder(selectedEscalation) : null}
+        isOpen={orderCommandOpen}
+        onClose={() => setOrderCommandOpen(false)}
+        onReassign={() => {
+          setOrderCommandOpen(false);
+          setReassignOpen(true);
+        }}
+        onAlert={async (orderId, reason) => {
+          await riderOverviewApi.alertOrder(orderId, reason);
+        }}
+        onOpenDispatch={() => {
+          setOrderCommandOpen(false);
+          window.dispatchEvent(new CustomEvent('rider:navigate', { detail: { tab: 'dispatch' } }));
+        }}
+      />
     </div>
   );
 }

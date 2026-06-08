@@ -86,6 +86,24 @@ export function ManualOrderModal({
       setError("Customer name is required");
       return;
     }
+
+    const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+    if (mapsKey) {
+      try {
+        const geoRes = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(dropLocation.trim())}&key=${mapsKey}`
+        );
+        const geoJson = await geoRes.json();
+        if (geoJson.status !== 'OK' || !geoJson.results?.[0]) {
+          setError('Could not geocode delivery address — verify the address before creating the order');
+          return;
+        }
+      } catch {
+        setError('Geocode validation failed — check the delivery address');
+        return;
+      }
+    }
+
     setError(null);
     setLoading(true);
     try {

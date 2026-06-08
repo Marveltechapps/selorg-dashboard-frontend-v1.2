@@ -27,6 +27,23 @@ export function isPortaledOverlayTarget(target: EventTarget | null): boolean {
   return target.closest(PORTAL_OVERLAY_SELECTOR) !== null;
 }
 
+/** True when a portaled select/popover/menu is currently open (e.g. inside a modal). */
+export function isAnyPortaledOverlayOpen(): boolean {
+  if (typeof document === "undefined") return false;
+  return (
+    document.querySelector(
+      [
+        '[data-slot="select-content"][data-state="open"]',
+        '[data-radix-select-content][data-state="open"]',
+        '[data-slot="popover-content"][data-state="open"]',
+        '[data-slot="dropdown-menu-content"][data-state="open"]',
+        '[data-slot="dropdown-menu-sub-content"][data-state="open"]',
+        '[role="listbox"][data-state="open"]',
+      ].join(", "),
+    ) !== null
+  );
+}
+
 type DismissableLayerEvent = {
   preventDefault: () => void;
   target: EventTarget | null;
@@ -53,6 +70,22 @@ export function createBackdropClickHandler(onClose: () => void) {
     if (isPortaledOverlayTarget(event.target)) return;
     onClose();
   };
+}
+
+/**
+ * Backdrop dismiss for modals that pair pointerdown + click (avoids drag-release false closes).
+ * Pass `portaledOverlayOpenOnPointerDown` captured in the backdrop pointerdown handler.
+ */
+export function shouldDismissAdminModalBackdrop(
+  event: MouseEvent<HTMLElement>,
+  backdropPointerDown: boolean,
+  portaledOverlayOpenOnPointerDown: boolean,
+): boolean {
+  if (event.target !== event.currentTarget) return false;
+  if (!backdropPointerDown) return false;
+  if (isPortaledOverlayTarget(event.target)) return false;
+  if (portaledOverlayOpenOnPointerDown) return false;
+  return true;
 }
 
 /** Spread on the inner modal panel so clicks do not bubble to a backdrop onClick handler. */

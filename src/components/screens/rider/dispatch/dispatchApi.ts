@@ -393,6 +393,28 @@ export async function autoAssignOrders(
   return unwrapApiPayload<{ assigned: number; failed: number; disabled?: boolean; message?: string }>(raw);
 }
 
+export interface AutoAssignSimulation {
+  assigned: number;
+  failed: number;
+  disabled?: boolean;
+  simulation?: boolean;
+  message?: string;
+  assignments?: Array<{ orderId: string; riderId?: string; riderName?: string; status: string; reason?: string }>;
+}
+
+export async function simulateAutoAssignOrders(
+  orderIds: string[] = []
+): Promise<AutoAssignSimulation> {
+  const raw = await apiRequest<unknown>(
+    API_ENDPOINTS.dispatch.autoAssignSimulate,
+    {
+      method: 'POST',
+      body: JSON.stringify({ orderIds }),
+    }
+  );
+  return unwrapApiPayload<AutoAssignSimulation>(raw);
+}
+
 export async function fetchAutoAssignRules(): Promise<AutoAssignRule[]> {
   const raw = await apiRequest<unknown>(API_ENDPOINTS.dispatch.autoAssignRules);
   const response = unwrapApiPayload<AutoAssignRule[] | { rules?: AutoAssignRule[] }>(raw);

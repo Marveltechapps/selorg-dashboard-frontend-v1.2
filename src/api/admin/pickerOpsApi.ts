@@ -149,6 +149,28 @@ export async function decideShiftChangeRequest(
   });
 }
 
+export interface AttendanceExportRow {
+  pickerName: string;
+  agency?: string | null;
+  daysWorked: number;
+  regularHours: number;
+  otHours: number;
+  month: string;
+}
+
+export async function fetchAttendanceByMonth(filter: {
+  month: string;
+  agencyId?: string | 'all';
+}): Promise<AttendanceExportRow[]> {
+  const params = new URLSearchParams();
+  params.set('month', filter.month);
+  if (filter.agencyId && filter.agencyId !== 'all') params.set('agencyId', filter.agencyId);
+  const res = await apiRequest<{ success: boolean; data: AttendanceExportRow[] }>(
+    `${ADMIN_PICKER_BASE}/attendance?${params.toString()}`
+  );
+  return Array.isArray(res.data) ? res.data : [];
+}
+
 export async function downloadAttendanceCsv(filter: { month: string; agencyId?: string | 'all' }): Promise<void> {
   const params = new URLSearchParams();
   params.set('month', filter.month);

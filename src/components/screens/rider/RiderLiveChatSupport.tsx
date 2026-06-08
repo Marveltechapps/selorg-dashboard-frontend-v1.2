@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { MessageCircle, RefreshCw, Search, Send, CheckCircle2, RotateCcw } from 'lucide-react';
+import { MessageCircle, RefreshCw, Search, Send, CheckCircle2, RotateCcw, Package, MapPin, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '../../ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,13 @@ import websocketService from '@/utils/websocket';
 import {
   listSupportConversations,
   getSupportConversation,
+  fetchConversationContext,
   sendSupportAdminMessage,
   markSupportConversationRead,
   updateSupportConversationStatus,
   type SupportConversation,
   type SupportMessage,
+  type RiderOrderContext,
 } from '@/api/rider/riderLiveChatSupport.api';
 
 function ConversationListItem({
@@ -64,6 +66,13 @@ function ConversationListItem({
   );
 }
 
+const CANNED_RESPONSES = [
+  'Please share your current location and order ID.',
+  'We are checking with dispatch — stay online.',
+  'Customer is unreachable; try calling once more before marking failed.',
+  'Shift your next stop after this delivery completes.',
+];
+
 export function RiderLiveChatSupport() {
   const [search, setSearch] = useState('');
   const [conversations, setConversations] = useState<SupportConversation[]>([]);
@@ -74,6 +83,8 @@ export function RiderLiveChatSupport() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState('');
+  const [orderContext, setOrderContext] = useState<RiderOrderContext | null>(null);
+  const [loadingContext, setLoadingContext] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
 
@@ -94,9 +105,14 @@ export function RiderLiveChatSupport() {
   const loadThread = useCallback(async (conversationId: string) => {
     try {
       setLoadingThread(true);
-      const data = await getSupportConversation(conversationId);
+      setLoadingContext(true);
+      const [data, contextData] = await Promise.all([
+        getSupportConversation(conversationId),
+        fetchConversationContext(conversationId).catch(() => null),
+      ]);
       setSelectedConversation(data.conversation);
       setMessages(data.messages);
+      setOrderContext(contextData?.orderContext ?? null);
       await markSupportConversationRead(conversationId);
       setConversations((prev) =>
         prev.map((c) =>
@@ -109,6 +125,7 @@ export function RiderLiveChatSupport() {
       });
     } finally {
       setLoadingThread(false);
+      setLoadingContext(false);
     }
   }, []);
 
@@ -331,6 +348,30 @@ export function RiderLiveChatSupport() {
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs"
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new CustomEvent('rider:navigate', { detail: { tab: 'dispatch' } })
+                      )
+                    }
+                  >
+                    Dispatch
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs"
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new CustomEvent('rider:navigate', { detail: { tab: 'escalations' } })
+                      )
+                    }
+                  >
+                    Escalations
+                  </Button>
                   {selectedConversation?.status === 'open' ? (
                     <Button
                       size="sm"
@@ -354,6 +395,49 @@ export function RiderLiveChatSupport() {
                   )}
                 </div>
               </header>
+
+              {(loadingContext || orderContext) && (
+                <div className="shrink-0 px-4 py-2 border-b border-[#E5E7EB] bg-[#FFF7ED]">
+                  {loadingContext ? (
+                    <Skeleton className="h-14 w-full" />
+                  ) : orderContext?.order ? (
+                    <div className="flex flex-wrap items-start gap-3 text-xs">
+                      <div className="flex items-center gap-1.5 font-semibold text-[#111827]">
+                        <Package size={14} className="text-[#F97316]" />
+                        Active order · {orderContext.order.id}
+                      </div>
+                      <span className="capitalize text-[#6B7280]">
+                        {String(orderContext.order.status || '').replace(/_/g, ' ')}
+                      </span>
+                      {orderContext.order.customerName && (
+                        <span className="text-[#374151]">{orderContext.order.customerName}</span>
+                      )}
+                      {orderContext.order.dropLocation && (
+                        <span className="flex items-center gap-1 text-[#6B7280] truncate max-w-[240px]">
+                          <MapPin size={12} />
+                          {orderContext.order.dropLocation}
+                        </span>
+                      )}
+                      {orderContext.order.slaDeadline && (
+                        <span className="flex items-center gap-1 text-[#6B7280]">
+                          <Clock size={12} />
+                          SLA {format(new Date(orderContext.order.slaDeadline), 'HH:mm')}
+                        </span>
+                      )}
+                      {orderContext.order.isCod && (
+                        <Badge variant="outline" className="text-[10px]">
+                          COD ₹{orderContext.order.codAmount ?? 0}
+                        </Badge>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[#6B7280]">
+                      Rider status: {orderContext?.availability || 'unknown'}
+                      {orderContext?.currentOrderId ? ` · Order ${orderContext.currentOrderId}` : ' · No active order'}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Messages */}
               <div
@@ -404,7 +488,19 @@ export function RiderLiveChatSupport() {
               </div>
 
               {/* Composer: input left, send right */}
-              <footer className="shrink-0 p-3 border-t border-[#E5E7EB] bg-white">
+              <footer className="shrink-0 p-3 border-t border-[#E5E7EB] bg-white space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {CANNED_RESPONSES.map((text) => (
+                    <button
+                      key={text}
+                      type="button"
+                      className="text-[10px] px-2 py-1 rounded-full border border-[#E5E7EB] bg-[#FAFAFA] hover:bg-[#FFF7ED] text-[#374151]"
+                      onClick={() => setDraft(text)}
+                    >
+                      {text.length > 42 ? `${text.slice(0, 42)}…` : text}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex flex-row items-center gap-2 min-w-0">
                   <Input
                     className="flex-1 min-w-0"

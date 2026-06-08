@@ -132,11 +132,11 @@ export function StoreSetupTab({
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-bold text-[#212121] flex items-center gap-2">
-            <LayoutGrid size={20} className="text-[#1677FF]" />
+          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <LayoutGrid size={20} className="text-blue-600" />
             Store Setup
           </h3>
-          <p className="text-sm text-[#616161] mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Define shelf locations for this store. Putaway routing uses this floor map.
           </p>
         </div>
@@ -144,7 +144,7 @@ export function StoreSetupTab({
           type="button"
           onClick={() => loadShelves()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-[#1677FF] border border-[#91CAFF] rounded-lg hover:bg-[#F0F7FF] disabled:opacity-50 shrink-0"
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 disabled:opacity-50 shrink-0"
         >
           <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
           Refresh
@@ -153,36 +153,36 @@ export function StoreSetupTab({
 
       <form
         onSubmit={handleSubmit}
-        className="bg-white rounded-xl border border-[#E0E0E0] p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end"
+        className="bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end"
       >
         <div className="md:col-span-4">
-          <label className="block text-xs font-bold text-[#616161] mb-1">Location code</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Location code</label>
           <input
             value={form.location_code}
             onChange={(e) => setForm((f) => ({ ...f, location_code: e.target.value }))}
             placeholder="A-01-01"
-            className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm"
+            className="w-full p-2 border border-slate-200 rounded-lg text-sm"
             disabled={saving}
           />
         </div>
         <div className="md:col-span-4">
-          <label className="block text-xs font-bold text-[#616161] mb-1">Section label</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Section label</label>
           <input
             value={form.section}
             onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))}
             placeholder="Aisle A — Ambient"
-            className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm"
+            className="w-full p-2 border border-slate-200 rounded-lg text-sm"
             disabled={saving}
           />
         </div>
         <div className="md:col-span-2">
-          <label className="block text-xs font-bold text-[#616161] mb-1">Status</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Status</label>
           <select
             value={form.status}
             onChange={(e) =>
               setForm((f) => ({ ...f, status: e.target.value as typeof f.status }))
             }
-            className="w-full p-2 border border-[#E0E0E0] rounded-lg text-sm bg-white"
+            className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white"
             disabled={saving}
           >
             <option value="normal">Normal</option>
@@ -194,7 +194,7 @@ export function StoreSetupTab({
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-[#1677FF] text-white rounded-lg text-sm font-bold hover:bg-[#0958D9] disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
           >
             <Plus size={14} />
             {editingId ? 'Update' : 'Add'}
@@ -203,7 +203,7 @@ export function StoreSetupTab({
             <button
               type="button"
               onClick={resetForm}
-              className="px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm font-bold text-[#616161] hover:bg-[#F5F5F5]"
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100"
             >
               Cancel
             </button>
@@ -211,45 +211,45 @@ export function StoreSetupTab({
         </div>
       </form>
 
-      <div className="bg-white rounded-xl border border-[#E0E0E0] shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-[#FAFAFA] border-b border-[#E0E0E0]">
+          <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="text-left p-3 font-bold text-[#616161]">Location</th>
-              <th className="text-left p-3 font-bold text-[#616161]">Aisle</th>
-              <th className="text-left p-3 font-bold text-[#616161]">Shelf #</th>
-              <th className="text-left p-3 font-bold text-[#616161]">Section</th>
-              <th className="text-left p-3 font-bold text-[#616161]">Status</th>
-              <th className="text-right p-3 font-bold text-[#616161]">Actions</th>
+              <th className="text-left p-3 font-bold text-slate-600">Location</th>
+              <th className="text-left p-3 font-bold text-slate-600">Aisle</th>
+              <th className="text-left p-3 font-bold text-slate-600">Shelf #</th>
+              <th className="text-left p-3 font-bold text-slate-600">Section</th>
+              <th className="text-left p-3 font-bold text-slate-600">Status</th>
+              <th className="text-right p-3 font-bold text-slate-600">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-[#9E9E9E]">
+                <td colSpan={6} className="p-8 text-center text-slate-400">
                   Loading shelves...
                 </td>
               </tr>
             ) : shelves.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-[#9E9E9E]">
+                <td colSpan={6} className="p-8 text-center text-slate-400">
                   No shelves yet. Add locations above or import inventory with shelf columns.
                 </td>
               </tr>
             ) : (
               shelves.map((row) => (
-                <tr key={row.shelf_id} className="border-t border-[#F0F0F0] hover:bg-[#FAFAFA]">
-                  <td className="p-3 font-mono font-bold text-[#212121]">{row.location_code}</td>
+                <tr key={row.shelf_id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="p-3 font-mono font-bold text-slate-900">{row.location_code}</td>
                   <td className="p-3">{row.aisle}</td>
                   <td className="p-3">{row.shelf_number}</td>
-                  <td className="p-3 text-[#616161]">{row.section || '—'}</td>
+                  <td className="p-3 text-slate-600">{row.section || '—'}</td>
                   <td className="p-3 capitalize">{row.status}</td>
                   <td className="p-3">
                     <div className="flex justify-end gap-1">
                       <button
                         type="button"
                         onClick={() => handleEdit(row)}
-                        className="p-2 rounded-lg hover:bg-[#F0F7FF] text-[#1677FF]"
+                        className="p-2 rounded-lg hover:bg-blue-50 text-blue-600"
                         title="Edit"
                       >
                         <Pencil size={14} />
@@ -258,7 +258,7 @@ export function StoreSetupTab({
                         type="button"
                         onClick={() => handleDelete(row)}
                         disabled={saving}
-                        className="p-2 rounded-lg hover:bg-[#FEF2F2] text-[#EF4444] disabled:opacity-50"
+                        className="p-2 rounded-lg hover:bg-red-50 text-red-500 disabled:opacity-50"
                         title="Delete"
                       >
                         <Trash2 size={14} />

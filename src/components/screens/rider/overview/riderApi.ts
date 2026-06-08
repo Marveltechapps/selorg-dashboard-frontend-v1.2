@@ -479,8 +479,7 @@ export const api = {
   },
 
   /**
-   * Auto assign orders (not implemented in backend yet)
-   * For now, this is a placeholder that returns 0
+   * Auto assign orders via dispatch engine
    */
   autoAssign: async (): Promise<number> => {
     // Auto-assign endpoint - returns number of assignments made
